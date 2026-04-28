@@ -1,0 +1,5 @@
+{
+    "extends": "../../tsconfig.base.json",
+    "include": ["src", "demo", "vite.config.ts", "../../shims.d.ts", "../shared/src/*", "../shared/src/utils/sqlIdentifiers.ts", "../directives/src"],
+    "exclude": ["node_modules", "dist"]
+}

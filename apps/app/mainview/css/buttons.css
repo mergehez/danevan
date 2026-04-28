@@ -1,0 +1,109 @@
+@utility btn {
+    @apply inline-flex items-center justify-center px-3 py-1 border border-transparent rounded-md font-semibold text-sm focus:outline-none focus-visible:ring-2 dark:focus-visible:ring-offset-gray-800 transition ease-in-out duration-150;
+    /*@apply focus:outline-none focus-visible:ring-2 dark:focus-visible:ring-offset-gray-800;*/
+    &:disabled {
+        @apply opacity-40 cursor-not-allowed;
+    }
+
+    &.small-y {
+        @apply py-0.5 px-2.5 rounded-sm;
+    }
+}
+
+@utility btn-primary {
+    @apply text-white bg-indigo-700 hover:bg-indigo-800 focus:ring-indigo-300 dark:bg-indigo-800/70 dark:hover:bg-indigo-800/90 dark:focus:ring-indigo-700;
+}
+
+@utility btn-info {
+    @apply text-black bg-indigo-200 hover:bg-indigo-300 focus:ring-indigo-400;
+}
+
+@utility btn-secondary {
+    @apply text-white bg-x3 border border-x5 ring-x5;
+
+    &:not([disabled]) {
+        @apply hover:bg-x4 focus:ring-x5;
+    }
+}
+
+@utility btn-light {
+    @apply text-white bg-x5 border border-x6 ring-x6;
+
+    &:not([disabled]) {
+        @apply hover:bg-x6 focus:ring-x6;
+    }
+}
+
+@utility btn-raised {
+    @apply text-white border-none;
+
+    &:not([disabled]) {
+        @apply hover:bg-x6 focus:ring-x6 hover:border border-x6 ring-x6;
+    }
+}
+
+@utility btn-dark {
+    @apply bg-gray-800 text-white hover:bg-gray-900 focus:ring-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 dark:focus:ring-gray-700 dark:border-gray-700;
+}
+
+@utility btn-danger {
+    @apply text-white bg-red-700 dark:bg-red-800 hover:bg-red-800 dark:hover:bg-red-900 focus:ring-red-300 dark:focus:ring-red-900;
+}
+
+@utility btn-warning {
+    @apply bg-yellow-700 hover:bg-yellow-800 border-yellow-600 hover:border-yellow-700;
+}
+
+@utility btn-success {
+    @apply text-white bg-green-700 hover:bg-green-800 focus:ring-green-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800;
+}
+
+@utility btn-hover {
+    @apply inline-flex items-center justify-center p-2 md:py-0 text-sm rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700;
+}
+
+@utility btn-link {
+    @apply text-indigo-800 dark:text-indigo-300;
+    /*color: rgb(131 175 255);*/
+    &:not(.nohover) {
+        @apply hover:text-indigo-500 dark:hover:text-indigo-400;
+    }
+
+    /*user-select: none;*/
+    display: inline-flex;
+    align-items: center;
+}
+
+@utility btn-link-light {
+    @apply text-indigo-800 dark:text-indigo-200 hover:text-indigo-700 dark:hover:text-indigo-400;
+    /*user-select: none;*/
+    display: inline-flex;
+    align-items: center;
+}
+
+@utility text-light {
+    @apply text-gray-700 dark:text-gray-300;
+}
+
+@utility btn-text-light {
+    @apply text-gray-700 dark:text-gray-300;
+    @apply hover:text-gray-500 dark:hover:text-gray-400;
+}
+
+@utility form-control {
+    @apply text-sm btn bg-x1 dark:text-white border border-x4 focus:ring-x4 focus:border-x4 font-normal;
+}
+
+@utility btn-sm {
+    @apply px-2 py-1 gap-1;
+}
+
+@utility btn-xs {
+    @apply px-1.5 py-0.5 gap-0.5 text-xs;
+}
+
+@utility small-y {
+    &.btn {
+        @apply py-1;
+    }
+}

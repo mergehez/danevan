@@ -1,0 +1,72 @@
+@import 'tailwindcss';
+
+@plugin "@iconify/tailwind4";
+
+@source "../../../../packages/shared/src";
+@source "../../../../packages/datagrid/src";
+@source "../../../../packages/directives/src";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+    /* --bg-reverse: rgb(18 18 18);
+ 
+    --clr-default: rgb(0 0 0);
+
+    --bg0: rgb(255 255 255);
+    --bg1: rgb(250 250 250);
+    --bg2: rgb(242 242 242);
+    --bg3: rgb(235 235 235);
+    --bg4: rgb(228 228 228);
+    --bg5: rgb(221 221 221);
+    --bg6: rgb(214 214 214);
+    --bg7: rgb(207 207 207);
+    --bg8: rgb(200 200 200); */
+
+    --bg-reverse: rgb(255 255 255);
+
+    --clr-default: rgb(204 204 204);
+
+    --bg0: rgb(10 20 22);
+    --bg1: rgb(15 23 28);
+    --bg2: rgb(21 31 39);
+    --bg3: rgb(31 41 55);
+    --bg4: rgb(43 50 60);
+    --bg5: rgb(50 60 60);
+    --bg6: rgb(53 60 60);
+    --bg7: rgb(94 94 94);
+    --bg8: rgb(106 106 106);
+}
+
+.dark {
+    --bg-reverse: rgb(255 255 255);
+
+    --clr-default: rgb(204 204 204);
+
+    --bg0: rgb(10 20 22);
+    --bg1: rgb(15 23 28);
+    --bg2: rgb(21 31 39);
+    --bg3: rgb(31 41 55);
+    --bg4: rgb(43 50 60);
+    --bg5: rgb(50 60 60);
+    --bg6: rgb(53 60 60);
+    --bg7: rgb(94 94 94);
+    --bg8: rgb(106 106 106);
+}
+
+@theme {
+    --breakpoint-xs: 475px;
+    --breakpoint-laptop: 992px;
+
+    --color-x0: var(--bg0);
+    --color-x1: var(--bg1);
+    --color-x2: var(--bg2);
+    --color-x3: var(--bg3);
+    --color-x4: var(--bg4);
+    --color-x5: var(--bg5);
+    --color-x6: var(--bg6);
+    --color-x7: var(--bg7);
+    --color-x8: var(--bg8);
+    --color-reverse: var(--bg-reverse);
+    --color-default: var(--clr-default);
+}

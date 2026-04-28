@@ -1,0 +1,36 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": ["ESNext", "DOM", "DOM.Iterable"],
+        "resolveJsonModule": true,
+        "allowImportingTsExtensions": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "isolatedModules": true,
+        "moduleDetection": "force",
+        "noEmit": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "types": ["vite-plus/client", "bun"],
+        "paths": {
+            "@directives/*": ["./packages/directives/src/*"],
+            "@directives": ["./packages/directives/src/index"],
+            "@shared/*": ["./packages/shared/src/*"],
+            "@ui/*": ["./packages/shared/src/components/*"],
+            "@utils/*": ["./packages/shared/src/utils/*"],
+            "@datagrid/*": ["./packages/datagrid/src/*"],
+            "@datagrid": ["./packages/datagrid/src/index"],
+            "@backend/*": ["./apps/app/backend/*"],
+            "@electrobun/*": ["./apps/app/electrobun/*"],
+            "@electrobun": ["./apps/app/electrobun/index"],
+            "@lib/*": ["./apps/app/mainview/lib/*"],
+            "@composables/*": ["./apps/app/mainview/composables/*"],
+            "@components/*": ["./apps/app/mainview/components/*"]
+        }
+    }
+}

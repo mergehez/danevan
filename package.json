@@ -1,0 +1,77 @@
+{
+    "name": "danevan",
+    "version": "0.1.0",
+    "productName": "Danevan",
+    "description": "Danevan desktop database client with Vue and Vite. Supports MySQL, PostgreSQL, SQLite, SQL Server, and MS Access.",
+    "homepage": "https://github.com/mergehez/danevan#readme",
+    "bugs": {
+        "url": "https://github.com/mergehez/danevan/issues"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Mergesoft",
+        "email": "argesozdogan@gmail.com"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mergehez/danevan.git"
+    },
+    "private": true,
+    "type": "module",
+    "workspaces": [
+        "packages/*",
+        "apps/*"
+    ],
+    "scripts": {
+        "build": "vp build && electrobun build",
+        "ready": "vp check && vp run -r test && vp run build",
+        "prepare": "vp config",
+        "lint": "vp check --fix && vue-tsc --noEmit",
+        "bundle:msaccess-runtime": "bun run ./scripts/vendor-msaccess-runtime.ts",
+        "test:ui": "vitest run",
+        "test:msaccess": "bun msaccess-test.ts",
+        "test:remote": "bun run ./scripts/test-remote-db.ts",
+        "release:audit": "bash ./scripts/release-audit.sh",
+        "release:validate": "vitest run && vp run build",
+        "release:mac": "bun run ./scripts/build.ts",
+        "release:mac:signed": "bun run ./scripts/build.ts --signed",
+        "release:mac:notarize": "bun run ./scripts/build.ts --notarize",
+        "dev": "vp build && concurrently \"vp dev\" \"electrobun dev --watch\"",
+        "build:canary": "electrobun build --env=canary",
+        "build:stable": "electrobun build --env=stable"
+    },
+    "dependencies": {
+        "electrobun": "^1.16.0",
+        "tailwind-merge": "^3.5.0",
+        "vue": "^3.5.33"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.2.4",
+        "@types/bun": "^1.3.13",
+        "@types/node": "^25.6.0",
+        "@types/three": "^0.184.0",
+        "@typescript/native-preview": "^7.0.0-dev.20260428.1",
+        "@vitejs/plugin-vue": "^6.0.6",
+        "concurrently": "^9.2.1",
+        "eslint-import-resolver-typescript": "^4.4.4",
+        "eslint-plugin-import": "^2.32.0",
+        "tailwindcss": "^4.2.4",
+        "typescript": "^6.0.3",
+        "vite-plus": "catalog:",
+        "vitest": "catalog:",
+        "vue-tsc": "^3.2.7"
+    },
+    "overrides": {
+        "vite": "catalog:",
+        "vitest": "catalog:"
+    },
+    "engines": {
+        "node": ">=22.12.0"
+    },
+    "packageManager": "bun@1.3.13",
+    "catalog": {
+        "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+        "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
+        "vite-plus": "latest"
+    }
+}

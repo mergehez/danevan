@@ -1,0 +1,51 @@
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.scrollbar-large::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track:vertical {
+    --scrollbar-track-bg: var(--color-gray-800);
+    background: linear-gradient(90deg, #ffffff00 0%, #ffffff00 25%, var(--scrollbar-track-bg) 25%, var(--scrollbar-track-bg) 100%) !important;
+}
+::-webkit-scrollbar-track:horizontal {
+    --scrollbar-track-bg: var(--color-gray-800);
+    background: linear-gradient(180deg, #ffffff00 0%, #ffffff00 25%, var(--scrollbar-track-bg) 25%, var(--scrollbar-track-bg) 100%) !important;
+}
+
+::-webkit-scrollbar-thumb:vertical {
+    --scrollbar-thumb-bg: var(--color-gray-700);
+    background: linear-gradient(90deg, #ffffff00 0%, #ffffff00 25%, var(--scrollbar-thumb-bg) 25%, var(--scrollbar-thumb-bg) 100%) !important;
+}
+::-webkit-scrollbar-thumb:horizontal {
+    --scrollbar-thumb-bg: var(--color-gray-700);
+    background: linear-gradient(180deg, #ffffff00 0%, #ffffff00 25%, var(--scrollbar-thumb-bg) 25%, var(--scrollbar-thumb-bg) 100%) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gray-500) 25%;
+}
+
+.scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-prominent::-webkit-scrollbar-track:vertical,
+.scrollbar-prominent::-webkit-scrollbar-track:horizontal {
+    --scrollbar-track-bg: var(--color-gray-600);
+}
+.scrollbar-prominent::-webkit-scrollbar-thumb:vertical,
+.scrollbar-prominent::-webkit-scrollbar-thumb:horizontal {
+    --scrollbar-thumb-bg: var(--color-gray-400);
+}
+.scrollbar-prominent::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gray-300) 25%;
+}

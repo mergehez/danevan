@@ -1,0 +1,86 @@
+@import './tw.css';
+@import './buttons.css';
+@import './alerts.css';
+
+:root {
+    color-scheme: dark;
+    font-family: var(--font-sans);
+    background:
+        radial-gradient(circle at top left, rgba(72, 198, 239, 0.22), transparent 24%), radial-gradient(circle at top right, rgba(61, 213, 152, 0.14), transparent 22%),
+        linear-gradient(180deg, #08101d 0%, #04070f 100%);
+    color: var(--color-reverse);
+}
+
+@layer base {
+    /*noinspection CssUnresolvedCustomProperty*/
+    .icon {
+        display: inline-block;
+        width: 1em;
+        height: 1em;
+        background-color: currentColor;
+        --fallback: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgdmlld0JveD0iMCAwIDIwIDIwIj48cGF0aCBmaWxsPSJjdXJyZW50Q29sb3IiIGQ9Ik0xOC4xODIgMEMxOS4xODYgMCAyMCAuODE0IDIwIDEuODE4djE2LjM2NEExLjgyIDEuODIgMCAwIDEgMTguMTgyIDIwSDEuODE4QTEuODIgMS44MiAwIDAgMSAwIDE4LjE4MlYxLjgxOEMwIC44MTQuODE0IDAgMS44MTggMHptLTUuOTc1IDYuODE4TDEwLjAxIDkuMDFMNy44MTUgNi44MThhLjY4LjY4IDAgMCAwLS44OC0uMDcybC0uMDg0LjA3MmEuNjguNjggMCAwIDAgMCAuOTY0bDIuMTk1IDIuMTkzbC0yLjE5NSAyLjE5M2EuNjgyLjY4MiAwIDEgMCAuOTY0Ljk2NWwyLjE5NS0yLjE5NWwyLjE5NyAyLjE5NWMuMjQuMjQuNjEzLjI2My44OC4wNzFsLjA4NC0uMDcyYS42OC42OCAwIDAgMCAwLS45NjRsLTIuMTk2LTIuMTkzbDIuMTk1LTIuMTkzYS42ODIuNjgyIDAgMCAwLS45NjMtLjk2NCIvPjwvc3ZnPg==);
+        -webkit-mask-image: var(--svg, var(--fallback));
+        mask-image: var(--svg, var(--fallback));
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-size: 100% 100%;
+        mask-size: 100% 100%;
+    }
+
+    button {
+        cursor: pointer;
+    }
+
+    select,
+    ::picker(select) {
+        appearance: base-select;
+    }
+
+    select {
+        transition: 0.2s;
+    }
+
+    ::picker(select) {
+        border: 1px solid var(--color-x6);
+        border-top: none;
+    }
+
+    select:open::picker-icon {
+        rotate: 180deg;
+    }
+
+    ::picker(select) {
+        background: var(--color-x3);
+        border-radius: 0 0 8px 8px;
+        padding: 2px;
+    }
+
+    select option {
+        border: none;
+        border-radius: 5px;
+        background: var(--color-x3);
+        outline: none;
+        transition: 0.1s;
+        padding-inline: 5px;
+    }
+
+    select::picker-icon {
+        transition: 0.1s rotate;
+    }
+
+    option:hover,
+    option:focus {
+        background: #596981;
+    }
+
+    option:checked {
+        background: #1357bf;
+    }
+}
+
+@utility text-2xs {
+    font-size: 0.625rem;
+}
+@utility text-3xs {
+    font-size: 0.5rem;
+}

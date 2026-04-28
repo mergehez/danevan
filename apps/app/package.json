@@ -1,0 +1,29 @@
+{
+    "name": "app",
+    "type": "module",
+    "dependencies": {
+        "mssql": "^12.5.0",
+        "mysql2": "^3.22.2",
+        "pg": "^8.20.0",
+        "reflect-metadata": "^0.2.2",
+        "typeorm": "^0.3.28"
+    },
+    "devDependencies": {
+        "@types/mssql": "^12.3.0",
+        "@fontsource/jetbrains-mono": "^5.2.8",
+        "@fontsource/roboto": "^5.2.10",
+        "@fontsource/roboto-condensed": "^5.2.8",
+        "@guolao/vue-monaco-editor": "^1.6.0",
+        "@vue/test-utils": "^2.4.9",
+        "dt-sql-parser": "^4.4.2",
+        "monaco-editor": "^0.55.1",
+        "monaco-sql-languages": "^1.0.0",
+        "@iconify/json": "^2.2.467",
+        "@iconify/tailwind4": "^1.2.3"
+    },
+    "scripts": {
+        "test": "vp test",
+        "check": "vp check && vue-tsc --noEmit",
+        "build": "vp build"
+    }
+}

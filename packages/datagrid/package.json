@@ -1,0 +1,21 @@
+{
+    "name": "datagrid",
+    "version": "0.0.0",
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "main": "./dist/index.mjs",
+    "module": "./dist/index.mjs",
+    "exports": {
+        ".": "./dist/index.mjs",
+        "./package.json": "./package.json"
+    },
+    "scripts": {
+        "build": "echo 'no build script defined'",
+        "dev": "vp pack --watch",
+        "test": "vp test",
+        "check": "vp check && vue-tsc --noEmit",
+        "prepublishOnly": "vp run build"
+    }
+}

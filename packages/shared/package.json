@@ -1,0 +1,23 @@
+{
+    "name": "ui-shared",
+    "version": "0.0.0",
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "main": "./src/index.ts",
+    "module": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "scripts": {
+        "build": "echo 'no build script defined'",
+        "dev": "vp pack --watch",
+        "test": "vp test",
+        "check": "vp check && vue-tsc --noEmit",
+        "prepublishOnly": "vp run build"
+    }
+}
