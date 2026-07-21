@@ -697,6 +697,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         updateLayoutState: updateLayoutState,
         handleGridKeydown: menus.handleGridKeydown,
         openCellContextMenu: menus.openCellContextMenu,
+        openRowContextMenu: menus.openRowContextMenu,
         openHeaderContextMenu: menus.openHeaderContextMenu,
         undoChanges: undoChanges,
         redoChanges: redoChanges,

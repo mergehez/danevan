@@ -637,6 +637,7 @@ export function useMsAccessWindowsDriverTools(deps: MsAccessWindowsDriverToolsDe
     $adapter = New-Object System.Data.OleDb.OleDbDataAdapter($cmd)
     $dt = New-Object System.Data.DataTable
     $adapter.Fill($dt) | Out-Null
+    $columns = @($dt.Columns | Select-Object -ExpandProperty ColumnName)
     $rows = @()
     foreach ($row in $dt.Rows) {
         $obj = New-Object PSObject
@@ -650,14 +651,14 @@ export function useMsAccessWindowsDriverTools(deps: MsAccessWindowsDriverToolsDe
     $allRows = $rows
     $offsetRows = if (${offset} -gt 0) { $allRows | Select-Object -Skip ${offset} } else { $allRows }
     $limited = if (${limit} -gt 0 -and ${limit} -lt $offsetRows.Count) { $offsetRows | Select-Object -First ${limit} } else { $offsetRows }
-    $result = @{ total = $total; rows = @($limited) }
+    $result = @{ total = $total; rows = @($limited); columns = $columns }
   `;
 
             const raw: any = await runPowerShellScript(databasePath, scriptBody);
             const data = Array.isArray(raw) ? raw[0] || {} : raw;
             const totalCount = Number(data.total) || 0;
             const allRows: Array<Record<string, any>> = Array.isArray(data.rows) ? data.rows : [];
-            const columns = allRows.length > 0 ? Object.keys(allRows[0]) : [];
+            const columns: string[] = Array.isArray(data.columns) ? data.columns : allRows.length > 0 ? Object.keys(allRows[0]) : [];
             const columnStats: Record<string, number> = {};
             for (const col of columns) columnStats[col] = allRows.length;
 

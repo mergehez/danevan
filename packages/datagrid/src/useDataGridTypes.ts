@@ -63,6 +63,11 @@ export type DataGridCellContext = {
     event: MouseEvent;
 };
 
+export type DataGridRowContext = {
+    rowIndex: number;
+    event: MouseEvent;
+};
+
 export type DataGridHeaderContext = {
     columnIndex: number;
     columnName: string;
@@ -141,6 +146,7 @@ export type UseDataGridOptions = {
     isColumnListOpen?: MaybeReactiveValue<boolean | undefined>;
     sortState?: MaybeReactiveValue<GridSortState | undefined>;
     cellContextMenuCustomItems?: (context: DataGridCellContext) => ContextMenuEntry[];
+    rowContextMenuCustomItems?: (context: DataGridRowContext) => ContextMenuEntry[];
     headerContextMenuCustomItems?: (context: DataGridHeaderContext) => ContextMenuEntry[];
     getSourceCellValue?: (rowIndex: number, columnName: string) => DataGridCellValue;
     getDisplayedCellValue?: (rowIndex: number, columnName: string) => DataGridCellValue;

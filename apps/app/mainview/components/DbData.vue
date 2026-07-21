@@ -13,6 +13,7 @@ import Button from '@ui/Button.vue';
 import CenteredModal from '@ui/CenteredModal.vue';
 import IconButton from '@ui/IconButton.vue';
 import Popover from '@ui/Popover.vue';
+import type { SqlValue } from '@utils/appClient';
 import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { formatValue } from '@utils/valueFormatting';
 import { computed, effectScope, onBeforeUnmount, ref, watch, type EffectScope } from 'vue';
@@ -139,6 +140,44 @@ const visibleColumnNames = computed(() => {
 });
 
 const allColumnsVisible = computed(() => visibleColumnNames.value.length === dataGridState.allColumns.length);
+
+const tableColumns = computed(() => query.tableInfo?.columns ?? []);
+const addRowFormState = ref<Record<string, string>>({});
+
+watch(
+    () => [dataGridState.isAddRowDialogOpen, dataGridState.isEditRowDialogOpen],
+    () => {
+        if (dataGridState.isAddRowDialogOpen || dataGridState.isEditRowDialogOpen) {
+            // Initialise form from the dialog values (empty for new row,
+            // prefilled for duplicate / edit).
+            addRowFormState.value = Object.fromEntries(tableColumns.value.map((col) => [col.name, String(dataGridState.addRowDialogValues[col.name] ?? '')]));
+        }
+    }
+);
+
+function commitAddRow() {
+    if (!dataGridState.isAddRowDialogOpen) return;
+
+    const values: Record<string, SqlValue> = {};
+    for (const col of tableColumns.value) {
+        const raw = addRowFormState.value[col.name]?.trim() ?? '';
+        values[col.name] = raw === '' && col.isAutoIncrement ? null : raw;
+    }
+
+    dataGridState.commitAddRow(values);
+}
+
+function commitEditRow() {
+    if (!dataGridState.isEditRowDialogOpen) return;
+
+    const values: Record<string, SqlValue> = {};
+    for (const col of tableColumns.value) {
+        const raw = addRowFormState.value[col.name]?.trim() ?? '';
+        values[col.name] = raw === '' && col.isAutoIncrement ? null : raw;
+    }
+
+    dataGridState.commitEditRow(values);
+}
 
 /** Tracks whether the user has manually edited the custom query text.
  *  When true, auto-sync is suppressed so the user's edits are preserved. */
@@ -382,6 +421,7 @@ onBeforeUnmount(() => {
                             :page-size-menu-options="pageSizeMenuOptions"
                             :selected-data-limit="selectedDataLimit"
                             :on-select-page-size="selectPageSize"
+                            :on-add-row="dataGridState.openAddRowDialog"
                             :on-reload="
                                 () => {
                                     const c = connections.selectedConnectionId;
@@ -395,6 +435,48 @@ onBeforeUnmount(() => {
                 </DataGrid>
             </div>
         </div>
+
+        <!-- Add / Duplicate Row dialog -->
+        <CenteredModal v-model:open="dataGridState.isAddRowDialogOpen" title="Add Row" contentClass="max-w-2xl max-h-[80vh] overflow-auto">
+            <form class="flex flex-col gap-3 p-4" @submit.prevent="commitAddRow">
+                <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+                    <template v-for="col in tableColumns" :key="col.name">
+                        <label class="self-center text-right font-medium text-reverse opacity-80">{{ col.name }}</label>
+                        <input
+                            v-model="addRowFormState[col.name]"
+                            class="border border-x4 bg-x1 px-2 py-1.5 font-mono text-xs outline-none transition focus:border-x5"
+                            :placeholder="col.isAutoIncrement ? 'auto' : (col.type ?? '')"
+                            :disabled="col.isAutoIncrement"
+                        />
+                    </template>
+                </div>
+                <div class="mt-2 flex justify-end gap-2">
+                    <Button type="button" severity="secondary" smaller @click="dataGridState.closeAddRowDialog()">Cancel</Button>
+                    <Button type="submit" severity="primary" smaller>Add Row</Button>
+                </div>
+            </form>
+        </CenteredModal>
+
+        <!-- Edit Row dialog -->
+        <CenteredModal v-model:open="dataGridState.isEditRowDialogOpen" title="Edit Row" contentClass="max-w-2xl max-h-[80vh] overflow-auto">
+            <form class="flex flex-col gap-3 p-4" @submit.prevent="commitEditRow">
+                <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+                    <template v-for="col in tableColumns" :key="col.name">
+                        <label class="self-center text-right font-medium text-reverse opacity-80">{{ col.name }}</label>
+                        <input
+                            v-model="addRowFormState[col.name]"
+                            class="border border-x4 bg-x1 px-2 py-1.5 font-mono text-xs outline-none transition focus:border-x5"
+                            :placeholder="col.isAutoIncrement ? 'auto' : (col.type ?? '')"
+                            :disabled="col.isAutoIncrement"
+                        />
+                    </template>
+                </div>
+                <div class="mt-2 flex justify-end gap-2">
+                    <Button type="button" severity="secondary" smaller @click="dataGridState.closeEditRowDialog()">Cancel</Button>
+                    <Button type="submit" severity="primary" smaller>Save</Button>
+                </div>
+            </form>
+        </CenteredModal>
 
         <Popover
             v-for="view in fkPeekViews.peekViews"

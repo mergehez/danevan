@@ -213,7 +213,13 @@ export function useDataGridCanvasPointerHandlers(args: DataGridCanvasPointerHand
     function handleBodyContextMenu(event: MouseEvent) {
         const cell = viewportHelpers.getBodyCellAtEvent(event);
 
-        if (!cell || cell.area !== 'cell') {
+        if (!cell) {
+            return;
+        }
+
+        if (cell.area === 'row-header') {
+            props.openRowContextMenu(cell.rowIndex, event);
+            viewportHelpers.focusViewport();
             return;
         }
 

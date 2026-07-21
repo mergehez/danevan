@@ -18,6 +18,7 @@ const props = defineProps<{
     pageSizeMenuOptions?: { value: number; label: string; isDefault: boolean }[];
     selectedDataLimit?: number;
     onSelectPageSize?: (limit: number) => void;
+    onAddRow?: () => void;
     onReload?: () => void;
 }>();
 
@@ -173,10 +174,12 @@ watch(isPageSizeMenuOpen, () => {
             <slot />
         </div>
 
+        <!-- Add row button -->
+        <IconButton v-if="onAddRow" icon="icon-[mdi--plus]" v-tooltip.xs.nowrap="'Add row'" smaller severity="secondary" @click="onAddRow" />
+
         <!-- Reload button -->
         <IconButton
             v-if="onReload"
-            class="ml-auto"
             :icon="isLoading ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--reload]'"
             v-tooltip.xs.nowrap="'Reload'"
             smaller

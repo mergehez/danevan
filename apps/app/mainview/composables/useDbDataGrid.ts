@@ -109,6 +109,10 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     const isForeignKeyViolationsOpen = ref(false);
     const pendingInsertedRows = ref<PendingInsertedRow[]>([]);
     const pendingDeletedBaseRowIndexes = ref<number[]>([]);
+    const isAddRowDialogOpen = ref(false);
+    const addRowDialogValues = ref<Record<string, SqlValue>>({});
+    const isEditRowDialogOpen = ref(false);
+    const editRowDialogRowIndex = ref(-1);
 
     // Separate undo stacks for row-level operations (delete/insert).
     // Cell-level edits are tracked via the DataGrid's own undoStack.
@@ -380,6 +384,72 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                         });
                     },
                 } satisfies ContextMenuEntry);
+            }
+
+            return items;
+        },
+        rowContextMenuCustomItems: (context) => {
+            const items: ContextMenuEntry[] = [];
+            const connectionId = options.connectionId();
+            const currentTableName = tableName.value;
+
+            if (!gridState.isTransposed && connectionId && currentTableName) {
+                const pkColumns = new Set(primaryKeyColumns.value);
+                const rowValues = Object.fromEntries(
+                    tableColumns.value.filter((col) => !pkColumns.has(col.name)).map((col) => [col.name, getDisplayedCellValue(context.rowIndex, col.name)])
+                );
+
+                // Compute effective multi-row selection: explicit row selection
+                // OR a cell-range spanning multiple rows (which the Delete key
+                // handler also recognises).
+                const explicitSelectedRowCount = gridState.selectedRowIndexes.length;
+                const cellRange = gridState.selectedCellRange;
+                const cellRangeRowCount = cellRange != null ? Math.abs(cellRange.endRowIndex - cellRange.startRowIndex) + 1 : 0;
+                const effectiveSelectedRowCount = explicitSelectedRowCount > 0 ? explicitSelectedRowCount : cellRangeRowCount;
+                const isMultiSelect = effectiveSelectedRowCount > 1;
+
+                if (!isMultiSelect) {
+                    items.push({
+                        id: 'edit-row',
+                        label: 'Edit Row',
+                        action: () => dbGridState.openEditRowDialog(context.rowIndex),
+                    } satisfies ContextMenuEntry);
+                }
+
+                if (!isMultiSelect) {
+                    items.push({
+                        id: 'duplicate-row',
+                        label: 'Duplicate Row',
+                        action: () => dbGridState.openDuplicateRowDialog(rowValues),
+                    } satisfies ContextMenuEntry);
+                }
+
+                items.push({
+                    id: 'delete-row',
+                    label: isMultiSelect ? `Delete ${effectiveSelectedRowCount} Rows` : 'Delete Row',
+                    action: () => {
+                        if (explicitSelectedRowCount === 0 && cellRange != null) {
+                            // Select rows from cell range (same logic as the Delete key handler).
+                            const startRowIndex = gridState.sortedRowIndexes[cellRange.startRowIndex];
+                            const endRowIndex = gridState.sortedRowIndexes[cellRange.endRowIndex];
+                            if (startRowIndex != null && endRowIndex != null) {
+                                gridState.selectRow(endRowIndex, { focus: true, mode: 'range', anchorRowIndex: startRowIndex });
+                            }
+                        } else if (!isMultiSelect) {
+                            gridState.clearSelectedRows();
+                            gridState.selectRow(context.rowIndex, { focus: true });
+                        }
+                        gridState.deleteSelectedRows?.();
+                    },
+                } satisfies ContextMenuEntry);
+
+                if (!isMultiSelect) {
+                    items.push({
+                        id: 'select-all',
+                        label: 'Select All Rows',
+                        action: () => gridState.selectAllRows(),
+                    } satisfies ContextMenuEntry);
+                }
             }
 
             return items;
@@ -871,6 +941,64 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         ddlText: ddlText,
         isDdlModalOpen: isDdlModalOpen,
         disableForeignKeyChecks: disableForeignKeyChecks,
+        isAddRowDialogOpen: isAddRowDialogOpen,
+        addRowDialogValues: addRowDialogValues,
+        isEditRowDialogOpen: isEditRowDialogOpen,
+        editRowDialogRowIndex: editRowDialogRowIndex,
+        openAddRowDialog: () => {
+            if (!tableName.value || gridState.isTransposed) return;
+            addRowDialogValues.value = {};
+            isAddRowDialogOpen.value = true;
+        },
+        openDuplicateRowDialog: (rowValues: Record<string, SqlValue>) => {
+            if (!tableName.value || gridState.isTransposed) return;
+            addRowDialogValues.value = { ...rowValues };
+            isAddRowDialogOpen.value = true;
+        },
+        openEditRowDialog: (rowIndex: number) => {
+            if (!tableName.value || gridState.isTransposed) return;
+            editRowDialogRowIndex.value = rowIndex;
+            const row = gridState.getRow(rowIndex);
+            if (row) {
+                addRowDialogValues.value = { ...row } as Record<string, SqlValue>;
+            }
+            isEditRowDialogOpen.value = true;
+        },
+        closeAddRowDialog: () => {
+            isAddRowDialogOpen.value = false;
+        },
+        closeEditRowDialog: () => {
+            isEditRowDialogOpen.value = false;
+            editRowDialogRowIndex.value = -1;
+        },
+        commitAddRow: (values: Record<string, SqlValue>) => {
+            if (!tableName.value) return;
+            const nextRow = Object.fromEntries(tableColumns.value.map((col) => [col.name, values[col.name] ?? null])) as Record<string, SqlValue>;
+            pendingInsertedRows.value = [...pendingInsertedRows.value, { values: nextRow, isDiscarded: false }];
+            isAddRowDialogOpen.value = false;
+            gridState.clearSelectedColumn();
+            gridState.clearSelectedCellRange();
+        },
+        commitEditRow: (values: Record<string, SqlValue>) => {
+            const rowIndex = editRowDialogRowIndex.value;
+            if (rowIndex < 0 || gridState.isTransposed) return;
+            const row = gridState.getRow(rowIndex);
+            if (!row) return;
+            for (const col of tableColumns.value) {
+                const newValue = values[col.name];
+                const oldValue = row[col.name];
+                if (newValue !== oldValue) {
+                    const colIndex = gridState.getColumnIndex(col.name);
+                    if (colIndex >= 0) {
+                        gridState.startEditingCell(rowIndex, colIndex);
+                        gridState.setEditingValue(String(newValue ?? ''));
+                        gridState.commitEditingCell();
+                    }
+                }
+            }
+            isEditRowDialogOpen.value = false;
+            editRowDialogRowIndex.value = -1;
+        },
         canUndo: computed(() => gridState.dirtyChanges.length > 0 || pendingRowUndoStack.value.length > 0),
         canRedo: computed(() => pendingRowRedoStack.value.length > 0),
         undoChanges: () => {

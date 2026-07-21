@@ -252,6 +252,93 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
         args.contextMenu.openAtEvent(event, items);
     }
 
+    function openRowContextMenu(rowIndex: number, event: MouseEvent) {
+        const customItems = options.rowContextMenuCustomItems?.({ rowIndex, event }) ?? [];
+
+        // Compute effective row selection: explicit row selection OR cell range.
+        const explicitRows = internalState.selectedRowIndexes;
+        const cellRange = internalState.selectedCellRange;
+        const rangeRowCount = cellRange ? Math.abs(cellRange.endRowIndex - cellRange.startRowIndex) + 1 : 0;
+        const effectiveRowIndexes =
+            explicitRows.length > 0
+                ? (explicitRows as number[])
+                : rangeRowCount > 0
+                  ? trState.baseSortedRowIndexes.slice(Math.min(cellRange!.startRowIndex, cellRange!.endRowIndex), Math.max(cellRange!.startRowIndex, cellRange!.endRowIndex) + 1)
+                  : [rowIndex];
+        const isMultiSelect = effectiveRowIndexes.length > 1;
+
+        const items: ContextMenuEntry[] = [
+            ...customItems,
+            {
+                id: 'copy-row',
+                label: isMultiSelect ? `Copy ${effectiveRowIndexes.length} Rows` : 'Copy Row',
+                action: async () => {
+                    if (isMultiSelect) {
+                        await clipboard.copyRows(effectiveRowIndexes);
+                    } else {
+                        await clipboard.copyRow(rowIndex);
+                    }
+                },
+            },
+            {
+                id: 'copy-row-as',
+                label: isMultiSelect ? `Copy ${effectiveRowIndexes.length} Rows As` : 'Copy Row As',
+                children: [
+                    {
+                        id: 'copy-row-as-json',
+                        label: 'As JSON',
+                        action: async () => {
+                            if (isMultiSelect) {
+                                await clipboard.copyRowsAsJson(effectiveRowIndexes);
+                            } else {
+                                await clipboard.copyRowAsJson(rowIndex);
+                            }
+                        },
+                    },
+                    {
+                        id: 'copy-row-as-sql',
+                        label: 'As SQL Literal',
+                        action: async () => {
+                            if (isMultiSelect) {
+                                await clipboard.copyRowsAsSql(effectiveRowIndexes);
+                            } else {
+                                await clipboard.copyRowAsSql(rowIndex);
+                            }
+                        },
+                    },
+                    ...(internalState.sqlInsertTableName
+                        ? [
+                              {
+                                  id: 'copy-row-as-sql-insert',
+                                  label: 'As SQL INSERT Statement',
+                                  action: async () => {
+                                      if (isMultiSelect) {
+                                          await clipboard.copyRowsAsSqlInsert(effectiveRowIndexes);
+                                      } else {
+                                          await clipboard.copyRowsAsSqlInsert([rowIndex]);
+                                      }
+                                  },
+                              } satisfies ContextMenuEntry,
+                              {
+                                  id: 'copy-row-as-sql-select',
+                                  label: 'As SQL SELECT Statement',
+                                  action: async () => {
+                                      if (isMultiSelect) {
+                                          await clipboard.copyRowsAsSqlSelect(effectiveRowIndexes);
+                                      } else {
+                                          await clipboard.copyRowsAsSqlSelect([rowIndex]);
+                                      }
+                                  },
+                              } satisfies ContextMenuEntry,
+                          ]
+                        : []),
+                ],
+            },
+        ];
+
+        args.contextMenu.openAtEvent(event, items);
+    }
+
     function openHeaderContextMenu(columnIndex: number, event: MouseEvent) {
         const columnName = trState.getSourceColumnNameForColumn(columnIndex);
 
@@ -388,6 +475,7 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
         toggleTranspose,
         handleGridKeydown,
         openCellContextMenu,
+        openRowContextMenu,
         openHeaderContextMenu,
         setGridElement,
         setTableElement,

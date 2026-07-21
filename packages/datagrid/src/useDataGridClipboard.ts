@@ -1,10 +1,10 @@
+import { DataGridInternalState, DataGridTransposedState } from '@datagrid/useDataGrid';
+import type { DataGridNormalizedCellRange, DataGridSelectionBounds } from '@datagrid/useDataGridHelperTypes';
+import type { DataGridCellValue, GridCellRange } from '@datagrid/useDataGridTypes';
 import { writeClipboardText } from '@utils/clipboard';
 import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { formatValue } from '@utils/valueFormatting';
 import { ComputedRef } from 'vue';
-import { DataGridInternalState, DataGridTransposedState } from '@datagrid/useDataGrid';
-import type { DataGridNormalizedCellRange, DataGridSelectionBounds } from '@datagrid/useDataGridHelperTypes';
-import type { DataGridCellValue, GridCellRange } from '@datagrid/useDataGridTypes';
 
 export interface DataGridClipboardArgs {
     internalState: DataGridInternalState;
@@ -431,6 +431,133 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         await writeClipboardText(statement);
     }
 
+    function buildRowText(rowIndex: number): string {
+        const columns = transposedState.orderedColumns;
+        return columns
+            .map((columnName: string) => {
+                const value = transposedState.getDisplayedCellValue(rowIndex, columnName);
+                return value == null
+                    ? 'NULL'
+                    : typeof value === 'object'
+                      ? JSON.stringify(value)
+                      : typeof value === 'string'
+                        ? value
+                        : typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean'
+                          ? value.toString()
+                          : '';
+            })
+            .join('\t');
+    }
+
+    async function copyRow(rowIndex: number) {
+        const text = buildRowText(rowIndex);
+        if (!text) return;
+        await writeClipboardText(text);
+    }
+
+    async function copyRowAsJson(rowIndex: number) {
+        const columns = transposedState.orderedColumns;
+        const row = Object.fromEntries(columns.map((columnName: string) => [columnName, transposedState.getDisplayedCellValue(rowIndex, columnName)]));
+        await writeClipboardText(JSON.stringify(row, null, 2));
+    }
+
+    async function copyRowAsSql(rowIndex: number) {
+        const columns = transposedState.orderedColumns;
+        const values = columns.map((columnName: string) => {
+            const value = transposedState.getDisplayedCellValue(rowIndex, columnName);
+            if (value == null) return 'NULL';
+            if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+            if (typeof value === 'string') return `'${value.replaceAll("'", "''")}'`;
+            return `'${JSON.stringify(value).replaceAll("'", "''")}'`;
+        });
+        await writeClipboardText(values.join(', '));
+    }
+
+    function buildRowsText(rowIndexes: number[]): string {
+        return rowIndexes.map((ri) => buildRowText(ri)).join('\n');
+    }
+
+    async function copyRows(rowIndexes: number[]) {
+        const text = buildRowsText(rowIndexes);
+        if (!text) return;
+        await writeClipboardText(text);
+    }
+
+    async function copyRowsAsJson(rowIndexes: number[]) {
+        const columns = transposedState.orderedColumns;
+        const rows = rowIndexes.map((ri) => Object.fromEntries(columns.map((columnName: string) => [columnName, transposedState.getDisplayedCellValue(ri, columnName)])));
+        await writeClipboardText(JSON.stringify(rows, null, 2));
+    }
+
+    async function copyRowsAsSql(rowIndexes: number[]) {
+        const columns = transposedState.orderedColumns;
+        const rows = rowIndexes.map((ri) =>
+            columns
+                .map((columnName: string) => {
+                    const value = transposedState.getDisplayedCellValue(ri, columnName);
+                    if (value == null) return 'NULL';
+                    if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+                    if (typeof value === 'string') return `'${value.replaceAll("'", "''")}'`;
+                    return `'${JSON.stringify(value).replaceAll("'", "''")}'`;
+                })
+                .join(', ')
+        );
+        await writeClipboardText(rows.join(';\n') + ';');
+    }
+
+    async function copyRowsAsSqlInsert(rowIndexes: number[]) {
+        if (!internalState.sqlInsertTableName || !rowIndexes.length) return;
+
+        const columnNames = transposedState.orderedColumns;
+        if (!columnNames.length) return;
+
+        const insertRows = rowIndexes.map((rowIndex: number) => {
+            const values = columnNames.map((columnName: string) => formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql' }));
+            return `(${values.join(', ')})`;
+        });
+
+        if (!insertRows.length) return;
+
+        const statement = [
+            `INSERT INTO ${quoteSqlIdentifier(internalState.sqlInsertTableName, internalState.sqlInsertDialect)}`,
+            `(${columnNames.map((columnName: string) => quoteSqlIdentifier(columnName, internalState.sqlInsertDialect)).join(', ')})`,
+            'VALUES',
+            `${insertRows.join(',\n')};`,
+        ].join('\n');
+
+        await writeClipboardText(statement);
+    }
+
+    async function copyRowsAsSqlSelect(rowIndexes: number[]) {
+        if (!internalState.sqlInsertTableName || !rowIndexes.length) return;
+
+        const columnNames = transposedState.orderedColumns;
+        if (!columnNames.length) return;
+
+        const selectColumns = '*';
+        const tableName = quoteSqlIdentifier(internalState.sqlInsertTableName, internalState.sqlInsertDialect);
+        const resolvedPks = internalState.primaryKeyColumns.length ? internalState.primaryKeyColumns : columnNames[0] ? [columnNames[0]] : [];
+
+        let statement = '';
+        if (resolvedPks.length === 1) {
+            const pkColumn = resolvedPks[0] as string;
+            const pkIdentifier = quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect);
+            const inValues = rowIndexes.map((rowIndex: number) => formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' }));
+            statement = `SELECT ${selectColumns} FROM ${tableName} WHERE ${pkIdentifier} IN (${inValues.join(', ')});`;
+        } else {
+            const whereClauses = rowIndexes.map((rowIndex: number) => {
+                const conditions = resolvedPks.map((pkColumn: string) => {
+                    const val = formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' });
+                    return `${quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect)} = ${val}`;
+                });
+                return `(${conditions.join(' AND ')})`;
+            });
+            statement = `SELECT ${selectColumns} FROM ${tableName} WHERE ${whereClauses.join(' OR ')};`;
+        }
+
+        await writeClipboardText(statement);
+    }
+
     return {
         getSelectionBounds,
         getAllCellsSelectionBounds,
@@ -446,5 +573,13 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         copyAllCellsAsSqlInsert,
         copySelectionAsSqlSelect,
         copyAllCellsAsSqlSelect,
+        copyRow,
+        copyRowAsJson,
+        copyRowAsSql,
+        copyRows,
+        copyRowsAsJson,
+        copyRowsAsSql,
+        copyRowsAsSqlInsert,
+        copyRowsAsSqlSelect,
     };
 }
