@@ -110,6 +110,26 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     const pendingInsertedRows = ref<PendingInsertedRow[]>([]);
     const pendingDeletedBaseRowIndexes = ref<number[]>([]);
 
+    // Separate undo stacks for row-level operations (delete/insert).
+    // Cell-level edits are tracked via the DataGrid's own undoStack.
+    type RowUndoEntry = {
+        deletedRows: number[];
+        insertedRows: PendingInsertedRow[];
+    };
+    const pendingRowUndoStack = ref<RowUndoEntry[]>([]);
+    const pendingRowRedoStack = ref<RowUndoEntry[]>([]);
+
+    function pushPendingRowSnapshot() {
+        pendingRowUndoStack.value = [
+            ...pendingRowUndoStack.value,
+            {
+                deletedRows: [...pendingDeletedBaseRowIndexes.value],
+                insertedRows: pendingInsertedRows.value.map((row) => ({ ...row, values: { ...row.values } })),
+            },
+        ];
+        pendingRowRedoStack.value = [];
+    }
+
     const tableInfo = computed(() => options.tableInfo());
     const tableName = computed(() => options.tableName());
     const tableColumns = computed(() => tableInfo.value?.columns ?? []);
@@ -148,6 +168,8 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         sqlDialect: sqlDialect,
         getDisplayedCellValue: (rowIndex, columnName) => getDisplayedCellValue(rowIndex, columnName),
     });
+    const ddlText = ref('');
+    const isDdlModalOpen = ref(false);
     const gridState = useDataGrid({
         layoutStorageKey: computed(() => {
             const connectionId = options.connectionId();
@@ -180,6 +202,32 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                 } satisfies ContextMenuEntry,
             ];
         }),
+        copyTableAsDdl: () => {
+            const connectionId = options.connectionId();
+            const currentTableName = tableName.value;
+
+            if (!connectionId || !currentTableName) {
+                return Promise.resolve();
+            }
+
+            return copyTableAsDdl(connectionId, currentTableName, sqlDialect.value);
+        },
+        showTableDdl: async () => {
+            const connectionId = options.connectionId();
+            const currentTableName = tableName.value;
+
+            if (!connectionId || !currentTableName) {
+                return;
+            }
+
+            const ddl = await tasks.getTableDdl.run({ connectionId, tableName: currentTableName });
+            const formatted = await tasks.formatSql.run({ sql: ddl, dialect: sqlDialect.value }).catch(() => {
+                tasks.formatSql.clearError();
+                return ddl;
+            });
+            ddlText.value = formatted;
+            isDdlModalOpen.value = true;
+        },
         primaryKeyColumns: computed(() => tableInfo.value?.columns.filter((c) => c.isPrimaryKey).map((c) => c.name)),
         getFormattedCellValue: (rowIndex: number, columnName: string) => {
             const value = getDisplayedCellValue(rowIndex, columnName);
@@ -483,6 +531,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                 return;
             }
 
+            pushPendingRowSnapshot();
             const nextDeletedBaseRowIndexes = new Set(pendingDeletedBaseRowIndexes.value);
             const nextInsertedRows = [...pendingInsertedRows.value];
 
@@ -519,6 +568,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                 return;
             }
 
+            pushPendingRowSnapshot();
             const nextRowIndex = getBaseRowCount() + pendingInsertedRows.value.length;
             const nextRow = Object.fromEntries(tableColumns.value.map((column) => [column.name, null])) as Record<string, SqlValue>;
 
@@ -666,7 +716,14 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         }
 
         const columnSql = insertableColumns.map((column) => quoteSqlIdentifier(column.name, sqlDialect.value)).join(', ');
-        const valueSql = insertableColumns.map((column) => formatValue(getDisplayedCellValue(rowIndex, column.name), { mode: 'sql', binaryMode: 'hex' })).join(', ');
+        const valueSql = insertableColumns
+            .map((column) =>
+                formatValue(getDisplayedCellValue(rowIndex, column.name), {
+                    mode: 'sql',
+                    binaryMode: 'hex',
+                })
+            )
+            .join(', ');
 
         return `INSERT INTO ${tableIdentifier} (${columnSql}) VALUES (${valueSql});`;
     }
@@ -780,7 +837,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             pendingInsertedRows.value = [];
             pendingDeletedBaseRowIndexes.value = [];
             isPreviewOpen.value = false;
-            await query.loadSelectedTable();
+            await query.loadSelectedTable(connectionId, tableName.value);
             options.onSaved?.();
         } finally {
             gridState.setSavingChanges(false);
@@ -803,10 +860,68 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             .join(' AND ');
     }
 
+    // Capture original cell-level undo/redo before overriding (extend will
+    // overlay dbGridState properties onto gridState, overwriting them).
+    const cellUndoChanges = gridState.undoChanges;
+    const cellRedoChanges = gridState.redoChanges;
+
     const dbGridState = reactive({
         closeFkPeekPopover: fkPeek.closeFkPeekPopover,
         columnDisplayTypes: columnDisplayTypes,
+        ddlText: ddlText,
+        isDdlModalOpen: isDdlModalOpen,
         disableForeignKeyChecks: disableForeignKeyChecks,
+        canUndo: computed(() => gridState.dirtyChanges.length > 0 || pendingRowUndoStack.value.length > 0),
+        canRedo: computed(() => pendingRowRedoStack.value.length > 0),
+        undoChanges: () => {
+            // Prefer undoing row-level changes first (most recent user action).
+            if (pendingRowUndoStack.value.length > 0) {
+                const snapshot = pendingRowUndoStack.value.at(-1)!;
+                pendingRowRedoStack.value = [
+                    ...pendingRowRedoStack.value,
+                    {
+                        deletedRows: [...pendingDeletedBaseRowIndexes.value],
+                        insertedRows: pendingInsertedRows.value.map((row) => ({ ...row, values: { ...row.values } })),
+                    },
+                ];
+                pendingRowUndoStack.value = pendingRowUndoStack.value.slice(0, -1);
+                pendingDeletedBaseRowIndexes.value = snapshot.deletedRows;
+                pendingInsertedRows.value = snapshot.insertedRows;
+                return;
+            }
+
+            cellUndoChanges();
+        },
+        redoChanges: () => {
+            if (pendingRowRedoStack.value.length > 0) {
+                const snapshot = pendingRowRedoStack.value.at(-1)!;
+                pendingRowUndoStack.value = [
+                    ...pendingRowUndoStack.value,
+                    {
+                        deletedRows: [...pendingDeletedBaseRowIndexes.value],
+                        insertedRows: pendingInsertedRows.value.map((row) => ({ ...row, values: { ...row.values } })),
+                    },
+                ];
+                pendingRowRedoStack.value = pendingRowRedoStack.value.slice(0, -1);
+                pendingDeletedBaseRowIndexes.value = snapshot.deletedRows;
+                pendingInsertedRows.value = snapshot.insertedRows;
+                return;
+            }
+
+            cellRedoChanges();
+        },
+        /** Discards all pending changes and clears undo/redo stacks. */
+        clearChanges: () => {
+            gridState.clearHistory();
+            gridState.clearPendingChanges();
+            pendingRowUndoStack.value = [];
+            pendingRowRedoStack.value = [];
+            pendingInsertedRows.value = [];
+            pendingDeletedBaseRowIndexes.value = [];
+            isPreviewOpen.value = false;
+            foreignKeyViolations.value = [];
+            isForeignKeyViolationsOpen.value = false;
+        },
         fkPeekPopover: fkPeek.fkPeekPopover,
         foreignKeyViolations: foreignKeyViolations,
         gridFormatters: gridFormatters,

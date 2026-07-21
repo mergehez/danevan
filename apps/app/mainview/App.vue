@@ -15,10 +15,11 @@ import { useServers } from '@composables/useServers';
 import { tasks } from '@composables/useTasks';
 import ContextMenu from '@directives/ContextMenu.vue';
 import { useContextMenu } from '@directives/useContextMenu';
+import { useOverlaysState } from '@directives/useOverlaysState';
 import Alert from '@ui/Alert.vue';
 import AppConfirmationModal from '@ui/AppConfirmationModal.vue';
 import Splitter from '@ui/Splitter.vue';
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 initializeDbStates();
 
@@ -28,6 +29,23 @@ const connections = useConnections();
 const query = useQuery();
 const contextMenu = useContextMenu();
 const navState = useNavState();
+const overlayState = useOverlaysState();
+const errorZIndex = ref(90);
+const busyZIndex = ref(90);
+
+watch(
+    () => tasks.errorMessage,
+    (msg) => {
+        errorZIndex.value = msg ? overlayState.claimZIndex() : overlayState.releaseZIndex(errorZIndex.value);
+    }
+);
+
+watch(
+    () => tasks.isBusy,
+    (busy) => {
+        busyZIndex.value = busy ? overlayState.claimZIndex() : overlayState.releaseZIndex(busyZIndex.value);
+    }
+);
 
 const selectedServer = computed(() => servers.selectedServer);
 const selectedConnection = computed(() => connections.selectedConnection);
@@ -104,7 +122,7 @@ onBeforeUnmount(() => {
             </template>
         </Splitter>
 
-        <div v-if="tasks.errorMessage" class="fixed bottom-4 right-4 max-w-md border border-x5 bg-x2 px-4 py-3 text-sm text-reverse shadow-2xl">
+        <div v-if="tasks.errorMessage" class="fixed bottom-4 right-4 max-w-md border border-x5 bg-x2 px-4 py-3 text-sm text-reverse shadow-2xl" :style="{ zIndex: errorZIndex }">
             <div class="mb-2 flex items-center justify-between gap-4">
                 <strong>Request failed</strong>
                 <button class="text-xs uppercase tracking-[0.2em] text-reverse opacity-70" @click="tasks.dismissError">Dismiss</button>
@@ -119,7 +137,7 @@ onBeforeUnmount(() => {
 
         <ContextMenu :state="contextMenu" />
     </div>
-    <Alert v-if="tasks.isBusy" class="fixed right-4 bottom-4 z-50" small severity="primary">
+    <Alert v-if="tasks.isBusy" class="fixed right-4 bottom-4" small severity="primary" :style="{ zIndex: busyZIndex }">
         <div class="flex items-center gap-2">
             <span class="icon icon-[mdi--loading] animate-spin text-sm"></span>
             <span>{{ tasks.getLongRunningOperation || tasks.getRunningOperation() || 'Working...' }}</span>

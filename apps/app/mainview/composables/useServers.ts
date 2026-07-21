@@ -44,9 +44,9 @@ export function _useServers() {
             anchorTop: 0,
             anchorWidth: 0,
         },
-        openAddForm(driver?: DbType) {
+        openAddForm(driver?: DbType, serverId?: number) {
             state.addForm.driver = driver ?? dbTypes[0];
-            state.addForm.serverId = -1;
+            state.addForm.serverId = serverId ?? -1;
             state.addForm.visible = true;
         },
         openUpdateForm(serverId: number) {

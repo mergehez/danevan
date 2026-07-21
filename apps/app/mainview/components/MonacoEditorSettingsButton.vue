@@ -1,15 +1,22 @@
 <script setup lang="ts">
 import { useSettings } from '@composables/useSettings';
+import { useOverlaysState } from '@directives/useOverlaysState';
 import IconButton from '@ui/IconButton.vue';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps<{
     hideDiffOptions?: boolean;
 }>();
 const settings = useSettings();
 
+const overlayState = useOverlaysState();
+const dropdownZIndex = ref(90);
 const diffSettingsRef = ref<HTMLElement>();
 const isDiffSettingsOpen = ref(false);
+
+watch(isDiffSettingsOpen, (isOpen) => {
+    dropdownZIndex.value = isOpen ? overlayState.claimZIndex() : overlayState.releaseZIndex(dropdownZIndex.value);
+});
 
 function toggleDiffSettings() {
     isDiffSettingsOpen.value = !isDiffSettingsOpen.value;
@@ -51,7 +58,8 @@ onUnmounted(() => {
         </IconButton>
         <div
             v-if="isDiffSettingsOpen"
-            class="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-max rounded-md border border-white/10 bg-[#101114] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.45)]"
+            class="absolute right-0 top-[calc(100%+0.5rem)] w-max rounded-md border border-white/10 bg-[#101114] p-3 shadow-[0_14px_40px_rgba(0,0,0,0.45)]"
+            :style="{ zIndex: dropdownZIndex }"
             role="dialog"
             aria-label="Diff settings"
             @click.stop

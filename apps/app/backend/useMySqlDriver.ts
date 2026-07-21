@@ -1,4 +1,4 @@
-import type { DriverTools, RemoteConnectionTarget } from '@backend/db-tools.ts';
+import type { DriverTools, RemoteConnectionTarget, SortOrder } from '@backend/db-tools.ts';
 import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from '@backend/useRemoteDriverTools.ts';
 import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from '@backend/useSqliteDriver.ts';
 import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '@utils/appClient';
@@ -53,8 +53,10 @@ type MySqlDriverToolsDeps = {
     escapeSqlString: (value: string) => string;
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     getRemoteConnectionTarget: (connectionId: number) => RemoteConnectionTarget;
-    resolveServerConnectionId: (serverId: number, connectionId?: number) => number;
+    getRemoteServerTarget: (serverId: number) => RemoteConnectionTarget;
+    resolveServerConnectionId: (serverId: number, connectionId?: number) => number | undefined;
     readConnectionPassword: (connectionId: number) => Promise<string | null>;
+    readServerPassword: (serverId: number) => Promise<string | null>;
     normalizeTableName: (tableName: string) => string;
     normalizeColumnName: (columnName: string, fieldName: string) => string;
     buildColumnStats: (columns: string[], rows: Array<Record<string, SqlValue>>) => Record<string, number>;
@@ -659,11 +661,13 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
     }
 
     async function getServerSchemas(client: RemoteDriverClient): Promise<ServerSchemaRecord[]> {
-        const schemas = await getMySqlQueryRunnerClient(client).queryRunner.getDatabases();
-        console.log(schemas);
-        return schemas
-            .map((name) => ({ name: String(name ?? '').trim() }))
-            .filter((schema) => schema.name.length > 0)
+        const rows = await client.queryRows<Record<string, unknown>>({ sql: 'SHOW DATABASES' });
+        return rows
+            .map((row) => {
+                const name = Object.values(row).find((value): value is string => typeof value === 'string' && value.length > 0);
+                return name ? { name } : undefined;
+            })
+            .filter((schema): schema is ServerSchemaRecord => schema !== undefined)
             .sort((left, right) => left.name.localeCompare(right.name));
     }
 
@@ -893,12 +897,14 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
     return {
         buildDropColumnStatements,
         getTableMetadata: getTableMetadata,
-        buildReadTableStatement(tableName: string, limit: number, offset: number): RemoteStatement {
+        buildReadTableStatement(tableName: string, limit: number, offset: number, orderBy?: SortOrder): RemoteStatement {
+            const orderClause = orderBy ? ` ORDER BY ${quoteMySqlIdentifier(orderBy.column)} ${orderBy.direction}` : '';
+
             return {
                 sql:
                     limit < 0
-                        ? `SELECT * FROM ${quoteMySqlIdentifier(tableName)}${offset > 0 ? ` LIMIT 18446744073709551615 OFFSET ${offset}` : ''}`
-                        : `SELECT * FROM ${quoteMySqlIdentifier(tableName)} LIMIT ${limit} OFFSET ${offset}`,
+                        ? `SELECT * FROM ${quoteMySqlIdentifier(tableName)}${orderClause}${offset > 0 ? ` LIMIT 18446744073709551615 OFFSET ${offset}` : ''}`
+                        : `SELECT * FROM ${quoteMySqlIdentifier(tableName)}${orderClause} LIMIT ${limit} OFFSET ${offset}`,
             };
         },
         buildModifyTableStatements,
@@ -981,6 +987,28 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
         }
     }
 
+    async function withMySqlServerClient<T>(serverId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
+        const target = deps.getRemoteServerTarget(serverId);
+        const password = (await deps.readServerPassword(serverId)) ?? '';
+        const dataSource = createMySqlDataSource({
+            host: target.hostname,
+            port: target.port,
+            database: target.database,
+            username: target.username,
+            password,
+        });
+
+        await dataSource.initialize();
+        const queryRunner = dataSource.createQueryRunner();
+
+        try {
+            return await callback(createRemoteClient(dataSource, queryRunner));
+        } finally {
+            await queryRunner.release();
+            await dataSource.destroy();
+        }
+    }
+
     async function testConnection(params: TestConnectionParams): Promise<TestConnectionResult> {
         const hostname = params.host?.trim();
 
@@ -1020,6 +1048,7 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
     const baseTools = useRemoteDriverTools({
         testConnection,
         withRemoteClient: withMySqlClient,
+        withServerClient: withMySqlServerClient,
         resolveServerConnectionId: deps.resolveServerConnectionId,
         normalizeTableName: deps.normalizeTableName,
         normalizeColumnName: deps.normalizeColumnName,

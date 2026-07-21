@@ -32,6 +32,10 @@ dist-ssr
 # AI agent worktrees
 .claude/worktrees/
 
+# Playwright
+test-results/
+playwright-report/
+
 assets/msaccess-runtime/
 assets/test-access-db.mdb
 apps/app/build/

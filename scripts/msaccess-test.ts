@@ -45,10 +45,17 @@ async function main() {
             kind: 'file',
             driver: 'msaccess',
             filePath: databasePath,
+            host: undefined,
+            port: undefined,
+            username: undefined,
         });
         connectionId = appDb.createConnection({
             serverId,
             name: 'msaccess-smoke-test',
+            host: undefined,
+            port: undefined,
+            databaseName: undefined,
+            readonly: undefined,
         });
 
         const tables = await dbTools.getTablesFresh(connectionId);

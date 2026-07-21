@@ -4,7 +4,7 @@ import { tasks } from '@composables/useTasks';
 import Alert from '@ui/Alert.vue';
 import Button from '@ui/Button.vue';
 import CenteredModal from '@ui/CenteredModal.vue';
-import type { ServerRecord, UpdateServerParams } from '@utils/appClient';
+import type { ServerRecord } from '@utils/appClient';
 import { computed, reactive, watch } from 'vue';
 
 const props = defineProps<{
@@ -95,7 +95,9 @@ async function submit() {
             filePath: isFileServer.value ? form.filePath.trim() : undefined,
             host: isFileServer.value ? undefined : form.host.trim() || undefined,
             port: isFileServer.value ? undefined : typeof form.port === 'number' ? form.port : undefined,
-        } satisfies UpdateServerParams);
+            username: undefined,
+            password: undefined,
+        });
 
         closeModal();
     } catch (error) {

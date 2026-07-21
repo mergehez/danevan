@@ -1,0 +1,86 @@
+/// <reference types="node" />
+// noinspection SpellCheckingInspection
+import * as b from '@mergehez/barke';
+
+const env = b.parseEnv();
+
+const site = 'testo';
+const fileName = 'danevan-api';
+
+const allConfigs = {
+    base: {
+        sourceBasePath: "./build/api",
+        targetBasePath: "C:/inetpub/wwwroot/" + site,
+        targetOS: 'windows',
+    } as const,
+    ssh: {
+        host: env.HOST_SERVER,
+        port: parseInt(env.SSH_PORT ?? '22'),
+        username: env.SSH_USERNAME,
+        password: env.SSH_PASSWORD,
+    },
+    iis: {
+        site: site,
+        pool: site,
+    },
+    newFiles: {
+        dirsWithManyFiles: [
+        ],
+        ignorePatterns: [
+            '.DS_Store',
+            '*.zip',
+        ]
+    },
+};
+
+async function start() {
+    const executer = b.useExecuter(allConfigs.base)
+    const server = await executer.sshConnect(allConfigs.ssh)
+    const iis = executer.useIISHelpers(server);
+
+
+    await executer.exec({
+        message: 'blue|\\n-> deleting build folder',
+        command: 'rm -rf "./build"',
+        on_error: 'print'
+    })
+    await executer.exec({
+        message: 'blue|\\n-> building...',
+        command: 'bun run build:api',
+        on_error: 'print'
+    })
+
+    // await iis.stopSite(allConfigs.iis.pool, allConfigs.iis.site);
+    await server.exec({
+        message: 'blue|\\n-> stopping service',
+        command: `sc stop ${fileName}`,
+        on_error: 'ignore',
+    });
+
+    // server.uploadFile(`${allConfigs.base.sourceBasePath}/${fileName}.exe`);
+    server.uploadFile(`${allConfigs.base.sourceBasePath}/${fileName}.exe`);
+    // server.uploadFile(`${allConfigs.base.sourceBasePath}/web.config`);
+
+    await server.exec({
+        message: 'blue|\\n-> (re)creating service',
+        command: [
+            `sc delete ${fileName}`,
+            `sc create ${fileName} binPath=${allConfigs.base.targetBasePath}/${fileName}.exe start=auto`,
+            `sc failure ${fileName} reset=86400 actions=restart/5000/restart/10000/restart/15000`,
+        ].join(' & '),
+        on_error: 'ignore',
+    });
+    await server.exec({
+        message: 'blue|\\n-> starting service',
+        command: `sc start ${fileName}`,
+        on_error: 'print',
+    });
+    // await iis.startSite(allConfigs.iis.pool, allConfigs.iis.site);
+
+    server.dispose();
+    executer.log("green|\n-> Now: " + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString());
+    executer.finish();
+}
+
+start().then(() => {
+});

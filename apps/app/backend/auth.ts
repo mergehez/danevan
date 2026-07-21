@@ -50,6 +50,10 @@ function getConnectionPasswordAccountName(connectionId: number) {
     return `danevan-connection-password-${connectionId}`;
 }
 
+function getServerPasswordAccountName(serverId: number) {
+    return `danevan-server-password-${serverId}`;
+}
+
 export async function storeConnectionPassword(connectionId: number, label: string, password: string) {
     ensureSupportedPlatform();
 
@@ -66,4 +70,22 @@ export async function readConnectionPassword(connectionId: number) {
     ensureSupportedPlatform();
 
     return await readKeychainSecret(KEYCHAIN_SERVICE_NAME, getConnectionPasswordAccountName(connectionId));
+}
+
+export async function storeServerPassword(serverId: number, label: string, password: string) {
+    ensureSupportedPlatform();
+
+    await storeKeychainSecret(KEYCHAIN_SERVICE_NAME, getServerPasswordAccountName(serverId), label, password);
+}
+
+export async function deleteServerPassword(serverId: number) {
+    ensureSupportedPlatform();
+
+    await deleteKeychainSecret(KEYCHAIN_SERVICE_NAME, getServerPasswordAccountName(serverId));
+}
+
+export async function readServerPassword(serverId: number) {
+    ensureSupportedPlatform();
+
+    return await readKeychainSecret(KEYCHAIN_SERVICE_NAME, getServerPasswordAccountName(serverId));
 }

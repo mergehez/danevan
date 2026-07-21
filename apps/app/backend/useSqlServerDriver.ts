@@ -1,4 +1,4 @@
-import type { DriverTools, RemoteConnectionTarget } from '@backend/db-tools.ts';
+import type { DriverTools, RemoteConnectionTarget, SortOrder } from '@backend/db-tools.ts';
 import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from '@backend/typeOrmMappers.ts';
 import { prepareTypeOrmParameterizedStatement } from '@backend/typeOrmStatementParameters.ts';
 import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from '@backend/useRemoteDriverTools.ts';
@@ -18,8 +18,10 @@ type SqlServerDataSourceConfig = {
 type SqlServerDriverToolsDeps = {
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     getRemoteConnectionTarget: (connectionId: number) => RemoteConnectionTarget;
-    resolveServerConnectionId: (serverId: number, connectionId?: number) => number;
+    getRemoteServerTarget: (serverId: number) => RemoteConnectionTarget;
+    resolveServerConnectionId: (serverId: number, connectionId?: number) => number | undefined;
     readConnectionPassword: (connectionId: number) => Promise<string | null>;
+    readServerPassword: (serverId: number) => Promise<string | null>;
     normalizeTableName: (tableName: string) => string;
     normalizeColumnName: (columnName: string, fieldName: string) => string;
     buildColumnStats: (columns: string[], rows: Array<Record<string, SqlValue>>) => Record<string, number>;
@@ -258,12 +260,14 @@ export function useSqlServerSchemaHelper(deps: { normalizeOptionalText: SqlServe
     }
 
     return {
-        buildReadTableStatement(tableName: string, limit: number, offset: number): RemoteStatement {
+        buildReadTableStatement(tableName: string, limit: number, offset: number, orderBy?: SortOrder): RemoteStatement {
+            const orderClause = orderBy ? ` ORDER BY ${quoteSqlServerIdentifier(orderBy.column)} ${orderBy.direction}` : ' ORDER BY (SELECT NULL)';
+
             return {
                 sql:
                     limit < 0
-                        ? `SELECT * FROM ${quoteSqlServerIdentifier(tableName)} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS`
-                        : `SELECT * FROM ${quoteSqlServerIdentifier(tableName)} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`,
+                        ? `SELECT * FROM ${quoteSqlServerIdentifier(tableName)}${orderClause} OFFSET ${offset} ROWS`
+                        : `SELECT * FROM ${quoteSqlServerIdentifier(tableName)}${orderClause} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`,
             };
         },
         buildWriteValueStatement(tableName: string, targetColumn: string, value: SqlValue, matchColumn: string, matchValue: SqlValue): RemoteStatement {
@@ -345,6 +349,27 @@ export function useSqlServerDriverTools(deps: SqlServerDriverToolsDeps): DriverT
         }
     }
 
+    async function withSqlServerServerClient<T>(serverId: number, callback: (client: RemoteDriverClient) => Promise<T>) {
+        const target = deps.getRemoteServerTarget(serverId);
+        const dataSource = createSqlServerDataSource({
+            host: target.hostname,
+            port: target.port,
+            database: target.database,
+            username: target.username,
+            password: (await deps.readServerPassword(serverId)) ?? '',
+        });
+
+        await dataSource.initialize();
+        const queryRunner = dataSource.createQueryRunner();
+
+        try {
+            return await callback(createRemoteClient(dataSource, queryRunner));
+        } finally {
+            await queryRunner.release();
+            await dataSource.destroy();
+        }
+    }
+
     async function testConnection(params: TestConnectionParams): Promise<TestConnectionResult> {
         const hostname = params.host?.trim();
 
@@ -379,6 +404,7 @@ export function useSqlServerDriverTools(deps: SqlServerDriverToolsDeps): DriverT
     const baseTools = useRemoteDriverTools({
         testConnection,
         withRemoteClient: withSqlServerClient,
+        withServerClient: withSqlServerServerClient,
         resolveServerConnectionId: deps.resolveServerConnectionId,
         normalizeTableName: deps.normalizeTableName,
         normalizeColumnName: deps.normalizeColumnName,

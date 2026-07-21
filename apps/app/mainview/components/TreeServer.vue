@@ -247,7 +247,7 @@ function serverMenuItems(server: ServerRecord): ContextMenuEntry[] {
                 iconClass: 'icon-[mdi--plus]',
                 action: async () => {
                     await servers.selectServer(server.id);
-                    servers.openAddForm(server.driver);
+                    servers.openAddForm(server.driver, server.id);
                 },
             }
         );
@@ -355,7 +355,7 @@ function getHeaderActions(server: ServerRecord) {
         actions.push({
             title: 'Add connection',
             icon: 'icon-[mdi--plus]',
-            onClick: () => servers.openAddForm(server.driver),
+            onClick: () => servers.openAddForm(server.driver, server.id),
         });
     }
     actions.push(
@@ -395,6 +395,7 @@ function getHeaderActions(server: ServerRecord) {
                     :disabled="isServerRefreshing(server.id)"
                     class="text-2xs px-1 py-0.5"
                     smaller
+                    id="server-schema-selection-button"
                     @click.stop="openSchemaSelectionPopover(server.id, $event)"
                 >
                     {{ `${server.children.length} of ${server.schema_count || connections.connections.filter((c) => c.server_id === server.id).length || '?'}` }}

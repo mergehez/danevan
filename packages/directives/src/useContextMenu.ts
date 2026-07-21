@@ -34,7 +34,7 @@ export function _useContextMenu() {
 
     function closeMenu() {
         state.value = getDefaultState();
-        overlayState.decreaseZIndex();
+        overlayState.releaseZIndex(state.value.zIndex);
     }
 
     function openAtPosition(position: ContextMenuPosition, items: ContextMenuEntry[], element?: HTMLElement, options?: ContextMenuOpenOptions) {
@@ -48,7 +48,7 @@ export function _useContextMenu() {
             key: options?.key,
             autoFocus: options?.autoFocus === true,
             open: items.length > 0,
-            zIndex: overlayState.increaseZIndex(),
+            zIndex: overlayState.claimZIndex(),
         };
     }
 

@@ -85,12 +85,15 @@ function applyOptions(elems: Elems, options: ComputedOptions) {
 function show(tooltip: HTMLElement) {
     tooltip.style.position = 'fixed';
     tooltip.style.visibility = 'visible';
-    tooltip.style.zIndex = overlayState.increaseZIndex().toString();
+    const zIndex = overlayState.claimZIndex();
+    tooltip.style.zIndex = zIndex.toString();
+    tooltip.dataset.overlayZIndex = String(zIndex);
 }
 
 function hide(tooltip: HTMLElement) {
     tooltip.style.display = 'none';
-    overlayState.decreaseZIndex();
+    overlayState.releaseZIndex(Number(tooltip.dataset.overlayZIndex));
+    delete tooltip.dataset.overlayZIndex;
 }
 
 function positionTooltip(el: TooltipHostElement) {

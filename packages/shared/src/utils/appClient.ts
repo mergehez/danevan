@@ -96,6 +96,7 @@ export type ServerRecord = {
     sequence: number | bigint;
     created_at: string;
     updated_at: string;
+    username: string | undefined;
 };
 
 export type ConnectionRecord = {
@@ -105,7 +106,6 @@ export type ConnectionRecord = {
     host: string | undefined;
     port: number | undefined;
     database_name: string | undefined;
-    username: string | undefined;
     readonly: number;
     sequence: number | bigint;
     created_at: string;
@@ -138,9 +138,11 @@ export type CreateServerParams = {
     name: string;
     kind: ServerKind;
     driver: DbType;
-    filePath?: string;
-    host?: string;
-    port?: number;
+    filePath: string | undefined;
+    host: string | undefined;
+    port: number | undefined;
+    username: string | undefined;
+    password: string | undefined;
 };
 
 export type UpdateServerParams = CreateServerParams;
@@ -148,12 +150,10 @@ export type UpdateServerParams = CreateServerParams;
 export type CreateConnectionParams = {
     serverId: number;
     name: string;
-    host?: string;
-    port?: number;
-    databaseName?: string;
-    username?: string;
-    password?: string;
-    readonly?: boolean;
+    host: string | undefined;
+    port: number | undefined;
+    databaseName: string | undefined;
+    readonly: boolean | undefined;
 };
 
 export type UpdateConnectionParams = {
@@ -162,8 +162,6 @@ export type UpdateConnectionParams = {
     host?: string;
     port?: number;
     databaseName?: string;
-    username?: string;
-    password?: string;
     readonly?: boolean;
 };
 
@@ -189,6 +187,7 @@ export type MsAccessRuntimeStatus = {
     runtimePath: string | undefined;
     hasGenericBundledJre: boolean;
     bundledJrePlatforms: string[];
+    currentPlatform: string;
     currentPlatformHasBundledJre: boolean;
     runtimeDownloadsDisabled: boolean;
 };
@@ -442,4 +441,45 @@ export type PeekFkUsageRowsParams = {
     relation: PeekFkUsageRelation;
     rowValues: Record<string, SqlValue>;
     limit: number;
+};
+
+export type ServerRow = {
+    id: number;
+    name: string;
+    kind: ServerKind;
+    driver: DbType;
+    file_path: string | undefined;
+    host: string | undefined;
+    port: number | undefined;
+    username: string | undefined;
+    schema_count: number | undefined;
+    sequence: number | bigint;
+    created_at: string;
+    updated_at: string;
+};
+
+export type ConnectionRow = {
+    id: number;
+    server_id: number;
+    name: string;
+    host: string | undefined;
+    port: number | undefined;
+    database_name: string | undefined;
+    readonly: number;
+    sequence: number | bigint;
+    created_at: string;
+    updated_at: string;
+    last_used_at: string | undefined;
+};
+
+export type ScriptRow = {
+    id: number;
+    connection_id: number;
+    name: string;
+    group_name: string | undefined;
+    sql_text: string;
+    sequence: number | bigint;
+    created_at: string;
+    updated_at: string;
+    last_run_at: string | undefined;
 };

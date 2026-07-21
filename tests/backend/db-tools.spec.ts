@@ -1,4 +1,4 @@
-import type { ConnectionRecord, ConnectionSchemaCache, ServerRecord, TableData, TableInfo, TableSummary, TestConnectionResult } from '@utils/appClient';
+import type { ConnectionRecord, ServerRecord, TableData, TableInfo, TableSummary, TestConnectionResult } from '@utils/appClient';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function createTableInfo(name: string, overrides: Partial<TableInfo> = {}): TableInfo {
@@ -208,6 +208,7 @@ function seedServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
         host: overrides.host,
         port: overrides.port,
         schema_count: overrides.schema_count,
+        username: overrides.username,
         sequence: overrides.sequence ?? 1,
         created_at: overrides.created_at ?? '2026-04-17T00:00:00.000Z',
         updated_at: overrides.updated_at ?? '2026-04-17T00:00:00.000Z',
@@ -225,7 +226,6 @@ function seedConnection(overrides: Partial<ConnectionRecord> = {}): ConnectionRe
         host: overrides.host,
         port: overrides.port,
         database_name: overrides.database_name ?? 'app',
-        username: overrides.username ?? 'sa',
         readonly: overrides.readonly ?? 0,
         sequence: overrides.sequence ?? 1,
         created_at: overrides.created_at ?? '2026-04-17T00:00:00.000Z',
@@ -270,80 +270,31 @@ describe('dbTools', () => {
         expect(testHarness.driverToolsByType.sqlserver.testConnection).toHaveBeenCalledOnce();
     });
 
-    it('returns cached tables before falling back to getTablesFresh', async () => {
-        testHarness.state.settings.set('connectionSchema:10', {
-            cachedAt: '2026-04-17T00:00:00.000Z',
-            tables: [{ name: 'dbo.Users', type: 'table', rowCount: 5 }],
-            tableInfoByName: {},
-        } satisfies ConnectionSchemaCache);
+    it('delegates getTablesFresh to the driver tools', async () => {
+        const expectedTables = [{ name: 'dbo.Users', type: 'table', rowCount: 5 }] satisfies TableSummary[];
+        testHarness.driverToolsByType.sqlserver.getTablesFresh.mockResolvedValue(expectedTables);
 
-        await expect(dbTools.getTables(10)).resolves.toEqual([{ name: 'dbo.Users', type: 'table', rowCount: 5 }]);
-        expect(testHarness.driverToolsByType.sqlserver.getTablesFresh).not.toHaveBeenCalled();
-
-        testHarness.state.settings.clear();
-        testHarness.driverToolsByType.sqlserver.getTablesFresh.mockResolvedValue([{ name: 'dbo.Fresh', type: 'table', rowCount: 1 }]);
-
-        await expect(dbTools.getTables(10)).resolves.toEqual([{ name: 'dbo.Fresh', type: 'table', rowCount: 1 }]);
+        await expect(dbTools.getTablesFresh(10)).resolves.toEqual(expectedTables);
         expect(testHarness.driverToolsByType.sqlserver.getTablesFresh).toHaveBeenCalledWith(10);
     });
 
-    it('returns cached table info when present and refreshes it when requested', async () => {
-        const cachedInfo = createTableInfo('dbo.Users', { rowCount: 3 });
-        testHarness.state.settings.set('connectionSchema:10', {
-            cachedAt: '2026-04-17T00:00:00.000Z',
-            tables: [],
-            tableInfoByName: { 'dbo.Users': cachedInfo },
-        } satisfies ConnectionSchemaCache);
+    it('normalizes table names for getTableInfoFresh', async () => {
+        const expectedInfo = createTableInfo('dbo.Users', { rowCount: 9 });
+        testHarness.driverToolsByType.sqlserver.getTableInfoFresh.mockResolvedValue(expectedInfo);
 
-        await expect(dbTools.getTableInfo(10, ' dbo.Users ')).resolves.toEqual(cachedInfo);
-        expect(testHarness.driverToolsByType.sqlserver.getTableInfoFresh).not.toHaveBeenCalled();
-
-        const freshInfo = createTableInfo('dbo.Users', { rowCount: 9 });
-        testHarness.driverToolsByType.sqlserver.getTableInfoFresh.mockResolvedValue(freshInfo);
-
-        await expect(dbTools.getTableInfoFresh(10, 'dbo.Users')).resolves.toEqual(freshInfo);
-        expect(testHarness.state.settings.get('connectionSchema:10')).toEqual({
-            cachedAt: expect.any(String),
-            tables: [],
-            tableInfoByName: { 'dbo.Users': freshInfo },
-        });
+        await expect(dbTools.getTableInfoFresh(10, ' dbo.Users ')).resolves.toEqual(expectedInfo);
+        expect(testHarness.driverToolsByType.sqlserver.getTableInfoFresh).toHaveBeenCalledWith(10, 'dbo.Users');
     });
 
-    it('returns cached server schemas and refreshes them through the driver', async () => {
-        testHarness.state.settings.set('serverSchemas:1', {
-            cachedAt: '2026-04-17T00:00:00.000Z',
-            schemas: [{ name: 'master' }],
-        });
-
-        await expect(dbTools.getServerSchemas(1)).resolves.toEqual([{ name: 'master' }]);
-
+    it('refreshes server schemas through the driver', async () => {
         seedConnection({ id: 11, server_id: 1, name: 'reporting' });
         testHarness.driverToolsByType.sqlserver.listServerSchemas.mockResolvedValue([{ name: 'master' }, { name: 'reporting' }]);
-        testHarness.driverToolsByType.sqlserver.getTablesFresh.mockResolvedValue([]);
 
         await expect(dbTools.refreshServerSchemas(1)).resolves.toEqual([{ name: 'master' }, { name: 'reporting' }]);
         expect(testHarness.driverToolsByType.sqlserver.listServerSchemas).toHaveBeenCalledWith(1, undefined);
-        expect(testHarness.driverToolsByType.sqlserver.getTablesFresh).toHaveBeenCalledWith(10);
-        expect(testHarness.driverToolsByType.sqlserver.getTablesFresh).toHaveBeenCalledWith(11);
-        expect(testHarness.state.schemaMetadataUpdates).toEqual([
-            {
-                serverId: 1,
-                schemaCount: 2,
-                schemaCachedAt: expect.any(String),
-            },
-        ]);
     });
 
-    it('refreshes connection schema, clears stale cache entries, and exposes refreshTableInfo', async () => {
-        testHarness.state.settings.set('connectionSchema:10', {
-            cachedAt: '2026-04-17T00:00:00.000Z',
-            tables: [{ name: 'dbo.Stale', type: 'table', rowCount: 1 }],
-            tableInfoByName: {},
-        } satisfies ConnectionSchemaCache);
-        testHarness.state.settings.set('tableInfo:10:dbo.Stale', {
-            cachedAt: '2026-04-17T00:00:00.000Z',
-            info: createTableInfo('dbo.Stale'),
-        });
+    it('refreshes connection schema and table info through the driver', async () => {
         testHarness.driverToolsByType.sqlserver.getTablesFresh.mockResolvedValue([{ name: 'dbo.Users', type: 'table', rowCount: 2 }]);
 
         await expect(dbTools.refreshConnectionSchema(10)).resolves.toEqual({
@@ -351,7 +302,6 @@ describe('dbTools', () => {
             tables: [{ name: 'dbo.Users', type: 'table', rowCount: 2 }],
             tableInfoByName: {},
         });
-        expect(testHarness.state.settings.has('tableInfo:10:dbo.Stale')).toBe(false);
 
         const refreshedInfo = createTableInfo('dbo.Users', { rowCount: 2 });
         testHarness.driverToolsByType.sqlserver.getTableInfoFresh.mockResolvedValue(refreshedInfo);
@@ -439,14 +389,16 @@ describe('dbTools', () => {
             10,
             'dbo.Users',
             currentInfo,
-            expect.arrayContaining([
-                expect.objectContaining({ originalName: 'id', name: 'id', type: 'int' }),
-                expect.objectContaining({
-                    name: 'display_name',
-                    type: 'nvarchar(255)',
-                    comment: 'Display name',
-                }),
-            ])
+            expect.objectContaining({
+                columns: expect.arrayContaining([
+                    expect.objectContaining({ originalName: 'id', name: 'id', type: 'int' }),
+                    expect.objectContaining({
+                        name: 'display_name',
+                        type: 'nvarchar(255)',
+                        comment: 'Display name',
+                    }),
+                ]),
+            })
         );
     });
 

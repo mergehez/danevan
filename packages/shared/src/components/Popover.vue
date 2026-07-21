@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useOverlaysState } from '@directives/useOverlaysState';
+import IconButton from '@ui/IconButton.vue';
 import { twMerge } from 'tailwind-merge';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useAttrs, useSlots, useTemplateRef, watch, type Ref } from 'vue';
-import IconButton from '@ui/IconButton.vue';
 
 export type PopoverPosition = {
     left: number;
@@ -50,7 +50,6 @@ export type PopoverProps = {
 
 type StoredPopoverSize = {
     width?: number;
-    height?: number;
 };
 
 type FloatingSurfacePosition = {
@@ -80,7 +79,6 @@ defineOptions({ inheritAttrs: false });
 const DEFAULT_POPOVER_LEFT = 24;
 const DEFAULT_POPOVER_TOP = 24;
 const DEFAULT_POPOVER_WIDTH = 480;
-const DEFAULT_POPOVER_HEIGHT = 320;
 const DEFAULT_POPOVER_MIN_WIDTH = 280;
 const DEFAULT_MODAL_MIN_WIDTH = 320;
 const DEFAULT_MIN_HEIGHT = 180;
@@ -88,14 +86,11 @@ const DEFAULT_POPOVER_MARGIN = 12;
 const DEFAULT_MODAL_MARGIN = 16;
 
 const POPOVER_RESIZE_HANDLES: ResizeHandleDefinition[] = [
-    { direction: 'top', class: 'absolute left-0 top-0 z-10 h-2 w-full cursor-ns-resize touch-none' },
-    { direction: 'right', class: 'absolute right-0 top-0 z-10 h-full w-2 cursor-ew-resize touch-none' },
-    { direction: 'bottom', class: 'absolute bottom-0 left-0 z-10 h-2 w-full cursor-ns-resize touch-none' },
+    {
+        direction: 'right',
+        class: 'absolute right-0 top-0 z-10 h-full w-2 cursor-ew-resize touch-none',
+    },
     { direction: 'left', class: 'absolute left-0 top-0 z-10 h-full w-2 cursor-ew-resize touch-none' },
-    { direction: 'top-left', class: 'absolute left-0 top-0 z-20 h-3 w-3 cursor-nwse-resize touch-none' },
-    { direction: 'top-right', class: 'absolute right-0 top-0 z-20 h-3 w-3 cursor-nesw-resize touch-none' },
-    { direction: 'bottom-left', class: 'absolute bottom-0 left-0 z-20 h-3 w-3 cursor-nesw-resize touch-none' },
-    { direction: 'bottom-right', class: 'absolute bottom-0 right-0 z-20 h-3 w-3 cursor-nwse-resize touch-none' },
 ];
 
 const props = withDefaults(defineProps<PopoverProps>(), {
@@ -110,6 +105,7 @@ const props = withDefaults(defineProps<PopoverProps>(), {
 });
 
 const overlayState = useOverlaysState();
+const popoverZIndex = ref(90);
 
 function usePopoverSurface(options: UsePopoverSurfaceOptions) {
     const position = reactive<FloatingSurfacePosition>({ x: 0, y: 0 });
@@ -375,12 +371,12 @@ const attrs = useAttrs();
 const slots = useSlots();
 const surfaceElement = useTemplateRef('surfaceElement');
 const isOpen = ref(props.open);
+let surfaceResizeObserver: ResizeObserver | undefined;
 
 const getScreenEdgeMargin = () => props.modalMarginToScreenEdges ?? (props.center ? DEFAULT_MODAL_MARGIN : DEFAULT_POPOVER_MARGIN);
 const getMinWidth = () => props.minWidth ?? (props.center ? DEFAULT_MODAL_MIN_WIDTH : DEFAULT_POPOVER_MIN_WIDTH);
 const getMinHeight = () => props.minHeight ?? DEFAULT_MIN_HEIGHT;
 const getDefaultWidth = () => props.width ?? (props.center ? undefined : DEFAULT_POPOVER_WIDTH);
-const getDefaultHeight = () => props.height ?? (props.center ? undefined : DEFAULT_POPOVER_HEIGHT);
 
 function getStoredSize() {
     if (!props.localStorageKey) {
@@ -398,7 +394,6 @@ function getStoredSize() {
 
         return {
             width: typeof parsedValue.width === 'number' ? parsedValue.width : undefined,
-            height: typeof parsedValue.height === 'number' ? parsedValue.height : undefined,
         };
     } catch {
         return undefined;
@@ -460,7 +455,12 @@ const { position, size, activeDrag, activeResize, applyPosition, applySize, star
 
         if (props.localStorageKey) {
             try {
-                window.localStorage.setItem(props.localStorageKey, JSON.stringify({ width: nextSize.width, height: nextSize.height } satisfies StoredPopoverSize));
+                window.localStorage.setItem(
+                    props.localStorageKey,
+                    JSON.stringify({
+                        width: nextSize.width,
+                    } satisfies StoredPopoverSize)
+                );
             } catch {
                 // Best-effort persistence only.
             }
@@ -496,7 +496,7 @@ const wrapperClass = computed(() =>
 );
 
 const wrapperStyle = computed(() => ({
-    zIndex: overlayState.zIndex,
+    zIndex: popoverZIndex.value,
 }));
 
 const popoverStyle = computed(() => ({
@@ -504,8 +504,7 @@ const popoverStyle = computed(() => ({
     top: props.center ? undefined : '0px',
     transform: props.center ? `translate(${position.x}px, ${position.y}px)` : `translate3d(${position.x}px, ${position.y}px, 0)`,
     width: size.width > 0 ? `${size.width}px` : undefined,
-    height: size.height > 0 ? `${size.height}px` : undefined,
-    zIndex: props.center || props.backdrop ? undefined : `${overlayState.zIndex}`,
+    zIndex: props.center || props.backdrop ? undefined : `${popoverZIndex.value}`,
     willChange: activeDrag.isDragging || activeResize.isResizing ? 'transform, width, height' : undefined,
 }));
 
@@ -529,18 +528,21 @@ const resolvedCloseSeverity = computed(() => props.closeSeverity ?? (props.cente
 const resolvedCloseSmaller = computed(() => props.closeSmaller ?? !props.center);
 const hasFooterSlot = computed(() => Boolean(slots.footer));
 
-if (initialStoredSize?.width || initialStoredSize?.height) {
+if (initialStoredSize?.width) {
     applySize(
         {
             width: initialStoredSize.width ?? getMinWidth(),
-            height: initialStoredSize.height ?? getMinHeight(),
+            height: getMinHeight(),
         },
-        { x: props.center ? 0 : (props.left ?? DEFAULT_POPOVER_LEFT), y: props.center ? 0 : (props.top ?? DEFAULT_POPOVER_TOP) }
+        {
+            x: props.center ? 0 : (props.left ?? DEFAULT_POPOVER_LEFT),
+            y: props.center ? 0 : (props.top ?? DEFAULT_POPOVER_TOP),
+        }
     );
 }
 
 function updateOpen(nextOpen: boolean) {
-    overlayState.toggleZIndex(nextOpen);
+    popoverZIndex.value = nextOpen ? overlayState.claimZIndex() : overlayState.releaseZIndex(popoverZIndex.value);
     isOpen.value = nextOpen;
     props.onUpdateOpen?.(nextOpen);
 }
@@ -561,24 +563,67 @@ async function syncSizeFromSurface() {
     }
 
     const storedSize = getStoredSize();
+    const measuredHeight = surface.offsetHeight;
 
-    if (!storedSize && ((size.width > 0 && size.height > 0) || position.x !== 0 || position.y !== 0)) {
+    if (measuredHeight > 0) {
+        size.height = measuredHeight;
+    }
+
+    if (!storedSize && (size.width > 0 || position.x !== 0 || position.y !== 0)) {
+        applyPosition(
+            { x: position.x, y: position.y },
+            {
+                width: size.width > 0 ? size.width : surface.offsetWidth,
+                height: measuredHeight > 0 ? measuredHeight : getMinHeight(),
+            }
+        );
         return;
     }
 
     applySize(
         {
             width: storedSize?.width ?? surface.offsetWidth,
-            height: storedSize?.height ?? surface.offsetHeight,
+            height: measuredHeight > 0 ? measuredHeight : getMinHeight(),
         },
         { x: 0, y: 0 }
     );
 }
 
 onMounted(() => {
+    const surface = surfaceElement.value;
+
+    if (surface) {
+        surfaceResizeObserver = new ResizeObserver(() => {
+            if (!isOpen.value || activeResize.isResizing) {
+                return;
+            }
+
+            const measuredHeight = surface.offsetHeight;
+
+            if (measuredHeight <= 0) {
+                return;
+            }
+
+            size.height = measuredHeight;
+            applyPosition(
+                { x: position.x, y: position.y },
+                {
+                    width: size.width > 0 ? size.width : surface.offsetWidth,
+                    height: measuredHeight,
+                }
+            );
+        });
+
+        surfaceResizeObserver.observe(surface);
+    }
+
     if (surfaceElement.value && props.center && isOpen.value) {
         void syncSizeFromSurface();
     }
+});
+
+onBeforeUnmount(() => {
+    surfaceResizeObserver?.disconnect();
 });
 
 function onHeaderPointerDown(event: PointerEvent) {
@@ -619,7 +664,7 @@ function onBackdropClick() {
 watch(
     () => props.open,
     async (value) => {
-        overlayState.toggleZIndex(value);
+        popoverZIndex.value = value ? overlayState.claimZIndex() : overlayState.releaseZIndex(popoverZIndex.value);
         isOpen.value = value;
 
         if (!value) {
@@ -654,16 +699,21 @@ watch(
 );
 
 watch(
-    () => [props.width, props.height],
-    ([width, height]) => {
+    () => props.width,
+    (width) => {
         const desiredWidth = width ?? getDefaultWidth();
-        const desiredHeight = height ?? getDefaultHeight();
 
-        if (desiredWidth == null || desiredHeight == null) {
+        if (desiredWidth == null) {
             return;
         }
 
-        applySize({ width: desiredWidth, height: desiredHeight }, props.center ? { x: 0, y: 0 } : undefined);
+        applySize(
+            {
+                width: desiredWidth,
+                height: size.height > 0 ? size.height : getMinHeight(),
+            },
+            props.center ? { x: 0, y: 0 } : undefined
+        );
     },
     { immediate: true }
 );
@@ -720,7 +770,7 @@ watch(
                         :data-testid="`floating-surface-handle-${handle.direction}`"
                         :class="handle.class"
                         :style="{
-                            zIndex: overlayState.zIndex,
+                            zIndex: popoverZIndex,
                         }"
                         @pointerdown.stop.prevent="onResizeHandlePointerDown(handle.direction, $event)"
                     ></div>

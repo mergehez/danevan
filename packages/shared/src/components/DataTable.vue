@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatValue } from '@utils/valueFormatting';
+import { formatValue as _formatValue } from '@utils/valueFormatting';
 
 export type CellValue = string | number | bigint | Uint8Array | Buffer | null | undefined;
 
@@ -23,7 +23,7 @@ function getFormattedValue(row: DataTableRow, columnName: string, rowIndex: numb
     const value = row[columnName] ?? null;
 
     if (!props.formatValue) {
-        return formatValue(value);
+        return _formatValue(value);
     }
 
     return props.formatValue(value, { columnName, row, rowIndex });

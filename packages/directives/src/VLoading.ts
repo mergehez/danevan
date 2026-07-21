@@ -16,7 +16,7 @@ export type VLoadingDirectiveBinding = Bindings;
 
 const overlayState = useOverlaysState();
 
-export const vLoading: Directive<HTMLElement & { __loader: any }> = {
+export const vLoading: Directive<HTMLElement & { __loader: any; __loaderZIndex: any }> = {
     mounted(el, binding: Bindings, _vnode) {
         const position = window.getComputedStyle(el).position;
         if (position === 'static' || position === '') {
@@ -27,7 +27,8 @@ export const vLoading: Directive<HTMLElement & { __loader: any }> = {
 
         const loader = document.createElement('span');
         loader.className = `v-loading ${size}`;
-        loader.style.zIndex = overlayState.increaseZIndex().toString();
+        const loaderZIndex = overlayState.claimZIndex();
+        loader.style.zIndex = loaderZIndex.toString();
 
         const isBtn = el.tagName.toLowerCase() === 'button' || el.classList.contains('btn') || el.classList.contains('button');
         const icStyle = isBtn ? `style="width: ${el.clientWidth - 1}px; height: ${el.clientHeight - 1}px;"` : '';
@@ -36,6 +37,7 @@ export const vLoading: Directive<HTMLElement & { __loader: any }> = {
         el.appendChild(loader);
 
         el.__loader = loader;
+        el.__loaderZIndex = loaderZIndex;
 
         toggleLoading(el, binding);
     },
@@ -46,9 +48,10 @@ export const vLoading: Directive<HTMLElement & { __loader: any }> = {
 
     unmounted(el, _binding: Bindings, _vnode) {
         if (el.__loader) {
-            overlayState.decreaseZIndex();
+            overlayState.releaseZIndex(el.__loaderZIndex);
             el.__loader.remove();
             el.__loader = undefined;
+            el.__loaderZIndex = undefined;
         }
     },
 };
@@ -59,7 +62,7 @@ function isButtonLikeElement(el: HTMLElement) {
 
 function toggleLoading(el: any, binding: Bindings) {
     const shouldShow = binding.value !== false && !(isButtonLikeElement(el) && isButtonLoadingIndicatorSilenced.value);
-    overlayState.toggleZIndex(shouldShow);
+    overlayState.toggleZIndex(shouldShow, el.__loaderZIndex);
 
     el.__loader.style.display = shouldShow ? 'flex' : 'none';
     el.style.pointerEvents = 'none';

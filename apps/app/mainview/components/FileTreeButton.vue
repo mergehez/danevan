@@ -99,7 +99,7 @@ async function onRowClick(event: MouseEvent, skipSchedule = false) {
 //     // props.onContextMenu!(props.item, props.dataNodeId, event);
 // }
 
-function onDblClick(event: MouseEvent) {
+function handleDoubleClick(event: MouseEvent) {
     if (!props.onDblClick) {
         return;
     }
@@ -109,7 +109,7 @@ function onDblClick(event: MouseEvent) {
     props.onDblClick!(event);
 }
 
-function onDragstart(event: DragEvent) {
+function handleDragStart(event: DragEvent) {
     if (!props.onDragstart) {
         return;
     }
@@ -146,10 +146,10 @@ const children = computed(() => {
             )
         "
         @click="onRowClick"
-        @dblclick="onDblClick"
+        @dblclick="handleDoubleClick"
         v-menu="props.contextMenuItems ? { items: () => props.contextMenuItems!(item), key: props.dataNodeId } : undefined"
         @keydown="state.handleSidebarRowKeydown"
-        @dragstart="onDragstart"
+        @dragstart="handleDragStart"
     >
         <span class="flex min-w-0 flex-1 py-1 items-center gap-0.5 text-left select-none" v-tooltip.xs="tooltip">
             <span

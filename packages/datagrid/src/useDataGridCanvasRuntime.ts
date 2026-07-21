@@ -2,6 +2,7 @@ import {
     DATA_GRID_CHECKBOX_SIZE,
     DATA_GRID_COLUMN_MIN_WIDTH,
     DATA_GRID_HEADER_HEIGHT,
+    DATA_GRID_MAX_DISPLAY_TEXT_LENGTH,
     DATA_GRID_NEWLINE_TOKEN,
     DATA_GRID_ROW_HEIGHT,
     DATA_GRID_TEXT_BASELINE_OFFSET,
@@ -105,7 +106,15 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
     }
 
     function getDisplayedText(rowIndex: number, columnName: string) {
-        return replaceDataGridNewlines(gridState.value.getFormattedCellValue(rowIndex, columnName));
+        const raw = gridState.value.getFormattedCellValue(rowIndex, columnName);
+
+        // Truncate very long text to prevent expensive canvas measureText() calls
+        // that would otherwise process multi-MB strings (e.g. large text/blob fields).
+        if (raw.length > DATA_GRID_MAX_DISPLAY_TEXT_LENGTH) {
+            return replaceDataGridNewlines(raw.slice(0, DATA_GRID_MAX_DISPLAY_TEXT_LENGTH) + '…');
+        }
+
+        return replaceDataGridNewlines(raw);
     }
 
     function getThemeColors() {

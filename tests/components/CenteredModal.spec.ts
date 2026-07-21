@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import CenteredModal from '@ui/CenteredModal.vue';
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';

@@ -17,8 +17,8 @@ import {
     type UseDataGridOptions,
 } from '@datagrid/useDataGridTypes';
 import { useDataGridView } from '@datagrid/useDataGridView';
-import { useCache } from '@utils/useCache';
 import { useContextMenu } from '@directives/useContextMenu';
+import { useCache } from '@utils/useCache';
 import { formatValue } from '@utils/valueFormatting';
 import { computed, reactive, toRaw, toRef, unref, watch } from 'vue';
 
@@ -103,7 +103,12 @@ function createInternalState(options: UseDataGridFinalOptions) {
         tableElement: undefined as undefined | HTMLElement,
         activeCell: { rowIndex: 0, columnIndex: 0 },
         editingCell: { rowIndex: -1, columnIndex: -1, draftValue: '' },
-        modalEditingCell: { open: false, rowIndex: -1, columnIndex: -1, draftValue: '' } as DataGridModalEditingCell,
+        modalEditingCell: {
+            open: false,
+            rowIndex: -1,
+            columnIndex: -1,
+            draftValue: '',
+        } as DataGridModalEditingCell,
         selectedRowIndexes: unref(options.selectedRowIndexes) ?? [],
         selectedCellRange: unref(options.selectedCellRange),
         selectedColumnName: unref(options.selectedColumnName),
@@ -695,6 +700,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         openHeaderContextMenu: menus.openHeaderContextMenu,
         undoChanges: undoChanges,
         redoChanges: redoChanges,
+        clearHistory: clearHistory,
         clearPendingChanges: clearPendingChanges,
         clearSavedChanges: clearSavedChanges,
         setSavingChanges: setSavingChanges,
@@ -747,6 +753,8 @@ export function useDataGrid(_options: UseDataGridOptions) {
         copyAllCellsAsSql: clipboard.copyAllCellsAsSql,
         copyAllCellsAsSqlInsert: clipboard.copyAllCellsAsSqlInsert,
         copyAllCellsAsSqlSelect: clipboard.copyAllCellsAsSqlSelect,
+        copyTableAsDdl: options.copyTableAsDdl,
+        showTableDdl: options.showTableDdl,
         toggleSort: menus.toggleSort,
         setFontFamily: setFontFamily,
         setShowRowNumbers: setShowRowNumbers,

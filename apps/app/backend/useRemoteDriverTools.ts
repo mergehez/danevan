@@ -1,4 +1,4 @@
-import type { DriverTools, NormalizedApplyTableChanges } from '@backend/db-tools.ts';
+import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from '@backend/db-tools.ts';
 import type { ModifySchemaPlan, ModifySchemaTable } from '@backend/useSqliteDriver.ts';
 import type {
     ApplyTableChangesResult,
@@ -36,7 +36,7 @@ export type RemoteDriverHelper = {
     getTableDdl?: (client: RemoteDriverClient, tableName: string) => Promise<string>;
     getTableNames: (client: RemoteDriverClient) => Promise<TableSummary[]>;
     getServerSchemas: (client: RemoteDriverClient) => Promise<ServerSchemaRecord[]>;
-    buildReadTableStatement: (tableName: string, limit: number, offset: number) => RemoteStatement;
+    buildReadTableStatement: (tableName: string, limit: number, offset: number, orderBy?: SortOrder) => RemoteStatement;
     buildWriteValueStatement: (tableName: string, targetColumn: string, value: SqlValue, matchColumn: string, matchValue: SqlValue) => RemoteStatement;
     buildModifyTableStatements: (client: RemoteDriverClient, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) => string[] | Promise<string[]>;
 };
@@ -50,7 +50,8 @@ type RemoteForeignKeyController = {
 type RemoteDriverToolsDeps = {
     testConnection: (params: TestConnectionParams) => Promise<TestConnectionResult>;
     withRemoteClient: <T>(connectionId: number, callback: (client: RemoteDriverClient) => Promise<T>) => Promise<T>;
-    resolveServerConnectionId: (serverId: number, connectionId?: number) => number;
+    withServerClient?: <T>(serverId: number, callback: (client: RemoteDriverClient) => Promise<T>) => Promise<T>;
+    resolveServerConnectionId: (serverId: number, connectionId?: number) => number | undefined;
     normalizeTableName: (tableName: string) => string;
     normalizeColumnName: (columnName: string, fieldName: string) => string;
     buildColumnStats: (columns: string[], rows: Array<Record<string, SqlValue>>) => Record<string, number>;
@@ -61,10 +62,10 @@ type RemoteDriverToolsDeps = {
 };
 
 export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
-    async function readTableData(client: RemoteDriverClient, tableName: string, limit: number, offset: number): Promise<TableData> {
+    async function readTableData(client: RemoteDriverClient, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
         const [columns, rows, rowCount] = await Promise.all([
             deps.helper.getTableColumns(client, tableName),
-            client.queryRows<Record<string, SqlValue>>(deps.helper.buildReadTableStatement(tableName, limit, offset)),
+            client.queryRows<Record<string, SqlValue>>(deps.helper.buildReadTableStatement(tableName, limit, offset, orderBy)),
             deps.helper.queryRowCount(client, tableName),
         ]);
         const columnNames = columns.map((column) => column.name);
@@ -79,8 +80,8 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
         } satisfies TableData;
     }
 
-    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number): Promise<TableData> {
-        return deps.withRemoteClient(connectionId, async (client) => readTableData(client, tableName, limit, offset));
+    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
+        return deps.withRemoteClient(connectionId, async (client) => readTableData(client, tableName, limit, offset, orderBy));
     }
 
     return {
@@ -116,8 +117,17 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             return deps.withRemoteClient(connectionId, async (client) => deps.helper.getTableDdl!(client, tableName));
         },
         async listServerSchemas(serverId: number, connectionId?: number): Promise<ServerSchemaRecord[]> {
-            console.log('listServerSchemas');
-            return deps.withRemoteClient(deps.resolveServerConnectionId(serverId, connectionId), async (client) => deps.helper.getServerSchemas(client));
+            const resolvedConnectionId = deps.resolveServerConnectionId(serverId, connectionId);
+
+            if (typeof resolvedConnectionId === 'number') {
+                return deps.withRemoteClient(resolvedConnectionId, async (client) => deps.helper.getServerSchemas(client));
+            }
+
+            if (deps.withServerClient) {
+                return deps.withServerClient(serverId, async (client) => deps.helper.getServerSchemas(client));
+            }
+
+            throw new Error('Create at least one connection for this server before refreshing databases.');
         },
         getTableData: getTableData,
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {

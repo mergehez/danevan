@@ -1,25 +1,20 @@
-import { deleteConnectionPassword, readConnectionPassword, storeConnectionPassword } from '@backend/auth.ts';
-import {
-    useAppDb,
-    type ConnectionRow,
-    type CreateScriptParams,
-    type CreateServerParams,
-    type ScriptRow,
-    type ServerRow,
-    type UpdateScriptParams,
-    type UpdateServerParams,
-} from '@backend/db-app.ts';
-import { dbTools } from '@backend/db-tools.ts';
+import { deleteServerPassword, storeServerPassword } from '@backend/auth.ts';
+import { useAppDb } from '@backend/db-app.ts';
+import { dbTools, type SortOrder } from '@backend/db-tools.ts';
 import { formatSql as formatSqlResult, getSqlDiagnostics as getSqlDiagnosticsResult } from '@backend/sqlDiagnostics.ts';
 import { inspectMsAccessRuntime } from '@backend/useMsAccessDriver.ts';
 import type {
     ApplyTableChangesParams as AppApplyTableChangesParams,
+    AppBootstrapApi,
     CreateConnectionParams as AppCreateConnectionParams,
     ApplyTableChangesResult,
     TestConnectionParams as AppTestConnectionParams,
     UpdateConnectionParams as AppUpdateConnectionParams,
     CollectionFilterState,
+    ConnectionRow,
     ConnectionSchemaCache,
+    CreateScriptParams,
+    CreateServerParams,
     DbType,
     EditorSettings,
     FormatSqlParams,
@@ -35,6 +30,7 @@ import type {
     PeekFkUsagesResult,
     PeekFkUsageSummary,
     QueryExecutionResult,
+    ServerRow,
     ServerSchemaRecord,
     SqlDiagnosticsResult,
     SqlValue,
@@ -43,17 +39,10 @@ import type {
     TableSummary,
     TestConnectionResult,
     UpdateColumnParams,
+    UpdateScriptParams,
+    UpdateServerParams,
 } from '@utils/appClient';
 import { existsSync } from 'fs';
-
-export type AppBootstrapApi = {
-    servers: ServerRow[];
-    connections: ConnectionRow[];
-    scripts: ScriptRow[];
-    selectedServerId: number | undefined;
-    selectedConnectionId: number | undefined;
-    selectedScriptId: number | undefined;
-};
 
 const appDb = useAppDb();
 
@@ -398,9 +387,20 @@ async function withTimedAppOperation<T>(label: string, details: Record<string, u
     }
 }
 
+function isInternalServerBootstrapConnection(connection: Pick<ConnectionRow, 'server_id' | 'database_name'>, serversById: ReadonlyMap<number, ServerRow>) {
+    const server = serversById.get(connection.server_id);
+
+    if (server?.kind !== 'server') {
+        return false;
+    }
+
+    return !connection.database_name?.trim();
+}
+
 async function buildBootstrap(): Promise<AppBootstrapApi> {
     const servers = appDb.listServers();
-    const connections = appDb.listConnections();
+    const serversById = new Map(servers.map((server) => [server.id, server] as const));
+    const connections = appDb.listConnections().filter((connection) => !isInternalServerBootstrapConnection(connection, serversById));
     const scripts = appDb.listScripts();
 
     const selectedServerId = normalizeSelectedId(
@@ -448,7 +448,7 @@ function normalizeDriver(driver: string) {
     return normalizedDriver as DbType;
 }
 
-function normalizeServerPayload(params: CreateServerParams | UpdateServerParams) {
+function normalizeServerPayload(params: CreateServerParams) {
     const name = params.name.trim();
 
     if (!name) {
@@ -469,9 +469,11 @@ function normalizeServerPayload(params: CreateServerParams | UpdateServerParams)
             kind: params.kind,
             driver,
             filePath,
-            host: undefined,
-            port: undefined,
-        } satisfies CreateServerParams;
+            host: undefined as string | undefined,
+            port: undefined as number | undefined,
+            username: params.username?.trim() || undefined,
+            password: undefined as string | undefined,
+        };
     }
 
     const host = params.host?.trim();
@@ -486,8 +488,10 @@ function normalizeServerPayload(params: CreateServerParams | UpdateServerParams)
         driver,
         host,
         port: params.port,
-        filePath: undefined,
-    } satisfies CreateServerParams;
+        username: params.username?.trim() || undefined,
+        filePath: undefined as string | undefined,
+        password: undefined as string | undefined,
+    };
 }
 
 function ensureServerExists(serverId: number) {
@@ -530,6 +534,36 @@ function normalizeSchemaNames(schemaNames: string[]) {
     }
 
     return [...uniqueSchemaNames];
+}
+
+async function saveServerAuth(serverId: number, serverName: string, username?: string, password?: string) {
+    const server = appDb.getServer(serverId);
+
+    if (server) {
+        appDb.updateServer(serverId, {
+            name: server.name,
+            kind: server.kind,
+            driver: server.driver,
+            host: server.host || undefined,
+            port: server.port || undefined,
+            filePath: server.file_path,
+            username: username?.trim() || undefined,
+        });
+    }
+
+    const normalizedPassword = password?.trim() || undefined;
+
+    if (normalizedPassword) {
+        await storeServerPassword(serverId, `${serverName} server password`, normalizedPassword);
+    }
+}
+
+function getConnectionSchemaName(connection: { database_name?: string | null; name: string }, serverKind: 'file' | 'server') {
+    if (serverKind === 'server') {
+        return connection.database_name?.trim() || undefined;
+    }
+
+    return connection.database_name || connection.name;
 }
 
 export const app = {
@@ -616,17 +650,38 @@ export const app = {
     },
     createServer: async (ps: CreateServerParams) => {
         const nextServer = normalizeServerPayload(ps);
-        const serverId = appDb.createServer(nextServer);
+        const { password: _pw, ...serverParams } = nextServer;
+        const serverId = appDb.createServer(serverParams);
+
+        if (nextServer.kind === 'server') {
+            await saveServerAuth(serverId, nextServer.name, ps.username, ps.password);
+        }
+
         appDb.setSetting('selectedServerId', serverId);
         return buildBootstrap();
     },
     updateServer: async (ps: { serverId: number; server: UpdateServerParams }) => {
         ensureServerExists(ps.serverId);
-        appDb.updateServer(ps.serverId, normalizeServerPayload(ps.server));
+        const existingServer = appDb.getServer(ps.serverId)!;
+
+        // Preserve existing username/password when not provided (update form only toggles name/host/port)
+        const username = ps.server.username?.trim() || existingServer.username?.trim() || undefined;
+        const password = ps.server.password?.trim() || undefined;
+
+        appDb.updateServer(ps.serverId, {
+            ...normalizeServerPayload(ps.server),
+            username,
+        });
+
+        if (existingServer.kind === 'server' && (password || ps.server.username?.trim())) {
+            await saveServerAuth(ps.serverId, existingServer.name, username, password);
+        }
+
         return buildBootstrap();
     },
     deleteServer: async (ps: { serverId: number }) => {
         ensureServerExists(ps.serverId);
+        await deleteServerPassword(ps.serverId);
         for (const connection of appDb.listConnections(ps.serverId)) {
             await dbTools.disconnectConnection(connection.id);
         }
@@ -650,19 +705,13 @@ export const app = {
     createConnection: async (ps: AppCreateConnectionParams) => {
         ensureServerExists(ps.serverId);
         const connectionId = appDb.createConnection({
-            ...ps,
+            serverId: ps.serverId,
             name: ps.name.trim(),
             host: ps.host?.trim(),
             port: normalizeConnectionPort(ps.port),
             databaseName: ps.databaseName?.trim(),
-            username: ps.username?.trim(),
+            readonly: ps.readonly,
         });
-
-        const password = ps.password?.trim();
-
-        if (password) {
-            await storeConnectionPassword(connectionId, `${ps.name.trim()} password`, password);
-        }
 
         await refreshServerSchemasForConnection(ps.serverId, connectionId);
 
@@ -672,33 +721,30 @@ export const app = {
     createConnectionFromServerSchema: async (ps: { serverId: number; schemaName: string }) => {
         ensureServerExists(ps.serverId);
 
+        const server = appDb.getServer(ps.serverId);
+
+        if (!server) {
+            throw new Error('The selected server could not be found.');
+        }
+
+        if (server.kind !== 'server') {
+            throw new Error('Schema-based connections are only supported for server-based entries.');
+        }
+
         const schemaName = ps.schemaName.trim();
 
         if (!schemaName) {
             throw new Error('Schema name is required.');
         }
 
-        const templateConnection = appDb.listConnections(ps.serverId)[0];
-
-        if (!templateConnection) {
-            throw new Error('Create at least one connection for this server before showing more databases.');
-        }
-
         const connectionId = appDb.createConnection({
             serverId: ps.serverId,
             name: schemaName,
-            host: templateConnection.host,
-            port: templateConnection.port,
+            host: server.host,
+            port: server.port,
             databaseName: schemaName,
-            username: templateConnection.username,
-            readonly: templateConnection.readonly === 1,
+            readonly: false,
         });
-
-        const templatePassword = await readConnectionPassword(templateConnection.id);
-
-        if (templatePassword) {
-            await storeConnectionPassword(connectionId, `${schemaName} password`, templatePassword);
-        }
 
         await refreshServerSchemasForConnection(ps.serverId, connectionId);
 
@@ -708,49 +754,50 @@ export const app = {
     setVisibleServerSchemas: async (ps: { serverId: number; schemaNames: string[] }) => {
         ensureServerExists(ps.serverId);
 
-        const schemaNames = normalizeSchemaNames(ps.schemaNames);
-        const existingConnections = appDb.listConnections(ps.serverId);
-        const existingConnectionsBySchema = new Map(existingConnections.map((connection) => [connection.database_name || connection.name, connection]));
-        const templateConnection = existingConnections[0];
+        const server = appDb.getServer(ps.serverId);
 
-        if (!templateConnection && schemaNames.length > 0) {
-            throw new Error('Create at least one connection for this server before showing more databases.');
+        if (!server) {
+            throw new Error('The selected server could not be found.');
         }
 
+        const schemaNames = normalizeSchemaNames(ps.schemaNames);
+        const existingConnections = appDb.listConnections(ps.serverId);
+        const existingConnectionsBySchema = new Map(
+            existingConnections
+                .map((connection) => {
+                    const schemaName = getConnectionSchemaName(connection, server.kind);
+                    return schemaName ? ([schemaName, connection] as const) : undefined;
+                })
+                .filter((entry): entry is readonly [string, (typeof existingConnections)[number]] => Boolean(entry))
+        );
         for (const connection of existingConnections) {
-            const schemaName = connection.database_name || connection.name;
+            const schemaName = getConnectionSchemaName(connection, server.kind);
+
+            if (!schemaName) {
+                continue;
+            }
 
             if (schemaNames.includes(schemaName)) {
                 continue;
             }
 
-            await deleteConnectionPassword(connection.id);
             appDb.deleteSetting(`connectionSchema:${connection.id}`);
             appDb.deleteConnection(connection.id);
         }
 
-        if (templateConnection) {
-            const templatePassword = await readConnectionPassword(templateConnection.id);
-
-            for (const schemaName of schemaNames) {
-                if (existingConnectionsBySchema.has(schemaName)) {
-                    continue;
-                }
-
-                const connectionId = appDb.createConnection({
-                    serverId: ps.serverId,
-                    name: schemaName,
-                    host: templateConnection.host,
-                    port: templateConnection.port,
-                    databaseName: schemaName,
-                    username: templateConnection.username,
-                    readonly: templateConnection.readonly === 1,
-                });
-
-                if (templatePassword) {
-                    await storeConnectionPassword(connectionId, `${schemaName} password`, templatePassword);
-                }
+        for (const schemaName of schemaNames) {
+            if (existingConnectionsBySchema.has(schemaName)) {
+                continue;
             }
+
+            appDb.createConnection({
+                serverId: ps.serverId,
+                name: schemaName,
+                host: server.kind === 'server' ? server.host : undefined,
+                port: server.kind === 'server' ? server.port : undefined,
+                databaseName: schemaName,
+                readonly: false,
+            });
         }
 
         const nextConnections = appDb.listConnections(ps.serverId);
@@ -776,18 +823,7 @@ export const app = {
             host: ps.connection.host?.trim(),
             port: normalizeConnectionPort(ps.connection.port),
             databaseName: ps.connection.databaseName?.trim(),
-            username: ps.connection.username?.trim(),
         });
-
-        if (Object.hasOwn(ps.connection, 'password')) {
-            const password = ps.connection.password?.trim();
-
-            if (password) {
-                await storeConnectionPassword(ps.connectionId, `${ps.connection.name.trim()} password`, password);
-            } else {
-                await deleteConnectionPassword(ps.connectionId);
-            }
-        }
 
         const updatedConnection = appDb.getConnection(ps.connectionId);
 
@@ -801,7 +837,6 @@ export const app = {
         ensureConnectionExists(ps.connectionId);
         await dbTools.disconnectConnection(ps.connectionId);
         const connection = appDb.getConnection(ps.connectionId);
-        await deleteConnectionPassword(ps.connectionId);
         appDb.deleteSetting(`connectionSchema:${ps.connectionId}`);
         appDb.deleteConnection(ps.connectionId);
 
@@ -930,7 +965,7 @@ export const app = {
         appDb.touchConnectionLastUsed(ps.connectionId);
         return withTimedAppOperation('dropTable', { connectionId: ps.connectionId, tableName: ps.tableName }, () => dbTools.dropTable(ps.connectionId, ps.tableName));
     },
-    getTableData: async (ps: { connectionId: number; tableName: string; limit?: number; offset?: number }): Promise<TableData> => {
+    getTableData: async (ps: { connectionId: number; tableName: string; limit?: number; offset?: number; orderBy?: SortOrder }): Promise<TableData> => {
         ensureConnectionExists(ps.connectionId);
         appDb.touchConnectionLastUsed(ps.connectionId);
         return withTimedAppOperation(
@@ -940,6 +975,7 @@ export const app = {
                 tableName: ps.tableName,
                 limit: ps.limit,
                 offset: ps.offset,
+                orderBy: ps.orderBy,
             },
             () => dbTools.getTableData(ps.connectionId, ps)
         );

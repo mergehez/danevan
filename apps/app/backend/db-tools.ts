@@ -1,4 +1,4 @@
-import { readConnectionPassword } from '@backend/auth.ts';
+import { readServerPassword as readServerPasswordFromKeychain } from '@backend/auth.ts';
 import { useAppDb } from '@backend/db-app.ts';
 import { useMsAccessDriverTools } from '@backend/useMsAccessDriver.ts';
 import { useMsAccessWindowsDriverTools } from '@backend/useMsAccessWindowsDriver.ts';
@@ -31,6 +31,10 @@ import type {
 } from '@utils/appClient';
 import { normalizeSqlInputWhitespace } from '@utils/sqlTextNormalization';
 
+/** Maximum display length used when computing column stats. Prevents expensive
+ *  string/JSON conversion on very large values (blobs, long text, etc.). */
+const DATA_GRID_MAX_COLUMN_STAT_LENGTH = 500;
+
 const appDb = useAppDb();
 
 type ConnectionContext = {
@@ -48,6 +52,11 @@ export type RemoteConnectionTarget = {
 
 export type NormalizedApplyTableChanges = ReturnType<typeof normalizeApplyTableChanges>;
 
+export type SortOrder = {
+    column: string;
+    direction: 'ASC' | 'DESC';
+};
+
 export type DriverTools = {
     testConnection: (params: TestConnectionParams) => Promise<TestConnectionResult> | TestConnectionResult;
     getTablesFresh: (connectionId: number) => Promise<TableSummary[]>;
@@ -55,7 +64,7 @@ export type DriverTools = {
     getTableDdl: (connectionId: number, tableName: string) => Promise<string>;
     listServerSchemas: (serverId: number, connectionId?: number) => Promise<ServerSchemaRecord[]>;
     disconnectConnection?: (connectionId: number) => Promise<void>;
-    getTableData: (connectionId: number, tableName: string, limit: number, offset: number) => Promise<TableData>;
+    getTableData: (connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder) => Promise<TableData>;
     runQuery: (connectionId: number, sql: string, params?: SqlValue[]) => Promise<QueryExecutionResult>;
     validateSql?: (connectionId: number, sql: string) => Promise<void>;
     modifyTable: (connectionId: number, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) => Promise<void>;
@@ -187,7 +196,9 @@ function normalizeModifyKeys(keys: ModifyTableKeyParams[] | undefined): ModifySc
         seenNames.add(lowerName);
 
         const columns = key.columns
-            .map((column) => ({ columnName: normalizeColumnName(column.columnName, `Column name for key ${normalizedName}`) }))
+            .map((column) => ({
+                columnName: normalizeColumnName(column.columnName, `Column name for key ${normalizedName}`),
+            }))
             .filter((column, index, columnsList) => columnsList.findIndex((entry) => entry.columnName.toLowerCase() === column.columnName.toLowerCase()) === index);
 
         if (columns.length === 0) {
@@ -317,24 +328,83 @@ function getRemoteConnectionTarget(context: ConnectionContext) {
         hostname,
         port: context.connection.port ?? context.server.port,
         database: context.connection.database_name,
-        username: context.connection.username,
+        username: context.server.username?.trim() || undefined,
     } satisfies RemoteConnectionTarget;
+}
+
+async function readConnectionOrServerPassword(connectionId: number) {
+    const connection = appDb.getConnection(connectionId);
+
+    if (!connection) {
+        return null;
+    }
+
+    return readServerPasswordFromKeychain(connection.server_id);
+}
+
+async function readServerPassword(serverId: number) {
+    return readServerPasswordFromKeychain(serverId);
 }
 
 function getConnectionRemoteTarget(connectionId: number) {
     return getRemoteConnectionTarget(getConnectionContext(connectionId));
 }
 
-function formatSqlValueForDisplay(value: SqlValue | undefined) {
+function getServerRemoteTarget(serverId: number) {
+    const server = appDb.getServer(serverId);
+
+    if (!server) {
+        throw new Error('The selected server could not be found.');
+    }
+
+    if (server.kind !== 'server') {
+        throw new Error('The selected server does not support remote schema discovery.');
+    }
+
+    const hostname = server.host?.trim();
+
+    if (!hostname) {
+        throw new Error('The selected server is missing its host.');
+    }
+
+    return {
+        hostname,
+        port: server.port,
+        username: server.username?.trim() || undefined,
+    } satisfies RemoteConnectionTarget;
+}
+
+function getValueDisplayLength(value: SqlValue | undefined): number {
     if (value == null) {
-        return 'NULL';
+        return 4; // 'NULL'
     }
 
-    if (typeof value === 'object') {
-        return JSON.stringify(value) ?? '';
+    if (typeof value === 'string') {
+        return Math.min(value.length, DATA_GRID_MAX_COLUMN_STAT_LENGTH);
     }
 
-    return String(value);
+    if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+        return String(value).length;
+    }
+
+    if (value instanceof Uint8Array) {
+        // Hex representation: "0x" prefix + 2 hex chars per byte
+        return Math.min(2 + value.length * 2, DATA_GRID_MAX_COLUMN_STAT_LENGTH);
+    }
+
+    // Objects: use a capped JSON representation to avoid expensive
+    // stringify on large structured data or nested objects.
+    try {
+        const text = JSON.stringify(value, (_key, val) => {
+            if (typeof val === 'string' && val.length > DATA_GRID_MAX_COLUMN_STAT_LENGTH) {
+                return val.slice(0, DATA_GRID_MAX_COLUMN_STAT_LENGTH) + '…';
+            }
+            return val;
+        });
+        return Math.min(text?.length ?? 0, DATA_GRID_MAX_COLUMN_STAT_LENGTH);
+    } catch {
+        return DATA_GRID_MAX_COLUMN_STAT_LENGTH;
+    }
 }
 
 function buildColumnStats(columns: string[], rows: Array<Record<string, SqlValue>>): Record<string, number> {
@@ -342,7 +412,7 @@ function buildColumnStats(columns: string[], rows: Array<Record<string, SqlValue
 
     for (const row of rows) {
         for (const columnName of columns) {
-            const length = formatSqlValueForDisplay(row?.[columnName]).length;
+            const length = getValueDisplayLength(row?.[columnName]);
 
             if (length > columnStats[columnName]) {
                 columnStats[columnName] = length;
@@ -402,14 +472,10 @@ function remoteMutationId(result: Record<string, unknown>) {
     return 0;
 }
 
-function resolveServerConnectionId(serverId: number, connectionId?: number) {
+function resolveServerConnectionId(serverId: number, connectionId?: number): number | undefined {
     const connection = typeof connectionId === 'number' ? appDb.getConnection(connectionId) : appDb.listConnections(serverId)[0];
 
-    if (!connection) {
-        throw new Error('Create at least one connection for this server before refreshing databases.');
-    }
-
-    return connection.id;
+    return connection?.id;
 }
 
 const driverRegistry: Record<DbType, DriverTools> = {
@@ -425,26 +491,15 @@ const driverRegistry: Record<DbType, DriverTools> = {
     }),
     msaccess:
         process.platform === 'win32'
-            ? useMsAccessWindowsDriverTools(
-                  {
-                      getConnection: (connectionId) => appDb.getConnection(connectionId),
-                      getServer: (serverId) => appDb.getServer(serverId),
-                      listConnections: (serverId) => appDb.listConnections(serverId),
-                      getUserDataDir: () => appDb.getUserDataDir(),
-                      normalizeTableName,
-                      normalizeColumnName,
-                      buildColumnStats,
-                  },
-                  useMsAccessDriverTools({
-                      getConnection: (connectionId) => appDb.getConnection(connectionId),
-                      getServer: (serverId) => appDb.getServer(serverId),
-                      listConnections: (serverId) => appDb.listConnections(serverId),
-                      getUserDataDir: () => appDb.getUserDataDir(),
-                      normalizeTableName,
-                      normalizeColumnName,
-                      buildColumnStats,
-                  })
-              )
+            ? useMsAccessWindowsDriverTools({
+                  getConnection: (connectionId) => appDb.getConnection(connectionId),
+                  getServer: (serverId) => appDb.getServer(serverId),
+                  listConnections: (serverId) => appDb.listConnections(serverId),
+                  getUserDataDir: () => appDb.getUserDataDir(),
+                  normalizeTableName,
+                  normalizeColumnName,
+                  buildColumnStats,
+              })
             : useMsAccessDriverTools({
                   getConnection: (connectionId) => appDb.getConnection(connectionId),
                   getServer: (serverId) => appDb.getServer(serverId),
@@ -458,8 +513,10 @@ const driverRegistry: Record<DbType, DriverTools> = {
         escapeSqlString,
         normalizeOptionalText,
         getRemoteConnectionTarget: getConnectionRemoteTarget,
+        getRemoteServerTarget: getServerRemoteTarget,
         resolveServerConnectionId,
-        readConnectionPassword,
+        readConnectionPassword: readConnectionOrServerPassword,
+        readServerPassword,
         normalizeTableName,
         normalizeColumnName,
         buildColumnStats,
@@ -470,8 +527,10 @@ const driverRegistry: Record<DbType, DriverTools> = {
         normalizeOptionalText,
         quoteIdentifier,
         getRemoteConnectionTarget: getConnectionRemoteTarget,
+        getRemoteServerTarget: getServerRemoteTarget,
         resolveServerConnectionId,
-        readConnectionPassword,
+        readConnectionPassword: readConnectionOrServerPassword,
+        readServerPassword,
         normalizeTableName,
         normalizeColumnName,
         buildColumnStats,
@@ -480,8 +539,10 @@ const driverRegistry: Record<DbType, DriverTools> = {
     sqlserver: useSqlServerDriverTools({
         normalizeOptionalText,
         getRemoteConnectionTarget: getConnectionRemoteTarget,
+        getRemoteServerTarget: getServerRemoteTarget,
         resolveServerConnectionId,
-        readConnectionPassword,
+        readConnectionPassword: readConnectionOrServerPassword,
+        readServerPassword,
         normalizeTableName,
         normalizeColumnName,
         buildColumnStats,
@@ -705,11 +766,11 @@ export const dbTools = {
     async disconnectConnection(connectionId: number): Promise<void> {
         await getConnectionDriverTools(connectionId).disconnectConnection?.(connectionId);
     },
-    async getTableData(connectionId: number, params: { tableName: string; limit?: number; offset?: number }): Promise<TableData> {
+    async getTableData(connectionId: number, params: { tableName: string; limit?: number; offset?: number; orderBy?: SortOrder }): Promise<TableData> {
         const normalizedTableName = normalizeTableName(params.tableName);
         const { limit, offset } = getNormalizedPaging(params);
 
-        return getConnectionDriverTools(connectionId).getTableData(connectionId, normalizedTableName, limit, offset);
+        return getConnectionDriverTools(connectionId).getTableData(connectionId, normalizedTableName, limit, offset, params.orderBy);
     },
     async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
         const normalizedSql = normalizeSqlInputWhitespace(sql).trim();

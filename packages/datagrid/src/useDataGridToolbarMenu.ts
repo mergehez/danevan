@@ -1,11 +1,13 @@
 import { DATA_GRID_FONT_OPTIONS } from '@datagrid/dataGridAppearance';
 import type { TDataGridState } from '@datagrid/useDataGrid';
+import type { UseDataGridOptions } from '@datagrid/useDataGridTypes';
 import type { ContextMenuEntry } from '@directives/contextMenuTypes';
 import { computed } from 'vue';
 
 export function useDataGridToolbarMenu(state: TDataGridState) {
     const toolbarMenuItems = computed<ContextMenuEntry[]>(() => {
         const toolbarCopyAsCustomItems = ((state as TDataGridState<{ toolbarCopyAsCustomItems?: ContextMenuEntry[] }>).toolbarCopyAsCustomItems ?? []) as ContextMenuEntry[];
+        const ddlState = state as TDataGridState<Pick<UseDataGridOptions, 'copyTableAsDdl' | 'showTableDdl'>>;
 
         const items: ContextMenuEntry[] = [
             {
@@ -37,11 +39,6 @@ export function useDataGridToolbarMenu(state: TDataGridState) {
             },
 
             { type: 'separator', id: 'toolbar-separator-columns' },
-            {
-                id: 'toolbar-show-column-list',
-                label: 'Show column list',
-                action: () => state.openColumnList(),
-            },
             {
                 id: 'toolbar-change-font',
                 label: 'Change font...',
@@ -107,6 +104,20 @@ export function useDataGridToolbarMenu(state: TDataGridState) {
             label: 'Copy all cells as',
             children: copyAsItems,
         });
+
+        if (ddlState.copyTableAsDdl) {
+            items.push({ type: 'separator', id: 'toolbar-separator-ddl' });
+            items.push({
+                id: 'toolbar-copy-table-as-ddl',
+                label: 'Copy table as DDL',
+                action: async () => ddlState.copyTableAsDdl?.(),
+            });
+            items.push({
+                id: 'toolbar-show-table-ddl',
+                label: 'Show DDL',
+                action: async () => ddlState.showTableDdl?.(),
+            });
+        }
 
         return items;
     });

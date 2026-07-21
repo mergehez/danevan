@@ -1,4 +1,14 @@
-import type { DbType } from '@utils/appClient';
+import {
+    ConnectionRow,
+    CreateConnectionParams,
+    CreateScriptParams,
+    CreateServerParams,
+    ScriptRow,
+    ServerRow,
+    UpdateConnectionParams,
+    UpdateScriptParams,
+    UpdateServerParams,
+} from '@utils/appClient';
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -20,101 +30,6 @@ type DatabaseClient = {
     exec: (sql: string) => void;
     prepare: (sql: string) => DatabaseStatement;
     close: () => void;
-};
-
-export type ServerKind = 'server' | 'file';
-
-export type ServerRow = {
-    id: number;
-    name: string;
-    kind: ServerKind;
-    driver: DbType;
-    file_path: string | undefined;
-    host: string | undefined;
-    port: number | undefined;
-    schema_count: number | undefined;
-    sequence: number | bigint;
-    created_at: string;
-    updated_at: string;
-};
-
-export type ConnectionRow = {
-    id: number;
-    server_id: number;
-    name: string;
-    host: string | undefined;
-    port: number | undefined;
-    database_name: string | undefined;
-    username: string | undefined;
-    readonly: number;
-    sequence: number | bigint;
-    created_at: string;
-    updated_at: string;
-    last_used_at: string | undefined;
-};
-
-export type ScriptRow = {
-    id: number;
-    connection_id: number;
-    name: string;
-    group_name: string | undefined;
-    sql_text: string;
-    sequence: number | bigint;
-    created_at: string;
-    updated_at: string;
-    last_run_at: string | undefined;
-};
-
-export type CreateServerParams = {
-    name: string;
-    kind: ServerKind;
-    driver: DbType;
-    filePath?: string;
-    host?: string;
-    port?: number;
-};
-
-export type UpdateServerParams = {
-    name: string;
-    kind: ServerKind;
-    driver: DbType;
-    filePath?: string;
-    host?: string;
-    port?: number;
-};
-
-export type CreateConnectionParams = {
-    serverId: number;
-    name: string;
-    host?: string;
-    port?: number;
-    databaseName?: string;
-    username?: string;
-    readonly?: boolean;
-};
-
-export type UpdateConnectionParams = {
-    serverId?: number;
-    name: string;
-    host?: string;
-    port?: number;
-    databaseName?: string;
-    username?: string;
-    readonly?: boolean;
-};
-
-export type CreateScriptParams = {
-    connectionId: number;
-    name: string;
-    groupName?: string;
-    sqlText?: string;
-};
-
-export type UpdateScriptParams = {
-    connectionId?: number;
-    name: string;
-    groupName?: string;
-    sqlText: string;
 };
 
 function applyConnectionPragmas(db: Pick<DatabaseClient, 'exec'>) {
@@ -158,6 +73,7 @@ export const DATABASE_FILE_NAME = 'danevan.sqlite';
 function createDbClient(userDataDir: string) {
     mkdirSync(userDataDir, { recursive: true });
 
+    console.log(`App built at: 2026-07-02T08:05:54.273Z`);
     console.log(`Using database path: ${join(userDataDir, DATABASE_FILE_NAME)}`);
     const runtimeDb = createRuntimeDatabaseClient(join(userDataDir, DATABASE_FILE_NAME));
 
@@ -213,16 +129,6 @@ function normalizeOptionalPort(value: number | undefined) {
 }
 
 export function useAppDb() {
-    function ensureColumn(tableName: string, columnName: string, definition: string) {
-        const columns = db.prepare(`PRAGMA table_info(${tableName})`).all<{ name: string }>();
-
-        if (columns.some((column) => column.name === columnName)) {
-            return;
-        }
-
-        db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
-    }
-
     function normalizeServerSequences() {
         const rows = db.prepare('SELECT id FROM servers ORDER BY sequence ASC, created_at ASC, id ASC').all<{ id: number }>();
         const updateSequence = db.prepare('UPDATE servers SET sequence = ? WHERE id = ?');
@@ -402,6 +308,7 @@ export function useAppDb() {
                     host TEXT,
                     port INTEGER,
                     schema_count INTEGER,
+                    username TEXT,
                     sequence INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -413,7 +320,6 @@ export function useAppDb() {
                     host TEXT,
                     port INTEGER,
                     database_name TEXT,
-                    username TEXT,
                     readonly INTEGER NOT NULL DEFAULT 0,
                     sequence INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -436,30 +342,6 @@ export function useAppDb() {
                 CREATE INDEX IF NOT EXISTS idx_connections_server_id ON connections(server_id);
                 CREATE INDEX IF NOT EXISTS idx_scripts_connection_id ON scripts(connection_id);
             `);
-
-            ensureColumn('servers', 'kind', "TEXT NOT NULL DEFAULT 'server'");
-            ensureColumn('servers', 'driver', "TEXT NOT NULL DEFAULT 'sqlite'");
-            ensureColumn('servers', 'file_path', 'TEXT');
-            ensureColumn('servers', 'host', 'TEXT');
-            ensureColumn('servers', 'port', 'INTEGER');
-            ensureColumn('servers', 'schema_count', 'INTEGER');
-            ensureColumn('servers', 'sequence', 'INTEGER NOT NULL DEFAULT 0');
-            ensureColumn('servers', 'updated_at', 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
-
-            ensureColumn('connections', 'host', 'TEXT');
-            ensureColumn('connections', 'port', 'INTEGER');
-            ensureColumn('connections', 'database_name', 'TEXT');
-            ensureColumn('connections', 'username', 'TEXT');
-            ensureColumn('connections', 'readonly', 'INTEGER NOT NULL DEFAULT 0');
-            ensureColumn('connections', 'sequence', 'INTEGER NOT NULL DEFAULT 0');
-            ensureColumn('connections', 'updated_at', 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
-            ensureColumn('connections', 'last_used_at', 'TEXT');
-
-            ensureColumn('scripts', 'sql_text', "TEXT NOT NULL DEFAULT ''");
-            ensureColumn('scripts', 'group_name', 'TEXT');
-            ensureColumn('scripts', 'sequence', 'INTEGER NOT NULL DEFAULT 0');
-            ensureColumn('scripts', 'updated_at', 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP');
-            ensureColumn('scripts', 'last_run_at', 'TEXT');
 
             normalizeServerSequences();
             normalizeConnectionSequences();
@@ -497,7 +379,7 @@ export function useAppDb() {
             return db
                 .prepare(
                     `
-                        SELECT id, name, kind, driver, file_path, host, port, schema_count, sequence, created_at, updated_at
+                        SELECT id, name, kind, driver, file_path, host, port, schema_count, sequence, username, created_at, updated_at
                         FROM servers
                         ORDER BY sequence ASC, created_at ASC, id ASC
                     `
@@ -509,7 +391,7 @@ export function useAppDb() {
                 ? db
                       .prepare(
                           `
-                              SELECT id, server_id, name, host, port, database_name, username, readonly, sequence, created_at, updated_at, last_used_at
+                              SELECT id, server_id, name, host, port, database_name, readonly, sequence, created_at, updated_at, last_used_at
                               FROM connections
                               WHERE server_id = ?
                               ORDER BY sequence ASC, created_at ASC, id ASC
@@ -519,7 +401,7 @@ export function useAppDb() {
                 : db
                       .prepare(
                           `
-                              SELECT id, server_id, name, host, port, database_name, username, readonly, sequence, created_at, updated_at, last_used_at
+                              SELECT id, server_id, name, host, port, database_name, readonly, sequence, created_at, updated_at, last_used_at
                               FROM connections
                               ORDER BY server_id ASC, sequence ASC, created_at ASC, id ASC
                           `
@@ -573,12 +455,12 @@ export function useAppDb() {
         scriptExists(id: number) {
             return Boolean(db.prepare('SELECT id FROM scripts WHERE id = ?').get<{ id: number }>(id));
         },
-        createServer(params: CreateServerParams) {
+        createServer(params: Omit<CreateServerParams, 'password'>) {
             const result = db
                 .prepare(
                     `
-                        INSERT INTO servers(name, kind, driver, file_path, host, port, sequence)
-                        VALUES(?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO servers(name, kind, driver, file_path, host, port, username, sequence)
+                        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
                     `
                 )
                 .run(
@@ -588,16 +470,17 @@ export function useAppDb() {
                     normalizeOptionalText(params.filePath) ?? null,
                     normalizeOptionalText(params.host) ?? null,
                     params.port ?? null,
+                    normalizeOptionalText(params.username) ?? null,
                     getNextServerSequence()
                 );
 
             return toNumber(result.lastInsertRowid)!;
         },
-        updateServer(id: number, params: UpdateServerParams) {
+        updateServer(id: number, params: Omit<UpdateServerParams, 'password'>) {
             db.prepare(
                 `
                     UPDATE servers
-                    SET name = ?, kind = ?, driver = ?, file_path = ?, host = ?, port = ?, updated_at = CURRENT_TIMESTAMP
+                    SET name = ?, kind = ?, driver = ?, file_path = ?, host = ?, port = ?, username = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 `
             ).run(
@@ -607,6 +490,7 @@ export function useAppDb() {
                 normalizeOptionalText(params.filePath) ?? null,
                 normalizeOptionalText(params.host) ?? null,
                 params.port ?? null,
+                normalizeOptionalText(params.username) ?? null,
                 id
             );
         },
@@ -626,12 +510,12 @@ export function useAppDb() {
             db.prepare('DELETE FROM servers WHERE id = ?').run(id);
             normalizeServerSequences();
         },
-        createConnection(params: CreateConnectionParams) {
+        createConnection(params: Omit<CreateConnectionParams, 'password'>) {
             const result = db
                 .prepare(
                     `
-                        INSERT INTO connections(server_id, name, host, port, database_name, username, readonly, sequence)
-                        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO connections(server_id, name, host, port, database_name, readonly, sequence)
+                        VALUES(?, ?, ?, ?, ?, ?, ?)
                     `
                 )
                 .run(
@@ -640,14 +524,13 @@ export function useAppDb() {
                     normalizeOptionalText(params.host) ?? null,
                     normalizeOptionalPort(params.port) ?? null,
                     normalizeOptionalText(params.databaseName) ?? null,
-                    normalizeOptionalText(params.username) ?? null,
                     params.readonly ? 1 : 0,
                     getNextConnectionSequence(params.serverId)
                 );
 
             return toNumber(result.lastInsertRowid)!;
         },
-        updateConnection(id: number, params: UpdateConnectionParams) {
+        updateConnection(id: number, params: Omit<UpdateConnectionParams, 'password'>) {
             const currentConnection = db.prepare('SELECT * FROM connections WHERE id = ?').get<ConnectionRow>(id);
 
             if (!currentConnection) {
@@ -660,7 +543,7 @@ export function useAppDb() {
             db.prepare(
                 `
                     UPDATE connections
-                    SET server_id = ?, name = ?, host = ?, port = ?, database_name = ?, username = ?, readonly = ?, sequence = ?, updated_at = CURRENT_TIMESTAMP
+                    SET server_id = ?, name = ?, host = ?, port = ?, database_name = ?, readonly = ?, sequence = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 `
             ).run(
@@ -669,7 +552,6 @@ export function useAppDb() {
                 normalizeOptionalText(params.host) ?? null,
                 normalizeOptionalPort(params.port) ?? null,
                 normalizeOptionalText(params.databaseName) ?? null,
-                normalizeOptionalText(params.username) ?? null,
                 params.readonly ? 1 : 0,
                 targetSequence,
                 id

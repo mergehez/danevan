@@ -166,6 +166,8 @@ export type UseDataGridOptions = {
     getPendingRowState?: (rowIndex: number) => PendingRowState;
     theme?: MaybeReactiveValue<Partial<DataGridTheme> | undefined>;
     toolbarCopyAsCustomItems?: MaybeReactiveValue<ContextMenuEntry[] | undefined>;
+    copyTableAsDdl?: () => Promise<void>;
+    showTableDdl?: () => Promise<void>;
 };
 export type UseDataGridFinalOptions = ReturnType<typeof fillMissionOptions>;
 export function fillMissionOptions(options: UseDataGridOptions) {

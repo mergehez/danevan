@@ -1,4 +1,4 @@
-import type { DriverTools, RemoteConnectionTarget } from '@backend/db-tools.ts';
+import type { DriverTools, RemoteConnectionTarget, SortOrder } from '@backend/db-tools.ts';
 import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from '@backend/typeOrmMappers.ts';
 import { prepareTypeOrmParameterizedStatement } from '@backend/typeOrmStatementParameters.ts';
 import { useMySqlSchemaHelper } from '@backend/useMySqlDriver.ts';
@@ -27,8 +27,10 @@ type PostgresDriverToolsDeps = {
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     quoteIdentifier: (identifier: string) => string;
     getRemoteConnectionTarget: (connectionId: number) => RemoteConnectionTarget;
-    resolveServerConnectionId: (serverId: number, connectionId?: number) => number;
+    getRemoteServerTarget: (serverId: number) => RemoteConnectionTarget;
+    resolveServerConnectionId: (serverId: number, connectionId?: number) => number | undefined;
     readConnectionPassword: (connectionId: number) => Promise<string | null>;
+    readServerPassword: (serverId: number) => Promise<string | null>;
     normalizeTableName: (tableName: string) => string;
     normalizeColumnName: (columnName: string, fieldName: string) => string;
     buildColumnStats: (columns: string[], rows: Array<Record<string, SqlValue>>) => Record<string, number>;
@@ -525,12 +527,14 @@ export function usePostgresSchemaHelper(deps: PostgresSchemaHelperDeps) {
     }
 
     return {
-        buildReadTableStatement(tableName: string, limit: number, offset: number): RemoteStatement {
+        buildReadTableStatement(tableName: string, limit: number, offset: number, orderBy?: SortOrder): RemoteStatement {
+            const orderClause = orderBy ? ` ORDER BY ${deps.quoteIdentifier(orderBy.column)} ${orderBy.direction}` : '';
+
             return {
                 sql:
                     limit < 0
-                        ? `SELECT * FROM ${deps.quoteIdentifier(tableName)}${offset > 0 ? ` OFFSET ${offset}` : ''}`
-                        : `SELECT * FROM ${deps.quoteIdentifier(tableName)} LIMIT ${limit} OFFSET ${offset}`,
+                        ? `SELECT * FROM ${deps.quoteIdentifier(tableName)}${orderClause}${offset > 0 ? ` OFFSET ${offset}` : ''}`
+                        : `SELECT * FROM ${deps.quoteIdentifier(tableName)}${orderClause} LIMIT ${limit} OFFSET ${offset}`,
             };
         },
         getTableMetadata,
@@ -612,6 +616,27 @@ export function usePostgresDriverTools(deps: PostgresDriverToolsDeps): DriverToo
         }
     }
 
+    async function withPostgresServerClient<T>(serverId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
+        const target = deps.getRemoteServerTarget(serverId);
+        const dataSource = createPostgresDataSource({
+            host: target.hostname,
+            port: target.port,
+            database: target.database,
+            username: target.username,
+            password: (await deps.readServerPassword(serverId)) ?? '',
+        });
+
+        await dataSource.initialize();
+        const queryRunner = dataSource.createQueryRunner();
+
+        try {
+            return await callback(createRemoteClient(dataSource, queryRunner));
+        } finally {
+            await queryRunner.release();
+            await dataSource.destroy();
+        }
+    }
+
     async function testConnection(params: TestConnectionParams): Promise<TestConnectionResult> {
         const hostname = params.host?.trim();
 
@@ -643,6 +668,7 @@ export function usePostgresDriverTools(deps: PostgresDriverToolsDeps): DriverToo
     const baseTools = useRemoteDriverTools({
         testConnection: testConnection,
         withRemoteClient: withPostgresClient,
+        withServerClient: withPostgresServerClient,
         resolveServerConnectionId: deps.resolveServerConnectionId,
         normalizeTableName: deps.normalizeTableName,
         normalizeColumnName: deps.normalizeColumnName,

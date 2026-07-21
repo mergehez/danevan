@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_ROW_HEIGHT, DataGrid, useDataGrid, useDataGridView, type DataGridRow, type TDataGridState } from '@datagrid/index';
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';

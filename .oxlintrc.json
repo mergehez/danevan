@@ -1,0 +1,29 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "plugins": ["eslint", "typescript", "unicorn", "oxc", "vue", "promise", "node"],
+    "jsPlugins": [{ "name": "import-js", "specifier": "eslint-plugin-import" }],
+    "settings": {
+        "import/resolver": {
+            "typescript": true,
+            "node": {
+                "extensions": [".js", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".d.ts", ".vue"]
+            }
+        }
+    },
+    "rules": {
+        "import-js/no-unresolved": ["error", { "ignore": ["^bun:"] }],
+        "no-floating-promises": "allow",
+        "no-unused-vars": "off",
+        "no-empty-file": "off",
+        "no-redundant-type-constituents": "off",
+        "typescript/no-import-type-side-effects": "error"
+    },
+    "options": {
+        "typeCheck": true,
+        "typeAware": true
+    },
+    "env": {
+        "builtin": true
+    },
+    "ignorePatterns": ["Test.tsx"]
+}

@@ -6,7 +6,7 @@ const formatSqlClearError = vi.fn<() => void>();
 const writeClipboardText = vi.fn<(text: string) => Promise<void>>();
 const clipboardWrite = vi.fn<(items: ClipboardItem[]) => Promise<void>>();
 
-vi.mock('../../composables/useTasks', () => ({
+vi.mock('@composables/useTasks', () => ({
     tasks: {
         getTableDdl: {
             run: getTableDdlRun,
@@ -74,7 +74,7 @@ describe('copyTableAsDdl', () => {
             copiedText = await blob.text();
         });
 
-        const { copyTableAsDdl } = await import('../../composables/useCopyTableDdl');
+        const { copyTableAsDdl } = await import('../../apps/app/mainview/composables/useCopyTableDdl');
         const copyPromise = copyTableAsDdl(7, 'users', 'sqlite');
 
         expect(clipboardWrite).toHaveBeenCalledTimes(1);
@@ -101,7 +101,7 @@ describe('copyTableAsDdl', () => {
             copiedText = await blob.text();
         });
 
-        const { copyTableAsDdl } = await import('../../composables/useCopyTableDdl');
+        const { copyTableAsDdl } = await import('../../apps/app/mainview/composables/useCopyTableDdl');
 
         await copyTableAsDdl(7, 'users', 'sqlite');
 
@@ -121,7 +121,7 @@ describe('copyTableAsDdl', () => {
             copiedText = await blob.text();
         });
 
-        const { copyTableAsDdl } = await import('../../composables/useCopyTableDdl');
+        const { copyTableAsDdl } = await import('../../apps/app/mainview/composables/useCopyTableDdl');
 
         await copyTableAsDdl(7, 'troops', 'mysql');
 

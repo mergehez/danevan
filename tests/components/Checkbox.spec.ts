@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import Checkbox from '@ui/Checkbox.vue';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';

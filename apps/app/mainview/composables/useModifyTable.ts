@@ -3160,7 +3160,7 @@ export function _useModifyTable() {
 
                 if (query.selectedTableName === currentTableName && connections.selectedConnectionId === state.connectionId) {
                     query.selectedTableName = finalTableName;
-                    await query.loadSelectedTable();
+                    await query.loadSelectedTable(state.connectionId, finalTableName);
                 }
 
                 state.closeModal();

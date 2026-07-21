@@ -25,7 +25,7 @@ const forms = reactive({
     connectionPort: 3306 as '' | number,
     connectionUsername: 'root',
     connectionPassword: '',
-    databaseName: 'auto',
+    databaseName: '',
 });
 
 const status = reactive({
@@ -38,30 +38,44 @@ const runtimeStatus = reactive({
     error: '',
 });
 
-const selectedServer = computed(() => servers.selectedServer);
+const addFormServer = computed(() => (servers.addForm.serverId > 0 ? servers.servers.find((server) => server.id === servers.addForm.serverId) : undefined));
 const isFileDriver = computed(() => forms.connectionDriver === 'sqlite' || forms.connectionDriver === 'msaccess');
-const selectedServerMatchesDriver = computed(() => {
-    if (!selectedServer.value) {
+const addFormServerMatchesDriver = computed(() => {
+    if (!addFormServer.value) {
         return false;
     }
 
     if (isFileDriver.value) {
-        return selectedServer.value.driver === forms.connectionDriver && selectedServer.value.kind === 'file';
+        return addFormServer.value.driver === forms.connectionDriver && addFormServer.value.kind === 'file';
     }
 
-    return selectedServer.value.driver === forms.connectionDriver && selectedServer.value.kind === 'server';
+    return addFormServer.value.driver === forms.connectionDriver && addFormServer.value.kind === 'server';
 });
 const title = computed(() => `Add ${connectionDriverOptions.find((option) => option.value === forms.connectionDriver)?.label || 'connection'} connection`);
+const connectionNameLabel = computed(() => {
+    if (!isFileDriver.value && !addFormServerMatchesDriver.value) {
+        return 'Server name:';
+    }
+
+    return 'Connection name:';
+});
+const connectionNamePlaceholder = computed(() => {
+    if (!isFileDriver.value && !addFormServerMatchesDriver.value) {
+        return 'Server name';
+    }
+
+    return 'Connection name';
+});
 const canCreateConnection = computed(() => {
     if (!forms.connectionName.trim()) {
         return false;
     }
 
     if (isFileDriver.value) {
-        return selectedServerMatchesDriver.value || Boolean(forms.sourceName.trim() && forms.serverFilePath.trim());
+        return addFormServerMatchesDriver.value || Boolean(forms.sourceName.trim() && forms.serverFilePath.trim());
     }
 
-    return selectedServerMatchesDriver.value || Boolean(forms.connectionHost.trim());
+    return addFormServerMatchesDriver.value || Boolean(forms.connectionHost.trim());
 });
 const runtimeSummary = computed(() => {
     if (runtimeStatus.loading) {
@@ -74,6 +88,10 @@ const runtimeSummary = computed(() => {
 
     if (!runtimeStatus.value) {
         return 'MS Access runtime status is unavailable.';
+    }
+
+    if (runtimeStatus.value.currentPlatform === 'win32') {
+        return 'On Windows, the native MS Access driver is used directly via PowerShell and OleDb.';
     }
 
     switch (runtimeStatus.value.runtimeSource) {
@@ -143,7 +161,7 @@ function resetStatus() {
 
 async function pickDatabaseFile() {
     const filePath = await tasks.pickDatabaseFile.run({
-        defaultPath: forms.serverFilePath || selectedServer.value?.file_path,
+        defaultPath: forms.serverFilePath || addFormServer.value?.file_path,
     });
     if (filePath) {
         forms.serverFilePath = filePath;
@@ -157,12 +175,12 @@ async function testConnection() {
         const result = await tasks.testConnection.run({
             kind: isFileDriver.value ? 'file' : 'server',
             driver: forms.connectionDriver,
-            filePath: isFileDriver.value ? (selectedServerMatchesDriver.value ? selectedServer.value?.file_path : forms.serverFilePath.trim() || undefined) : undefined,
-            host: isFileDriver.value ? undefined : selectedServerMatchesDriver.value ? selectedServer.value?.host : forms.connectionHost.trim() || undefined,
+            filePath: isFileDriver.value ? (addFormServerMatchesDriver.value ? addFormServer.value?.file_path : forms.serverFilePath.trim() || undefined) : undefined,
+            host: isFileDriver.value ? undefined : addFormServerMatchesDriver.value ? addFormServer.value?.host : forms.connectionHost.trim() || undefined,
             port: isFileDriver.value
                 ? undefined
-                : selectedServerMatchesDriver.value
-                  ? selectedServer.value?.port
+                : addFormServerMatchesDriver.value
+                  ? addFormServer.value?.port
                   : typeof forms.connectionPort === 'number'
                     ? forms.connectionPort
                     : undefined,
@@ -184,7 +202,8 @@ async function createConnection() {
         return;
     }
 
-    let serverId = selectedServerMatchesDriver.value ? selectedServer.value?.id : undefined;
+    const isCreatingNewServer = !addFormServerMatchesDriver.value;
+    let serverId = addFormServerMatchesDriver.value ? addFormServer.value?.id : undefined;
 
     if (!serverId) {
         if (isFileDriver.value) {
@@ -193,17 +212,25 @@ async function createConnection() {
                 kind: 'file',
                 driver: forms.connectionDriver,
                 filePath: forms.serverFilePath.trim(),
+                username: forms.connectionUsername.trim() || undefined,
+                password: forms.connectionPassword || undefined,
+                host: undefined,
+                port: undefined,
             });
         } else {
             const host = forms.connectionHost.trim();
             const port = typeof forms.connectionPort === 'number' ? forms.connectionPort : undefined;
+            const serverName = forms.connectionName.trim() || host;
 
             await servers.createServer({
-                name: host,
+                name: serverName,
                 kind: 'server',
                 driver: forms.connectionDriver,
                 host,
                 port,
+                username: forms.connectionUsername.trim() || undefined,
+                password: forms.connectionPassword || undefined,
+                filePath: undefined,
             });
         }
 
@@ -216,21 +243,22 @@ async function createConnection() {
         return;
     }
 
-    await connections.createConnection({
-        serverId,
-        name: forms.connectionName.trim(),
-        host: isFileDriver.value ? undefined : selectedServerMatchesDriver.value ? selectedServer.value?.host : forms.connectionHost.trim() || undefined,
-        port: isFileDriver.value
-            ? undefined
-            : selectedServerMatchesDriver.value
-              ? selectedServer.value?.port
-              : typeof forms.connectionPort === 'number'
-                ? forms.connectionPort
-                : undefined,
-        databaseName: isFileDriver.value ? undefined : forms.databaseName.trim() || undefined,
-        username: isFileDriver.value ? undefined : forms.connectionUsername.trim() || undefined,
-        password: isFileDriver.value ? undefined : forms.connectionPassword || undefined,
-    });
+    if (!isCreatingNewServer || isFileDriver.value || forms.databaseName.trim()) {
+        await connections.createConnection({
+            serverId,
+            name: forms.connectionName.trim(),
+            host: isFileDriver.value ? undefined : addFormServerMatchesDriver.value ? addFormServer.value?.host : forms.connectionHost.trim() || undefined,
+            port: isFileDriver.value
+                ? undefined
+                : addFormServerMatchesDriver.value
+                  ? addFormServer.value?.port
+                  : typeof forms.connectionPort === 'number'
+                    ? forms.connectionPort
+                    : undefined,
+            databaseName: isFileDriver.value ? undefined : forms.databaseName.trim() || undefined,
+            readonly: undefined,
+        });
+    }
 
     forms.sourceName = '';
     forms.serverFilePath = '';
@@ -270,8 +298,13 @@ async function createConnection() {
                 </label>
             </div>
 
-            <label for="form-connectionName" class="text-sm">Name:</label>
-            <input v-model="forms.connectionName" id="form-connectionName" class="w-full border border-x4 bg-x1 px-2.5 py-2 text-xs outline-none" placeholder="Connection name" />
+            <label for="form-connectionName" class="text-sm">{{ connectionNameLabel }}</label>
+            <input
+                v-model="forms.connectionName"
+                id="form-connectionName"
+                class="w-full border border-x4 bg-x1 px-2.5 py-2 text-xs outline-none"
+                :placeholder="connectionNamePlaceholder"
+            />
 
             <template v-if="isFileDriver">
                 <label for="form-sourceName" class="text-sm">Source name:</label>

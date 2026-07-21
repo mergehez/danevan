@@ -1,16 +1,19 @@
 <script setup lang="ts">
+import DbGridToolbar from '@components/DbGridToolbar.vue';
+import DbSaveBar from '@components/DbSaveBar.vue';
 import SqlEditor from '@components/SqlEditor.vue';
 import { useConnections } from '@composables/useConnections';
+import { useDbDataGrid } from '@composables/useDbDataGrid';
 import { useDbSettings } from '@composables/useDbSettings';
 import { useNavState } from '@composables/useNavState';
 import { useQuery } from '@composables/useQuery';
 import { useScriptsDb } from '@composables/useScriptsDb';
 import { useServers } from '@composables/useServers';
-import { DataGrid, useEditableDataGridState } from '@datagrid';
+import { DataGrid } from '@datagrid';
 import Button from '@ui/Button.vue';
 import CenteredModal from '@ui/CenteredModal.vue';
 import SplitterVertical from '@ui/SplitterVertical.vue';
-import type { SqlDiagnosticMarker, SqlDiagnosticsResult } from '@utils/appClient';
+import type { SqlDiagnosticMarker, SqlDiagnosticsResult, TableData } from '@utils/appClient';
 import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { computed, reactive, ref, watch } from 'vue';
 
@@ -92,13 +95,62 @@ const canSubmitSave = computed(() => !!saveForm.name.trim() && typeof editorConn
 const isBusy = computed(() => query.isRunningQuery);
 const problemCount = computed(() => scriptProblemsFiltered.value.length);
 const hasProblems = computed(() => problemCount.value > 0);
-const resultGridState = useEditableDataGridState({
-    columns: computed(() => (query.queryResult?.kind === 'rows' ? query.queryResult.columns : [])),
-    rows: computed(() => (query.queryResult?.kind === 'rows' ? query.queryResult.rows : [])),
-    columnStats: computed(() => (query.queryResult?.kind === 'rows' ? query.queryResult.columnStats : {})),
-    emptyText: 'Query returned no rows.',
-    formatValue: (value) => formatValue(value),
+
+const getEmptyTableData = (): TableData => ({
+    columns: [],
+    rows: [],
+    columnStats: {},
+    rowCount: 0,
+    limit: 0,
+    offset: 0,
 });
+
+const resultTableInfo = computed(() => {
+    if (query.queryResult?.kind !== 'rows' || !editorConnectionId.value) {
+        return undefined;
+    }
+
+    const connectionId = editorConnectionId.value;
+    const resultColumns = new Set(query.queryResult.columns.map((c) => c.toLowerCase()));
+    const tablesState = connections.getConnectionTablesState(connectionId);
+    const knownTables = tablesState.tables;
+
+    for (const table of knownTables) {
+        const info = connections.getTableDetailsState(connectionId, table.name).info;
+
+        if (!info) {
+            continue;
+        }
+
+        const pkColumns = info.columns.filter((c) => c.isPrimaryKey).map((c) => c.name.toLowerCase());
+
+        if (!pkColumns.length) {
+            continue;
+        }
+
+        if (pkColumns.every((pk) => resultColumns.has(pk))) {
+            return info;
+        }
+    }
+
+    return undefined;
+});
+
+const resultDetectedTableName = computed(() => resultTableInfo.value?.name);
+
+const resultDbGridState = useDbDataGrid({
+    connectionId: () => editorConnectionId.value!,
+    tableData: () => (query.queryResult?.kind === 'rows' ? query.queryResult : getEmptyTableData()) as TableData,
+    tableInfo: () => resultTableInfo.value,
+    tableName: () => resultDetectedTableName.value,
+    emptyText: () => 'Query returned no rows.',
+});
+
+function reloadQueryResult() {
+    if (query.queryText.trim()) {
+        void query.runQuery();
+    }
+}
 
 watch(
     () => activeScriptTab.value?.hash,
@@ -319,18 +371,6 @@ function getProblemSeverityClasses(severity: SqlDiagnosticMarker['severity']) {
 
     return 'border-x5 bg-x1 text-white/75';
 }
-
-function formatValue(value: unknown) {
-    if (value == null) {
-        return 'Not set';
-    }
-
-    if (typeof value === 'object') {
-        return JSON.stringify(value);
-    }
-
-    return String(value);
-}
 </script>
 
 <template>
@@ -422,15 +462,25 @@ function formatValue(value: unknown) {
                 <div v-if="isBusy" class="pointer-events-auto absolute inset-0 z-10 flex items-center justify-center bg-x2/65 backdrop-blur-[1px]">
                     <div class="border border-x4 bg-x1 px-2 py-2 text-xs text-reverse">Running query...</div>
                 </div>
-                <DataGrid v-if="resultPanelTab === 'result' && query.queryResult?.kind === 'rows'" :state="resultGridState.state" :has-toolbar="true" class="flex-1">
+                <DbSaveBar
+                    :pending-change-count="resultDbGridState.pendingChangeCount"
+                    :can-undo="resultDbGridState.canUndo"
+                    :can-redo="resultDbGridState.canRedo"
+                    :is-saving-changes="resultDbGridState.isSavingChanges"
+                    :save-button-label="resultDbGridState.saveButtonLabel"
+                    :on-undo-changes="resultDbGridState.undoChanges"
+                    :on-redo-changes="resultDbGridState.redoChanges"
+                    :on-preview-changes="resultDbGridState.openPreview"
+                    :on-save-changes="resultDbGridState.saveChanges"
+                />
+                <DataGrid v-if="resultPanelTab === 'result' && query.queryResult?.kind === 'rows'" :state="resultDbGridState" :has-toolbar="true" class="flex-1">
                     <template #title>
-                        <h2 class="text-sm font-semibold text-reverse">Result</h2>
-                    </template>
-                    <template #middle>
-                        <div class="flex flex-wrap gap-1 text-2xs">
-                            <span class="border border-x6 bg-x2 px-1 rounded-md">Rows {{ query.queryResult.rows.length }}</span>
-                            <span class="border border-x6 bg-x2 px-1 rounded-md">Columns {{ query.queryResult.columns.length }}</span>
-                        </div>
+                        <DbGridToolbar :grid-state="resultDbGridState" title="Result" :is-loading="isBusy" :on-reload="reloadQueryResult">
+                            <div class="flex flex-wrap gap-1 text-2xs">
+                                <span class="border border-x6 bg-x2 px-1 rounded-md">Rows {{ query.queryResult.rows.length }}</span>
+                                <span class="border border-x6 bg-x2 px-1 rounded-md">Columns {{ query.queryResult.columns.length }}</span>
+                            </div>
+                        </DbGridToolbar>
                     </template>
                 </DataGrid>
                 <div v-else-if="resultPanelTab === 'result' && query.queryResult?.kind === 'mutation'" class="px-2 py-3 text-xs opacity-70">
@@ -453,4 +503,19 @@ function formatValue(value: unknown) {
         </template>
     </SplitterVertical>
     <!-- <section class="flex-1 flex flex-col border border-x4 bg-x5 overflow-y-auto"></section> -->
+
+    <CenteredModal :open="resultDbGridState.isPreviewOpen" title="Pending updates" contentClass="max-w-3xl" @update:open="resultDbGridState.isPreviewOpen = $event">
+        <div class="space-y-3 px-4 py-4">
+            <p class="text-xs opacity-70">These statements will be executed in order.</p>
+            <div class="max-h-[60vh] overflow-auto border border-x4 bg-x0">
+                <pre class="whitespace-pre-wrap p-3 text-xs leading-6 text-default">{{ resultDbGridState.previewQueries.join('\n') }}</pre>
+            </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 border-t border-x3 px-4 py-3">
+            <Button severity="secondary" smaller @click="resultDbGridState.isPreviewOpen = false"> Close </Button>
+            <Button severity="primary" smaller :disabled="!resultDbGridState.pendingChangeCount || resultDbGridState.isSavingChanges" @click="resultDbGridState.saveChanges()">
+                {{ resultDbGridState.saveButtonLabel }}
+            </Button>
+        </div>
+    </CenteredModal>
 </template>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import DbGridToolbar from '@components/DbGridToolbar.vue';
+import DbSaveBar from '@components/DbSaveBar.vue';
+import MonacoEditor from '@components/MonacoEditor.vue';
 import { useConnections } from '@composables/useConnections';
 import { useDbDataGrid } from '@composables/useDbDataGrid';
 import { useDbSettings } from '@composables/useDbSettings';
@@ -10,6 +13,7 @@ import Button from '@ui/Button.vue';
 import CenteredModal from '@ui/CenteredModal.vue';
 import IconButton from '@ui/IconButton.vue';
 import Popover from '@ui/Popover.vue';
+import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { formatValue } from '@utils/valueFormatting';
 import { computed, effectScope, onBeforeUnmount, ref, watch, type EffectScope } from 'vue';
 
@@ -17,9 +21,6 @@ const settings = useDbSettings();
 const connections = useConnections();
 const query = useQuery();
 const servers = useServers();
-const pageSizeMenuElement = ref<HTMLElement>();
-const pageSizeButtonElement = ref<HTMLElement>();
-const isPageSizeMenuOpen = ref(false);
 
 const PAGE_SIZE_OPTIONS = [10, 100, 250, 500, 1000, 2000, -1] as const;
 const DEFAULT_PAGE_SIZE = 500;
@@ -45,36 +46,24 @@ const pageSizeMenuOptions = computed(() =>
 async function applyDataLimit(limit: number) {
     await settings.setQueryRowLimit(limit);
 
-    if (query.selectedTableName) {
-        await query.loadSelectedTable({ offset: 0 });
+    const connId = connections.selectedConnectionId;
+    if (connId && query.selectedTableName) {
+        await query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
     }
-}
-
-function togglePageSizeMenu() {
-    isPageSizeMenuOpen.value = !isPageSizeMenuOpen.value;
-}
-
-function closePageSizeMenu() {
-    isPageSizeMenuOpen.value = false;
-}
-
-function handlePageSizeWindowPointerDown(event: PointerEvent) {
-    const target = event.target as Node | null;
-
-    if (!target) {
-        return;
-    }
-
-    if (pageSizeMenuElement.value?.contains(target) || pageSizeButtonElement.value?.contains(target)) {
-        return;
-    }
-
-    closePageSizeMenu();
 }
 
 async function selectPageSize(limit: number) {
-    closePageSizeMenu();
     await applyDataLimit(limit);
+}
+
+function toggleColumnVisibility(columnName: string) {
+    const isHidden = dataGridState.hiddenColumns.includes(columnName);
+
+    if (isHidden) {
+        dataGridState.showColumn(columnName);
+    } else {
+        dataGridState.hideColumn(columnName);
+    }
 }
 
 async function goToPreviousPage() {
@@ -82,8 +71,11 @@ async function goToPreviousPage() {
         return;
     }
 
+    const connId = connections.selectedConnectionId;
     const nextOffset = Math.max(0, currentPageOffset.value - Math.max(currentPageLimit.value, 1));
-    await query.loadSelectedTable({ offset: nextOffset });
+    if (connId && query.selectedTableName) {
+        await query.loadSelectedTable(connId, query.selectedTableName, { offset: nextOffset, orderBy: orderBy.value });
+    }
 }
 
 async function goToNextPage() {
@@ -91,21 +83,13 @@ async function goToNextPage() {
         return;
     }
 
+    const connId = connections.selectedConnectionId;
     const nextOffset = currentPageOffset.value + Math.max(currentPageLimit.value, 1);
-    await query.loadSelectedTable({ offset: nextOffset });
+    if (connId && query.selectedTableName) {
+        await query.loadSelectedTable(connId, query.selectedTableName, { offset: nextOffset, orderBy: orderBy.value });
+    }
 }
 
-onBeforeUnmount(() => {
-    window.removeEventListener('pointerdown', handlePageSizeWindowPointerDown);
-});
-
-watch(isPageSizeMenuOpen, () => {
-    window.removeEventListener('pointerdown', handlePageSizeWindowPointerDown);
-
-    if (isPageSizeMenuOpen.value) {
-        window.addEventListener('pointerdown', handlePageSizeWindowPointerDown);
-    }
-});
 const fkPeekViews = useForeignKeyPeekViews({
     selectedConnectionId: computed(() => connections.selectedConnectionId),
     selectedTableName: computed(() => query.selectedTableName),
@@ -117,6 +101,12 @@ const fkPeekViews = useForeignKeyPeekViews({
         return server?.driver || 'sqlite';
     },
 });
+const sqlDialect = computed(() => {
+    const connection = connections.connections.find((entry) => entry.id === connections.selectedConnectionId);
+    const server = servers.servers.find((entry) => entry.id === connection?.server_id);
+    return server?.driver || 'sqlite';
+});
+
 const dataGridState = useDbDataGrid({
     connectionId: () => connections.selectedConnectionId!,
     emptyText: () => `Select a table to preview${isUnlimitedDataLimit.value ? '' : ` up to ${settings.state.queryRowLimit} rows`}.`,
@@ -141,6 +131,93 @@ const dataGridState = useDbDataGrid({
     tableInfo: () => query.tableInfo,
     tableName: () => query.selectedTableName,
 });
+
+const visibleColumnNames = computed(() => {
+    const allCols = dataGridState.allColumns;
+    const hidden = new Set(dataGridState.hiddenColumns);
+    return allCols.filter((c: string) => !hidden.has(c));
+});
+
+const allColumnsVisible = computed(() => visibleColumnNames.value.length === dataGridState.allColumns.length);
+
+/** Tracks whether the user has manually edited the custom query text.
+ *  When true, auto-sync is suppressed so the user's edits are preserved. */
+const isQueryManuallyEdited = ref(false);
+/** Guards the customQueryText watcher so it can distinguish our own writes
+ *  from user edits. */
+let isAutoSyncingQuery = false;
+
+const currentSort = computed(() => dataGridState.sortState);
+const orderBy = computed(() => {
+    const sort = currentSort.value;
+    if (!sort) return undefined;
+    return { column: sort.columnName, direction: sort.direction === 'asc' ? 'ASC' : 'DESC' } as const;
+});
+
+const defaultTableQuery = computed(() => {
+    const tableName = query.selectedTableName;
+
+    if (!tableName) {
+        return '';
+    }
+
+    const identifier = quoteSqlIdentifier(tableName, sqlDialect.value);
+    const cols = allColumnsVisible.value
+        ? '*'
+        : visibleColumnNames.value.length
+          ? visibleColumnNames.value.map((c: string) => quoteSqlIdentifier(c, sqlDialect.value)).join(', ')
+          : '*';
+    const orderClause = orderBy.value ? ` order by ${quoteSqlIdentifier(orderBy.value.column, sqlDialect.value)} ${orderBy.value.direction}` : '';
+    const limitClause = isUnlimitedDataLimit.value ? '' : ` limit ${settings.state.queryRowLimit}`;
+    return `select ${cols} from ${identifier}${orderClause}${limitClause};`;
+});
+
+watch(
+    () => [query.selectedTableName, settings.state.queryRowLimit, visibleColumnNames.value.join(','), currentSort.value],
+    () => {
+        // Only auto-sync if the user hasn't manually edited the query
+        if (query.selectedTableName && !query.isCustomQueryMode && !isQueryManuallyEdited.value) {
+            isAutoSyncingQuery = true;
+            query.customQueryText = defaultTableQuery.value;
+            isAutoSyncingQuery = false;
+        }
+    },
+    { immediate: true }
+);
+
+// Detect manual edits to the custom query text
+watch(
+    () => query.customQueryText,
+    () => {
+        if (!isAutoSyncingQuery && query.selectedTableName && !query.isCustomQueryMode) {
+            isQueryManuallyEdited.value = true;
+        }
+    }
+);
+
+// Reload data when the sort column or direction changes (skip initial
+// trigger to avoid double-loading when the grid hydrates cached sort state).
+watch(
+    () => currentSort.value,
+    (newSort, oldSort) => {
+        if (!oldSort && !newSort) return;
+        if (oldSort?.columnName === newSort?.columnName && oldSort?.direction === newSort?.direction) return;
+
+        const connId = connections.selectedConnectionId;
+        if (connId && query.selectedTableName && !query.isCustomQueryMode) {
+            isQueryManuallyEdited.value = false;
+            void query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
+        }
+    }
+);
+
+// Reset the manual-edit flag when the user navigates to a different table
+watch(
+    () => query.selectedTableName,
+    () => {
+        isQueryManuallyEdited.value = false;
+    }
+);
 
 const peekGridScopes = new Map<string, EffectScope>();
 const peekGridStates = new Map<string, EditableDataGridState>();
@@ -240,106 +317,79 @@ onBeforeUnmount(() => {
 
 <template>
     <section class="min-h-0 flex-1 flex flex-col overflow-auto" id="dbdatapanel">
-        <div
-            v-if="dataGridState.hasPendingChanges || dataGridState.canUndo || dataGridState.canRedo"
-            class="mb-3 flex items-center justify-between gap-3 border border-amber-300/25 bg-amber-300/8 px-3 py-2 text-2xs"
-        >
-            <span>{{ dataGridState.pendingChangeCount }} pending {{ dataGridState.pendingChangeCount === 1 ? 'change' : 'changes' }}</span>
-            <div class="flex items-center gap-3">
-                <label v-if="dataGridState.supportsForeignKeyCheckToggle" class="flex cursor-pointer items-center gap-2 opacity-80 transition hover:opacity-100">
-                    <input
-                        :checked="dataGridState.disableForeignKeyChecks"
-                        type="checkbox"
-                        class="h-4 w-4 rounded border-white/20 bg-transparent accent-white"
-                        @change="dataGridState.setDisableForeignKeyChecks(($event.target as HTMLInputElement).checked)"
-                    />
-                    <span>Disable FK checks</span>
-                </label>
-                <div class="flex items-center gap-2">
-                    <Button severity="secondary" smaller :disabled="!dataGridState.canUndo" @click="dataGridState.undoChanges"> Undo </Button>
-                    <Button severity="secondary" smaller :disabled="!dataGridState.canRedo" @click="dataGridState.redoChanges"> Redo </Button>
-                    <Button severity="secondary" smaller :disabled="!dataGridState.hasPendingChanges" @click="dataGridState.openPreview"> Preview </Button>
-                    <Button severity="primary" smaller :disabled="!dataGridState.hasPendingChanges || dataGridState.isSavingChanges" @click="dataGridState.saveChanges">
-                        {{ dataGridState.saveButtonLabel }}
-                    </Button>
-                </div>
-            </div>
-        </div>
+        <DbSaveBar
+            :pending-change-count="dataGridState.pendingChangeCount"
+            :can-undo="dataGridState.canUndo"
+            :can-redo="dataGridState.canRedo"
+            :is-saving-changes="dataGridState.isSavingChanges"
+            :save-button-label="dataGridState.saveButtonLabel"
+            :supports-foreign-key-check-toggle="dataGridState.supportsForeignKeyCheckToggle"
+            :disable-foreign-key-checks="dataGridState.disableForeignKeyChecks"
+            :on-clear-changes="dataGridState.clearChanges"
+            :on-undo-changes="dataGridState.undoChanges"
+            :on-redo-changes="dataGridState.redoChanges"
+            :on-preview-changes="dataGridState.openPreview"
+            :on-save-changes="dataGridState.saveChanges"
+            :on-set-disable-foreign-key-checks="dataGridState.setDisableForeignKeyChecks"
+        />
 
         <div class="relative min-h-0 flex-1 flex flex-col overflow-auto">
             <div v-if="isLoading" class="pointer-events-auto absolute inset-0 z-10 flex items-center justify-center bg-x1/65 backdrop-blur-[1px]">
                 <div class="border border-x4 bg-x2 px-3 py-2 text-xs text-reverse">Loading table data...</div>
             </div>
+
+            <div v-if="query.selectedTableName" class="flex items-center gap-2 border-b border-x4 bg-x0 px-2 py-1">
+                <div class="flex-1 min-w-0">
+                    <input
+                        v-model="query.customQueryText"
+                        class="w-full border border-x4 bg-x1 px-2 py-1 text-xs font-mono outline-none transition focus:border-x5"
+                        placeholder="select * from myTable limit 100;"
+                        @keydown.enter.prevent="query.runCustomQuery"
+                    />
+                </div>
+                <IconButton
+                    icon="icon-[mdi--play]"
+                    v-tooltip.xs.nowrap="'Run query'"
+                    smaller
+                    severity="primary"
+                    :disabled="!query.customQueryText.trim() || query.isRunningQuery"
+                    @click="query.runCustomQuery"
+                />
+                <IconButton
+                    v-if="query.isCustomQueryMode"
+                    icon="icon-[mdi--backup-restore]"
+                    v-tooltip.xs.nowrap="'Reset to table view'"
+                    smaller
+                    severity="secondary"
+                    @click="query.clearCustomQuery"
+                />
+            </div>
             <div :class="isLoading ? 'pointer-events-none opacity-60' : ''" class="h-full w-full flex flex-col overflow-auto">
                 <DataGrid :state="dataGridState" :has-toolbar="true" :with-checkboxes="false">
                     <template #title>
-                        <h2 class="text-sm font-semibold text-reverse">
-                            {{ query.selectedTableName || 'Select a table' }}
-                            <span class="border border-x7 bg-x2 px-1 rounded-md text-2xs opacity-60">{{ query.tableInfo?.columns.length ?? 0 }} Columns</span>
-                        </h2>
-                    </template>
-                    <template #middle>
-                        <div class="relative flex items-center text-2xs text-white">
-                            <IconButton
-                                icon="icon-[mdi--chevron-left]"
-                                v-tooltip.xs.nowrap="'Previous page'"
-                                severity="secondary"
-                                small
-                                :disabled="!canGoToPreviousPage"
-                                @click="goToPreviousPage"
-                                class="rounded-r-none"
-                            />
-                            <div class="relative">
-                                <button
-                                    ref="pageSizeButtonElement"
-                                    type="button"
-                                    class="inline-flex h-7 items-center gap-1 border border-x4 bg-x2 px-2 text-2xs opacity-80 transition hover:bg-x3 hover:opacity-100"
-                                    :disabled="isLoading"
-                                    @click="togglePageSizeMenu"
-                                >
-                                    <span>{{ pageRangeStart }}-{{ pageRangeEnd }}</span>
-                                    <span class="opacity-60">of {{ totalRowCount }}</span>
-                                    <span class="iconify icon-[mdi--chevron-down] h-3.5 w-3.5 opacity-70"></span>
-                                </button>
-                                <div v-if="isPageSizeMenuOpen" ref="pageSizeMenuElement" class="absolute left-0 right-0 top-full z-20 border-y border-x4 bg-x1 py-1">
-                                    <div class="px-3 py-1 text-2xs opacity-60">Page Size</div>
-                                    <button
-                                        v-for="option in pageSizeMenuOptions"
-                                        :key="option.value"
-                                        type="button"
-                                        class="flex w-full items-center justify-between gap-3 px-3.5 py-1 text-left text-xs transition hover:bg-white/8"
-                                        @click="selectPageSize(option.value)"
-                                    >
-                                        <span class="inline-flex min-w-0 items-center gap-2">
-                                            <span>{{ option.label }}</span>
-                                            <span class="h-4 w-4 text-center text-xs opacity-80">{{ selectedDataLimit === option.value ? '✓' : '' }}</span>
-                                        </span>
-                                    </button>
-                                </div>
-                            </div>
-                            <IconButton
-                                icon="icon-[mdi--chevron-right]"
-                                v-tooltip.xs.nowrap="'Next page'"
-                                small
-                                :disabled="!canGoToNextPage"
-                                @click="goToNextPage"
-                                class="rounded-l-none"
-                                severity="secondary"
-                            />
-                        </div>
-                        <div class="flex flex-wrap gap-1 text-2xs">
-                            <!-- <span class="border border-x6 bg-x2 px-1 rounded-md">Rows {{ query.tableData?.rowCount ?? 0 }}</span> -->
-                            <!-- <span class="border border-x6 bg-x2 px-1 rounded-md">Indexes {{ query.tableInfo?.indexes.length ?? 0 }}</span> -->
-                        </div>
-                    </template>
-                    <template #actions>
-                        <IconButton
-                            class="ml-2"
-                            :icon="isLoading ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--reload]'"
-                            v-tooltip.xs.nowrap="'Reload table'"
-                            smaller
-                            :disabled="!query.selectedTableName || isLoading"
-                            @click="query.loadSelectedTable"
+                        <DbGridToolbar
+                            :grid-state="dataGridState"
+                            :title="query.selectedTableName || 'Select a table'"
+                            :is-loading="isLoading"
+                            :show-page-nav="true"
+                            :page-range-start="pageRangeStart"
+                            :page-range-end="pageRangeEnd"
+                            :total-row-count="totalRowCount"
+                            :can-go-to-previous-page="canGoToPreviousPage"
+                            :can-go-to-next-page="canGoToNextPage"
+                            :on-go-to-previous-page="goToPreviousPage"
+                            :on-go-to-next-page="goToNextPage"
+                            :page-size-menu-options="pageSizeMenuOptions"
+                            :selected-data-limit="selectedDataLimit"
+                            :on-select-page-size="selectPageSize"
+                            :on-reload="
+                                () => {
+                                    const c = connections.selectedConnectionId;
+                                    const t = query.selectedTableName;
+                                    if (c && t) query.loadSelectedTable(c, t, { offset: 0 });
+                                }
+                            "
+                            @toggle-column="toggleColumnVisibility"
                         />
                     </template>
                 </DataGrid>
@@ -391,7 +441,9 @@ onBeforeUnmount(() => {
 
             <div v-else-if="isFkUsageListView(view)" class="flex h-full min-h-0 flex-col overflow-auto px-3 py-3">
                 <div v-if="view.loading" class="text-xs opacity-70">Loading usages…</div>
-                <div v-else-if="view.errorMessage" class="text-xs text-amber-200">{{ view.errorMessage }}</div>
+                <div v-else-if="view.errorMessage" class="text-xs text-amber-200">
+                    {{ view.errorMessage }}
+                </div>
                 <div v-else-if="!view.usages.length" class="text-xs opacity-70">No foreign key usages found.</div>
                 <div v-else class="flex min-h-0 flex-col gap-2 overflow-auto">
                     <div
@@ -402,9 +454,12 @@ onBeforeUnmount(() => {
                         <div class="flex items-center justify-between gap-3">
                             <div class="min-w-0">
                                 <p class="truncate text-sm font-medium text-default">
-                                    {{ usage.relation.sourceTable }} - {{ formatUsageRelationColumns(usage.relation, 'source') }}
+                                    {{ usage.relation.sourceTable }} -
+                                    {{ formatUsageRelationColumns(usage.relation, 'source') }}
                                 </p>
-                                <p v-if="usage.errorMessage" class="truncate text-2xs text-amber-200">{{ usage.errorMessage }}</p>
+                                <p v-if="usage.errorMessage" class="truncate text-2xs text-amber-200">
+                                    {{ usage.errorMessage }}
+                                </p>
                                 <p v-else class="text-2xs opacity-70">{{ usage.rowCount }} {{ usage.rowCount === 1 ? 'row' : 'rows' }}</p>
                             </div>
 
@@ -459,6 +514,18 @@ onBeforeUnmount(() => {
                 <Button severity="primary" smaller :disabled="!dataGridState.hasPendingChanges || dataGridState.isSavingChanges" @click="dataGridState.saveChanges">
                     {{ dataGridState.saveButtonLabel }}
                 </Button>
+            </div>
+        </CenteredModal>
+
+        <CenteredModal :open="dataGridState.isDdlModalOpen" title="Table DDL" contentClass="max-w-3xl" @update:open="dataGridState.isDdlModalOpen = $event">
+            <div class="space-y-3 px-4 py-4">
+                <p class="text-xs opacity-70">Editable DDL statement for this table. Changes are not saved.</p>
+                <div class="h-[60vh] border border-x4">
+                    <MonacoEditor v-model="dataGridState.ddlText" language="sql" class="h-full" />
+                </div>
+            </div>
+            <div class="flex items-center justify-end gap-2 border-t border-x3 px-4 py-3">
+                <Button severity="secondary" smaller @click="dataGridState.isDdlModalOpen = false"> Close </Button>
             </div>
         </CenteredModal>
     </section>

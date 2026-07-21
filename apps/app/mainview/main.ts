@@ -16,7 +16,14 @@ import App from './App.vue';
 import './css/app.css';
 import './css/scrollbar.css';
 
-void ensureAppClientBridge().then(() => {
+const isDev2 = import.meta.env.VITE_DEV2 === 'true' || !(window as any).__electrobunWebviewId;
+
+if (isDev2) {
+    const { installDev2AppClientBridge } = await import('@lib/appClientDev2');
+    installDev2AppClientBridge();
+}
+
+void (isDev2 ? Promise.resolve() : ensureAppClientBridge()).then(() => {
     const app = createApp(App);
 
     app.directive('loading', vLoading);

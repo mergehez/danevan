@@ -413,8 +413,15 @@ async function invalidateDebugCaches() {
     clearSidebarExpansionState();
     debugResetKey.value += 1;
 
-    if (connections.selectedConnectionId) {
+    const currentConnectionId = connections.selectedConnectionId;
+    if (currentConnectionId) {
         await query.loadTables();
+
+        // Reload the currently selected table so the data matches the refreshed metadata.
+        const currentTableName = query.selectedTableName;
+        if (currentTableName) {
+            await query.loadSelectedTable(currentConnectionId, currentTableName, { offset: 0 });
+        }
     }
 
     toast.showToast('Metadata caches and sidebar tree state cleared.', 'success');

@@ -434,7 +434,7 @@ const createNavState = () => {
         }
 
         try {
-            tasks.clearReportedError();
+            tasks.dismissError();
 
             if (conns.selectedConnectionId !== tab.connectionId) {
                 await conns.selectConnection(tab.connectionId);

@@ -1,5 +1,5 @@
 import { executeTextCommand } from '@backend/bunSubprocess.ts';
-import type { DriverTools, NormalizedApplyTableChanges } from '@backend/db-tools.ts';
+import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from '@backend/db-tools.ts';
 import { MS_ACCESS_BRIDGE_SOURCE } from '@backend/msAccessBridgeSource.ts';
 import {
     getMsAccessRuntimeJarName,
@@ -281,9 +281,10 @@ function buildMsAccessCreateStatementsFromTableInfo(tableName: string, tableInfo
         : undefined;
     const primaryKeyConstraintName = getMsAccessPrimaryKeyConstraintName(primaryKey);
     const inlineAutoIncrementPrimaryKey = tableInfo.columns.find((column) => column.isAutoIncrement && column.isPrimaryKey);
-    const statements = [
-        `CREATE TABLE ${quoteMsAccessIdentifier(tableName)} (${tableInfo.columns.map((column) => buildMsAccessColumnDefinition(column, column.name === inlineAutoIncrementPrimaryKey?.name ? primaryKeyConstraintName : undefined)).join(', ')});`,
-    ];
+    const columnDefinitions = tableInfo.columns.map(
+        (column) => `    ${buildMsAccessColumnDefinition(column, column.name === inlineAutoIncrementPrimaryKey?.name ? primaryKeyConstraintName : undefined)}`
+    );
+    const statements = [`CREATE TABLE ${quoteMsAccessIdentifier(tableName)} (\n${columnDefinitions.join(',\n')}\n);`];
 
     if (primaryKey?.columns.length && !inlineAutoIncrementPrimaryKey) {
         statements.push(
@@ -943,6 +944,7 @@ export function inspectMsAccessRuntime(appDataDir: string): MsAccessRuntimeStatu
     return {
         runtimeSource: bundledRuntime ? 'bundled' : downloadedRuntime ? 'downloaded' : 'missing',
         runtimePath,
+        currentPlatform: process.platform,
         hasGenericBundledJre: bundledRuntime
             ? existsSync(join(bundledRuntime.rootDir, MS_ACCESS_RUNTIME_GENERIC_JRE_FOLDER_NAME)) || existsSync(join(bundledRuntime.rootDir, MS_ACCESS_RUNTIME_JRE_FOLDER_NAME))
             : false,
@@ -1422,7 +1424,8 @@ function createTableData(
 }
 
 export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverTools {
-    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number): Promise<TableData> {
+    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
+        const orderByArgs = orderBy ? [orderBy.column, orderBy.direction] : [];
         const databasePath = getMsAccessDatabasePath(deps, connectionId);
         const bridgeResponse = await runWorkerBridge<{
             transport?: unknown;
@@ -1431,7 +1434,7 @@ export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverToo
             rows?: unknown;
             rowCount?: unknown;
             perf?: unknown;
-        }>(deps, databasePath, ['getTableData', tableName, String(limit), String(offset)]);
+        }>(deps, databasePath, ['getTableData', tableName, String(limit), String(offset), ...orderByArgs]);
         const response =
             bridgeResponse.transport === 'file'
                 ? await readBridgeFileResponse<{

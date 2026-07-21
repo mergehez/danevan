@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import AppConfirmationModal from '@ui/AppConfirmationModal.vue';
 import { confirmation } from '@utils/useConfirmation';
 import { flushPromises, mount } from '@vue/test-utils';

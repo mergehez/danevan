@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { useDbSettings } from '@composables/useDbSettings';
+import { useOverlaysState } from '@directives/useOverlaysState';
+import { ref, watch } from 'vue';
 
 const settings = useDbSettings();
+const overlayState = useOverlaysState();
+const modalZIndex = ref(90);
+
+watch(
+    () => settings.isSettingsModalOpen,
+    (isOpen) => {
+        modalZIndex.value = isOpen ? overlayState.claimZIndex() : overlayState.releaseZIndex(modalZIndex.value);
+    }
+);
 
 async function addEditor() {
     const editor = await settings.pickEditorApplication();
@@ -12,7 +23,7 @@ async function addEditor() {
 </script>
 
 <template>
-    <div v-if="settings.isSettingsModalOpen" class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <div v-if="settings.isSettingsModalOpen" class="fixed inset-0 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" :style="{ zIndex: modalZIndex }">
         <div class="w-full max-w-xl border border-x4 bg-x1 p-6 text-default shadow-2xl">
             <div class="mb-4 flex items-center justify-between">
                 <div>

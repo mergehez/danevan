@@ -122,7 +122,7 @@ public class MsAccessBridge {
                 return getReferencingForeignKeys(connection, args[0]);
             case "getTableData":
                 requireArgCount(args, 3, "getTableData requires table name, limit, and offset.");
-                return getTableData(connection, args[0], Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+                return getTableData(connection, args[0], Integer.parseInt(args[1]), Integer.parseInt(args[2]), args.length > 4 ? args[3] : null, args.length > 4 ? args[4] : null);
             case "runQuery":
                 requireArgCount(args, 1, "runQuery requires SQL.");
                 return runQuery(connection, decodeBase64Utf8(args[0]), decodeParams(args, 1));
@@ -386,9 +386,9 @@ public class MsAccessBridge {
         return result;
     }
 
-    private static Map<String, Object> getTableData(Connection connection, String tableName, int limit, int offset) throws Exception {
+    private static Map<String, Object> getTableData(Connection connection, String tableName, int limit, int offset, String orderByColumn, String orderByDirection) throws Exception {
         long startedAt = System.nanoTime();
-        String sql = buildTableDataSql(tableName, limit, offset);
+        String sql = buildTableDataSql(tableName, limit, offset, orderByColumn, orderByDirection);
         boolean unlimited = limit < 0;
 
         try (Statement statement = connection.createStatement()) {
@@ -588,7 +588,7 @@ public class MsAccessBridge {
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("tableData", getTableData(connection, tableName, limit, offset));
+        response.put("tableData", getTableData(connection, tableName, limit, offset, null, null));
         response.put("foreignKeyViolations", new ArrayList<String>());
         return response;
     }
@@ -760,14 +760,17 @@ public class MsAccessBridge {
         return perf;
     }
 
-    private static String buildTableDataSql(String tableName, int limit, int offset) {
+    private static String buildTableDataSql(String tableName, int limit, int offset, String orderByColumn, String orderByDirection) {
         String quotedTableName = quoteIdentifier(tableName);
+        String orderClause = orderByColumn != null && orderByDirection != null
+            ? " ORDER BY " + quoteIdentifier(orderByColumn) + " " + ("ASC".equalsIgnoreCase(orderByDirection) ? "ASC" : "DESC")
+            : "";
 
         if (limit >= 0 && offset <= 0) {
-            return "SELECT TOP " + Math.max(1, limit) + " * FROM " + quotedTableName;
+            return "SELECT TOP " + Math.max(1, limit) + " * FROM " + quotedTableName + orderClause;
         }
 
-        return "SELECT * FROM " + quotedTableName;
+        return "SELECT * FROM " + quotedTableName + orderClause;
     }
 
     private static int getMaxRowsForTableData(int limit, int offset) {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import Button from '@ui/Button.vue';
 import { useConnections } from '@composables/useConnections';
 import { useServers } from '@composables/useServers';
+import { useOverlaysState } from '@directives/useOverlaysState';
+import Button from '@ui/Button.vue';
 import type { ServerSchemaRecord } from '@utils/appClient';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
@@ -63,6 +64,8 @@ const hasPendingChanges = computed(() => {
 const allFilteredSelected = computed(() => filteredSchemas.value.length > 0 && filteredSchemas.value.every((schema) => selectedSchemaNames.value.includes(schema.name)));
 const someFilteredSelected = computed(() => filteredSchemas.value.some((schema) => selectedSchemaNames.value.includes(schema.name)));
 const modalTitle = computed(() => `${selectedSchemaNames.value.length} Connections`);
+const overlayState = useOverlaysState();
+const popoverZIndex = ref(90);
 const popoverRef = ref<HTMLElement>();
 const popoverStyle = computed(() => {
     const minWidth = Math.max(servers.schemaSelectionModal.anchorWidth, 220);
@@ -96,6 +99,8 @@ watch(
 );
 
 watch(open, (isOpen) => {
+    popoverZIndex.value = isOpen ? overlayState.claimZIndex() : overlayState.releaseZIndex(popoverZIndex.value);
+
     if (isOpen) {
         servers.updateSchemaSelectionModalPosition();
         window.addEventListener('resize', handleWindowGeometryChange);
@@ -269,7 +274,12 @@ onBeforeUnmount(() => {
 
 <template>
     <Teleport to="body">
-        <div v-if="open" ref="popoverRef" class="fixed z-80 overflow-hidden border border-x4 bg-x1 shadow-[0_18px_48px_rgba(0,0,0,0.45)]" :style="popoverStyle">
+        <div
+            v-if="open"
+            ref="popoverRef"
+            class="fixed overflow-hidden border border-x4 bg-x1 shadow-[0_18px_48px_rgba(0,0,0,0.45)]"
+            :style="{ ...popoverStyle, zIndex: popoverZIndex }"
+        >
             <div class="flex items-center gap-2 border-b border-x3 px-3 py-2">
                 <div class="min-w-0 flex-1">
                     <div class="text-2xs uppercase tracking-[0.2em] opacity-60">

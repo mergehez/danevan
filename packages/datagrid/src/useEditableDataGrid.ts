@@ -106,6 +106,15 @@ export function useEditableDataGridState(options: EditableDataGridOptions) {
                     : row
             );
         },
+        createPendingChange: ({ rowIndex, columnName, nextValue, rawValue }) => ({
+            rowIndex,
+            columnName,
+            previousValue: rawValue,
+            nextValue,
+            originalValue: rawValue,
+            matchColumn: columnName,
+            matchValue: rawValue,
+        }),
         cellContextMenuCustomItems: (context) => {
             const sourceCell = resolveSourceCell(context.rowIndex, context.columnName);
 

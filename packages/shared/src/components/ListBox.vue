@@ -1,9 +1,9 @@
 <script setup lang="ts" generic="TValue extends string | number, T extends SelectOption<TValue>">
 import { useOverlaysState } from '@directives/useOverlaysState';
+import Input from '@ui/Input.vue';
 import { uniqueId } from '@utils/utils';
 import { twMerge } from 'tailwind-merge';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import Input from '@ui/Input.vue';
 
 export type SelectOption<TValue = string | number> = {
     label: string;
@@ -408,9 +408,11 @@ function getSelectionTextByValue(id: TValue) {
 }
 const overlayState = useOverlaysState();
 
+const dropdownZIndex = ref(90);
+
 watch(() => props.selection, setSelectionFromProps);
 watch(isDropdownOpen, (nv) => {
-    overlayState.toggleZIndex(nv);
+    dropdownZIndex.value = nv ? overlayState.claimZIndex() : overlayState.releaseZIndex(dropdownZIndex.value);
 });
 
 const listWidth = ref('auto');
@@ -470,7 +472,7 @@ onUnmounted(() => {
                 v-show="isDropdownOpen"
                 ref="dropdownPanelRef"
                 class="fixed overflow-y-auto thin-scrollbar rounded-b-md border border-x4 bg-x1 shadow dark:border-x6 dark:bg-x3 dark:shadow-x7"
-                :style="{ ...dropdownStyle, zIndex: overlayState.zIndex }"
+                :style="{ ...dropdownStyle, zIndex: dropdownZIndex }"
             >
                 <div class="h-full flex flex-col rounded overflow-hidden" :id="ulId">
                     <template v-for="item in filteredItems" :key="item.value">
