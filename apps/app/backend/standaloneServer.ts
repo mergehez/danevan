@@ -1,18 +1,14 @@
 /**
  * Standalone server that serves both the API and the built frontend.
- * Compile with: bun build --compile ./apps/app/backend/standaloneServer.ts --outfile danevan
- *
- * The frontend HTML import tells Bun to bundle all referenced <script> and
- * <link> tags and expose them as static routes automatically.
  */
 import { app } from '@backend/app.ts';
 import { useAppDb } from '@backend/db-app.ts';
 import { apiMethods } from '@utils/apiMethods';
+import express from 'express';
+import { existsSync, readFileSync } from 'fs';
 import { homedir, platform } from 'os';
-import { join } from 'path';
-
-// Import frontend — Bun bundles referenced <script>/<link> tags as static routes
-import frontendEntry from '../mainview/dist/index.html';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 const PORT = parseInt(process.env.API_PORT || '3264', 10);
 
@@ -35,7 +31,6 @@ function resolveAppDataDir(): string {
 const userDataDir = resolveAppDataDir();
 useAppDb().configureDatabase(userDataDir);
 
-// Build API method map (same as devServer.ts)
 const methodMap: Record<string, (ps?: unknown) => unknown> = {
     ...(apiMethods.reduce(
         (acc, methodName) => {
@@ -57,7 +52,7 @@ const methodMap: Record<string, (ps?: unknown) => unknown> = {
 const REQUEST_TIMEOUT_MS = 65_000;
 
 function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    let timeoutHandle: Timer | undefined;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
     });
@@ -66,51 +61,54 @@ function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     });
 }
 
-// Build API route config for routes
-const apiRouteConfig: Record<string, { POST: (req: Request) => Response | Promise<Response> }> = {};
-for (const methodName of apiMethods) {
-    apiRouteConfig[`/api/${methodName}`] = {
-        POST: async (req: Request) => {
-            const handler = methodMap[methodName];
-            if (!handler) {
-                return Response.json({ error: `Unknown method: ${methodName}` }, { status: 404 });
-            }
+// Serve static files from the frontend dist directory
+const __filename = fileURLToPath(import.meta.url);
+const FRONTEND_DIST = join(dirname(__filename), '..', 'mainview', 'dist');
+const INDEX_HTML = join(FRONTEND_DIST, 'index.html');
 
-            try {
-                let params: unknown = undefined;
-                const contentType = req.headers.get('content-type') || '';
-                if (contentType.includes('application/json')) {
-                    const text = await runWithTimeout(req.text(), REQUEST_TIMEOUT_MS);
-                    if (text.trim()) params = JSON.parse(text);
-                }
+const server = express();
 
-                const result = await runWithTimeout(handler(params), REQUEST_TIMEOUT_MS);
-                return Response.json(result);
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                console.error(`[api] ${methodName}:`, message);
-                return Response.json({ error: message }, { status: 500 });
-            }
-        },
-    };
-}
+server.use(express.json());
 
-const server = Bun.serve({
-    port: PORT,
-    routes: {
-        // Frontend — Bun bundles <script>/<link> refs and serves them as static routes
-        '/': frontendEntry,
+// API endpoint: POST /api/:method
+server.post('/api/:method', async (req, res) => {
+    const method = req.params.method;
+    const handler = methodMap[method];
 
-        // Health check
-        '/health': { GET: () => Response.json({ ok: true }) },
+    if (!handler) {
+        res.status(404).json({ error: `Unknown method: ${method}` });
+        return;
+    }
 
-        // API endpoints
-        ...apiRouteConfig,
-    },
-    // SPA fallback — anything else serves the frontend
-    fetch() {
-        return frontendEntry;
-    },
+    try {
+        const params = req.body ?? undefined;
+        const result = await runWithTimeout(Promise.resolve(handler(params)), REQUEST_TIMEOUT_MS);
+        res.json(result);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[api] ${method}:`, message);
+        res.status(500).json({ error: message });
+    }
 });
 
-console.log(`[standalone] Danevan running at http://localhost:${PORT}`);
+// Health check
+server.get('/health', (_req, res) => {
+    res.json({ ok: true });
+});
+
+// Serve static frontend assets
+server.use(express.static(FRONTEND_DIST));
+
+// SPA fallback — serve index.html for any unmatched route
+server.get('*', (_req, res) => {
+    if (existsSync(INDEX_HTML)) {
+        const content = readFileSync(INDEX_HTML);
+        res.type('html').send(content);
+    } else {
+        res.status(404).send('Not found');
+    }
+});
+
+server.listen(PORT, '127.0.0.1', () => {
+    console.log(`[standalone] Danevan running at http://127.0.0.1:${PORT}`);
+});

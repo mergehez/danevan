@@ -8,7 +8,7 @@ async function runSecurityCommand(args: string[], allowedExitCodes: number[] = [
         args,
     });
 
-    if (!allowedExitCodes.includes(exitCode)) {
+    if (exitCode !== null && !allowedExitCodes.includes(exitCode)) {
         throw new Error(stderr.trim() || stdout.trim() || 'Keychain command failed.');
     }
 

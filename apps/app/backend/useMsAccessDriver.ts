@@ -27,6 +27,7 @@ import type {
     TestConnectionResult,
     UpdateColumnParams,
 } from '@utils/appClient';
+import { spawn, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { basename, dirname, join, resolve } from 'path';
@@ -89,14 +90,14 @@ type MsAccessReferencingForeignKey = {
 
 type MsAccessWorker = {
     key: string;
-    child: ReturnType<typeof Bun.spawn>;
-    stdoutReader: ReadableStreamDefaultReader<Uint8Array>;
-    stderrPromise: Promise<string>;
+    child: ChildProcess;
     responseBuffer: string;
     activeRequest?: PendingMsAccessWorkerRequest;
     requestChain: Promise<void>;
     closed: boolean;
     exitedPromise: Promise<void>;
+    resolveExit: (exitCode: number | null) => void;
+    rejectExit: (error: Error) => void;
 };
 
 function logMsAccessPerf(label: string, startedAt: number, details?: Record<string, unknown>) {
@@ -859,22 +860,7 @@ function drainWorkerResponseBuffer(worker: MsAccessWorker, flush = false) {
     }
 }
 
-async function readWorkerResponses(worker: MsAccessWorker) {
-    const decoder = new TextDecoder();
-
-    while (true) {
-        const { value, done } = await worker.stdoutReader.read();
-
-        if (done) {
-            worker.responseBuffer += decoder.decode();
-            drainWorkerResponseBuffer(worker, true);
-            return;
-        }
-
-        worker.responseBuffer += decoder.decode(value, { stream: true });
-        drainWorkerResponseBuffer(worker);
-    }
-}
+// stdout is now processed via stream 'data' event in createMsAccessWorker.
 
 function getMsAccessRuntimeDir(appDataDir: string) {
     return join(appDataDir, MS_ACCESS_RUNTIME_FOLDER_NAME);
@@ -1207,16 +1193,20 @@ async function ensureMsAccessRuntime(appDataDir: string): Promise<MsAccessRuntim
 async function createMsAccessWorker(runtime: MsAccessRuntime, databasePath: string): Promise<MsAccessWorker> {
     const key = getMsAccessWorkerKey(databasePath);
     const startedAt = performance.now();
-    const child = Bun.spawn({
-        cmd: [runtime.javaCommand, ...runtime.bridgeLaunchArgs, 'serve', key],
-        cwd: runtime.runtimeDir,
-        stdin: 'pipe',
-        stdout: 'pipe',
-        stderr: 'pipe',
-    });
-    const stdout = child.stdout as ReadableStream<Uint8Array> | undefined;
 
-    if (!stdout || typeof stdout.getReader !== 'function') {
+    let resolveExit: (exitCode: number | null) => void = () => {};
+    let rejectExit: (error: Error) => void = () => {};
+    const exitedPromise = new Promise<number | null>((resolve, reject) => {
+        resolveExit = resolve;
+        rejectExit = reject;
+    });
+
+    const child = spawn(runtime.javaCommand, [...runtime.bridgeLaunchArgs, 'serve', key], {
+        cwd: runtime.runtimeDir,
+        stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    if (!child.stdout) {
         child.kill();
         throw new Error('MS Access worker could not open a readable stdout stream.');
     }
@@ -1224,28 +1214,44 @@ async function createMsAccessWorker(runtime: MsAccessRuntime, databasePath: stri
     const worker: MsAccessWorker = {
         key,
         child,
-        stdoutReader: stdout.getReader(),
-        stderrPromise: new Response(child.stderr as ReadableStream).text(),
         responseBuffer: '',
         requestChain: Promise.resolve(),
         closed: false,
-        exitedPromise: Promise.resolve(),
+        exitedPromise: exitedPromise.then(() => {}),
+        resolveExit,
+        rejectExit,
     };
 
-    const responseLoop = readWorkerResponses(worker).catch((error) => {
+    // Collect stderr
+    const stderrChunks: Buffer[] = [];
+    child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+
+    // Wire up stdout processing
+    child.stdout.on('data', (chunk: Buffer) => {
+        worker.responseBuffer += chunk.toString();
+        drainWorkerResponseBuffer(worker);
+    });
+
+    child.on('error', (error) => {
+        worker.closed = true;
+        workerInitPromises.delete(key);
+        rejectExit(error);
         rejectActiveWorkerRequest(worker, error);
     });
 
-    worker.exitedPromise = (async () => {
-        const [exitCode, stderr] = await Promise.all([child.exited, worker.stderrPromise.catch(() => '')]);
-        await responseLoop;
+    child.on('close', (exitCode) => {
+        resolveExit(exitCode);
         worker.closed = true;
         workerInitPromises.delete(key);
 
+        // Flush any remaining data in response buffer
+        drainWorkerResponseBuffer(worker, true);
+
         if (exitCode !== 0) {
-            rejectActiveWorkerRequest(worker, stderr.trim() || `MS Access worker exited with code ${exitCode}.`);
+            const stderr = Buffer.concat(stderrChunks).toString().trim();
+            rejectActiveWorkerRequest(worker, stderr || `MS Access worker exited with code ${exitCode}.`);
         }
-    })();
+    });
 
     logMsAccessPerf('worker.start', startedAt, { databasePath: key });
     return worker;
@@ -1281,7 +1287,7 @@ async function performWorkerRequest<T>(worker: MsAccessWorker, args: string[]): 
 
     const stdin = worker.child.stdin;
 
-    if (!stdin || typeof stdin === 'number') {
+    if (!stdin) {
         throw new Error('MS Access worker stdin is not writable.');
     }
 
@@ -1294,7 +1300,6 @@ async function performWorkerRequest<T>(worker: MsAccessWorker, args: string[]): 
 
         try {
             stdin.write(`${encodeWorkerRequest(args)}\n`);
-            stdin.flush?.();
         } catch (error) {
             rejectActiveWorkerRequest(worker, error);
         }
@@ -1346,8 +1351,8 @@ async function disconnectWorker(databasePath: string) {
     try {
         const stdin = worker.child.stdin;
 
-        if (!worker.closed && stdin && typeof stdin !== 'number') {
-            stdin.end?.();
+        if (!worker.closed && stdin) {
+            stdin.end();
         }
     } catch {
         // ignore shutdown errors

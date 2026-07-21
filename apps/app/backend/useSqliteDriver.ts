@@ -14,7 +14,7 @@ import type {
     TestConnectionResult,
     UpdateColumnParams,
 } from '@utils/appClient';
-import { Database } from 'bun:sqlite';
+import Database from 'better-sqlite3';
 import 'reflect-metadata';
 import { DataSource, type QueryRunner } from 'typeorm';
 
@@ -88,7 +88,7 @@ export type ModifySchemaPlan = {
 type SqliteSchemaHelperDeps = {
     escapeSqlString: (value: string) => string;
     quoteIdentifier: (identifier: string) => string;
-    withSqliteDatabase: <T>(connectionId: number, callback: (database: Database) => T) => T;
+    withSqliteDatabase: <T>(connectionId: number, callback: (database: Database.Database) => T) => T;
 };
 
 type SqliteConnectionRecord = {
@@ -429,7 +429,7 @@ export function useSqliteSchemaHelper(deps: SqliteSchemaHelperDeps) {
             }
 
             const triggerCountRow = database
-                .query(`SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ${deps.escapeSqlString(tableName)}`)
+                .prepare(`SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ${deps.escapeSqlString(tableName)}`)
                 .get() as { count: number } | null;
 
             if ((triggerCountRow?.count ?? 0) > 0) {
@@ -531,17 +531,15 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
         return server.file_path;
     }
 
-    function withSqliteDatabase<T>(connectionId: number, callback: (database: Database) => T): T {
+    function withSqliteDatabase<T>(connectionId: number, callback: (database: Database.Database) => T): T {
         const sqlite = new Database(getSqliteFilePath(connectionId), {
             readonly: false,
-            create: false,
-            readwrite: true,
-            strict: true,
+            fileMustExist: true,
         });
 
         try {
-            sqlite.exec('PRAGMA foreign_keys = ON;');
-            sqlite.exec('PRAGMA busy_timeout = 5000;');
+            sqlite.pragma('foreign_keys = ON');
+            sqlite.pragma('busy_timeout = 5000');
             return callback(sqlite);
         } finally {
             sqlite.close();
@@ -654,14 +652,12 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
 
         const sqlite = new Database(filePath, {
             readonly: false,
-            create: false,
-            readwrite: true,
-            strict: true,
+            fileMustExist: true,
         });
 
         try {
-            sqlite.exec('PRAGMA foreign_keys = ON;');
-            sqlite.query('SELECT 1 AS connected').get();
+            sqlite.pragma('foreign_keys = ON');
+            sqlite.prepare('SELECT 1 AS connected').get();
 
             return {
                 ok: true,

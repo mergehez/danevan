@@ -1,6 +1,7 @@
 import { executeTextCommand } from '@backend/bunSubprocess.ts';
 import { dbTools } from '@backend/db-tools.ts';
 import type { DbType, SqlDiagnosticMarker, SqlDiagnosticsResult } from '@utils/appClient';
+import { execSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -36,7 +37,8 @@ function canResolveCommand(command: string) {
     }
 
     try {
-        return Boolean(Bun.which(command));
+        execSync(process.platform === 'win32' ? `where ${command}` : `which ${command}`, { stdio: 'ignore' });
+        return true;
     } catch {
         return false;
     }
@@ -119,7 +121,7 @@ async function canRunSqlFluff(command: string, argsPrefix: string[]) {
 
     let stdout = '';
     let stderr = '';
-    let exitCode = 1;
+    let exitCode: number | null = 1;
 
     try {
         [stdout, stderr, exitCode] = await executeTextCommand({

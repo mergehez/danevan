@@ -9,7 +9,7 @@ import {
     UpdateScriptParams,
     UpdateServerParams,
 } from '@utils/appClient';
-import { Database } from 'bun:sqlite';
+import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -40,9 +40,7 @@ function applyConnectionPragmas(db: Pick<DatabaseClient, 'exec'>) {
 function createRuntimeDatabaseClient(databasePath: string, options?: { readOnly?: boolean }): DatabaseClient {
     const db = new Database(databasePath, {
         readonly: options?.readOnly === true,
-        create: options?.readOnly !== true,
-        readwrite: options?.readOnly !== true,
-        strict: true,
+        fileMustExist: options?.readOnly === true,
     });
 
     const client: DatabaseClient = {
@@ -50,7 +48,7 @@ function createRuntimeDatabaseClient(databasePath: string, options?: { readOnly?
             db.exec(sql);
         },
         prepare: (sql: string): DatabaseStatement => {
-            const statement = db.query(sql);
+            const statement = db.prepare(sql);
 
             return {
                 run: (...params: SQLInputValue[]) => statement.run(...params),
