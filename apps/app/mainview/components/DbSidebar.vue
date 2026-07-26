@@ -476,7 +476,7 @@ function getMenuItems(): ContextMenuEntry[] {
             label: 'Open settings',
             iconClass: 'icon-[mdi--cog-outline]',
             action: () => {
-                settings.openSettingsWindow('editors');
+                settings.openSettingsWindow('section1');
             },
         },
     ];

@@ -1,6 +1,6 @@
 export type NavigationView = 'servers' | 'query' | 'scripts';
 
-export type SettingsPanel = 'editors';
+export type SettingsPanel = 'section1';
 
 export const dbTypes = ['sqlite', 'mysql', 'postgresql', 'sqlserver', 'msaccess'] as const;
 export const dbTypeLabels: Record<DbType, string> = {
@@ -45,8 +45,6 @@ export type CollectionFilterState = {
 };
 
 export type EditorSettings = {
-    editors: EditorApp[];
-    defaultEditorPath: string | undefined;
     queryRowLimit: number;
     activeView: NavigationView;
     collectionFilter: CollectionFilterState;

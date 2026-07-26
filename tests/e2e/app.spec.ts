@@ -69,7 +69,7 @@ test.describe('Danevan App', () => {
         expect(response.ok()).toBe(true);
 
         const body = await response.json();
-        expect(body).toHaveProperty('editors');
+        expect(body).toHaveProperty('activeView');
         expect(body).toHaveProperty('queryRowLimit');
     });
     test('schema selection button shows correct count', async ({ page }) => {

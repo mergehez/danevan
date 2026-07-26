@@ -1,11 +1,11 @@
 import { tasks } from '@composables/useTasks';
-import type { CollectionFilterState, EditorApp, EditorSettings, SettingsPanel } from '@utils/appClient';
+import type { CollectionFilterState, EditorSettings, SettingsPanel } from '@utils/appClient';
 import { computed, reactive, ref } from 'vue';
 
-function normalizeLabel(path: string, label?: string) {
-    const fallbackLabel = path.split(/[/\\]/).pop() || path;
-    return (label?.trim() || fallbackLabel).replace(/\.app$|\.exe$/i, '');
-}
+// function normalizeLabel(path: string, label?: string) {
+//     const fallbackLabel = path.split(/[/\\]/).pop() || path;
+//     return (label?.trim() || fallbackLabel).replace(/\.app$|\.exe$/i, '');
+// }
 
 function getDefaultCollectionFilter(): CollectionFilterState {
     return {
@@ -23,8 +23,6 @@ function getDefaultCollectionFilter(): CollectionFilterState {
 
 export function _useDbSettings() {
     const state = ref({
-        editors: [],
-        defaultEditorPath: undefined,
         queryRowLimit: 100,
         activeView: 'servers',
         collectionFilter: getDefaultCollectionFilter(),
@@ -33,7 +31,7 @@ export function _useDbSettings() {
     return reactive({
         state: state,
         isSettingsModalOpen: false,
-        selectedSettingsPanel: 'editors' as SettingsPanel,
+        selectedSettingsPanel: 'section1' as SettingsPanel,
         async load() {
             state.value = await tasks.getEditorSettings.run(undefined);
         },
@@ -64,39 +62,6 @@ export function _useDbSettings() {
                 activeView: nextView,
             });
         },
-        async pickEditorApplication() {
-            const editor = await tasks.pickEditorApplication.run(undefined);
-
-            if (!editor) {
-                return undefined;
-            }
-
-            return {
-                path: editor.path,
-                label: normalizeLabel(editor.path, editor.label),
-            } satisfies EditorApp;
-        },
-        async addEditor(editor: EditorApp) {
-            const nextEditors = [
-                ...state.value.editors.filter((entry) => entry.path !== editor.path),
-                {
-                    path: editor.path,
-                    label: normalizeLabel(editor.path, editor.label),
-                },
-            ].sort((left, right) => left.label.localeCompare(right.label));
-
-            await this.update({
-                ...state.value,
-                editors: nextEditors,
-                defaultEditorPath: state.value.defaultEditorPath ?? editor.path,
-            });
-        },
-        async setDefaultEditor(path: string | undefined) {
-            await this.update({
-                ...state.value,
-                defaultEditorPath: path,
-            });
-        },
         async setQueryRowLimit(limit: number) {
             await this.update({
                 ...state.value,
@@ -104,7 +69,7 @@ export function _useDbSettings() {
             });
         },
         openSettingsWindow(panel?: SettingsPanel) {
-            this.selectedSettingsPanel = panel ?? 'editors';
+            this.selectedSettingsPanel = panel ?? 'section1';
             this.isSettingsModalOpen = true;
         },
         closeSettingsWindow() {

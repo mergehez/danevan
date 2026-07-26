@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue';
+import { reactive, ref } from 'vue';
 
 const zIndStack: number[] = [];
 const defaultZIndex = 1000;
@@ -48,11 +48,8 @@ export function _useOverlaysState() {
     }
 
     return reactive({
-        zIndex: computed(() => zInd.value),
         claimZIndex: claimZIndex,
         releaseZIndex: releaseZIndex,
-        increaseZIndex: increaseZIndex,
-        decreaseZIndex: decreaseZIndex,
         toggleZIndex: toggleZIndex,
     });
 }

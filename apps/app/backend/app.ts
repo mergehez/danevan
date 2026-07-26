@@ -243,8 +243,6 @@ function normalizeTestConnectionPayload(params: AppTestConnectionParams) {
 }
 
 const defaultEditorSettings: EditorSettings = {
-    editors: [],
-    defaultEditorPath: undefined,
     queryRowLimit: 100,
     activeView: 'servers',
     collectionFilter: {
@@ -329,26 +327,12 @@ function normalizeEditorSettings(value: unknown): EditorSettings {
     }
 
     const raw = value as {
-        editors?: Array<{ path?: string; label?: string }>;
-        defaultEditorPath?: string | undefined;
         queryRowLimit?: number;
         activeView?: NavigationView;
         collectionFilter?: CollectionFilterState;
     };
 
-    const editors = (raw.editors ?? [])
-        .filter((editor): editor is { path: string; label?: string } => typeof editor?.path === 'string' && editor.path.trim().length > 0)
-        .map((editor) => ({
-            path: editor.path,
-            label: editor.label?.trim() || editor.path.split('/').pop() || editor.path,
-        }))
-        .filter((editor, index, collection) => collection.findIndex((candidate) => candidate.path === editor.path) === index);
-
-    const defaultEditorPath = typeof raw.defaultEditorPath === 'string' && editors.some((editor) => editor.path === raw.defaultEditorPath) ? raw.defaultEditorPath : undefined;
-
     return {
-        editors,
-        defaultEditorPath,
         queryRowLimit:
             typeof raw.queryRowLimit === 'number' && Number.isFinite(raw.queryRowLimit) ? (raw.queryRowLimit < 0 ? -1 : Math.min(1000, Math.round(raw.queryRowLimit))) : 100,
         activeView: raw.activeView === 'query' || raw.activeView === 'scripts' ? raw.activeView : 'servers',
@@ -1090,19 +1074,5 @@ export const app = {
         }
 
         return server.file_path;
-    },
-    openResolvedPathInEditor: (ps: { path: string; editorPath?: string }) => {
-        if (!existsSync(ps.path)) {
-            throw new Error('The selected path no longer exists on disk.');
-        }
-
-        if (ps.editorPath && !existsSync(ps.editorPath)) {
-            throw new Error('The selected editor no longer exists on disk.');
-        }
-
-        return {
-            path: ps.path,
-            editorPath: ps.editorPath,
-        };
     },
 };
