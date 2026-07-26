@@ -767,6 +767,40 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         });
     }
 
+    /** Detect column types that store date/time values. */
+    function isDateTimeColumn(columnType: string | undefined): boolean {
+        if (!columnType) return false;
+        const normalized = columnType.trim().toLowerCase();
+        return (
+            normalized.startsWith('date') || normalized.startsWith('time') || normalized === 'timestamp' || normalized.startsWith('timestamp(') || normalized.includes('datetime')
+        );
+    }
+
+    function escapeSqlStringLiteral(value: string) {
+        return value.replaceAll("'", "''");
+    }
+
+    /**
+     * Format an SQL value with awareness of the column type.
+     * For datetime columns, ISO strings (e.g. "2026-07-21T14:04:58.000Z")
+     * are converted to a format the database understands.
+     */
+    function formatSqlValue(value: unknown, columnType: string | undefined, _sqlDialect: string): string {
+        if (value == null) return 'NULL';
+
+        // For datetime columns, convert ISO strings to DB-friendly format.
+        if (isDateTimeColumn(columnType) && typeof value === 'string') {
+            // Replace 'T' with space and strip trailing 'Z' or timezone offset.
+            const cleaned = value
+                .replace('T', ' ')
+                .replace(/\s*Z$/i, '')
+                .replace(/([+-]\d{2}:\d{2})$/, '');
+            return `'${escapeSqlStringLiteral(cleaned)}'`;
+        }
+
+        return formatValue(value as SqlValue, { mode: 'sql', binaryMode: 'hex' });
+    }
+
     function buildInsertStatement(rowIndex: number) {
         const currentTableName = tableName.value;
         const row = gridState.getRow(rowIndex);
@@ -786,14 +820,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         }
 
         const columnSql = insertableColumns.map((column) => quoteSqlIdentifier(column.name, sqlDialect.value)).join(', ');
-        const valueSql = insertableColumns
-            .map((column) =>
-                formatValue(getDisplayedCellValue(rowIndex, column.name), {
-                    mode: 'sql',
-                    binaryMode: 'hex',
-                })
-            )
-            .join(', ');
+        const valueSql = insertableColumns.map((column) => formatSqlValue(getDisplayedCellValue(rowIndex, column.name), column.type, sqlDialect.value)).join(', ');
 
         return `INSERT INTO ${tableIdentifier} (${columnSql}) VALUES (${valueSql});`;
     }
@@ -921,11 +948,15 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             return undefined;
         }
 
+        const pkColumnMap = new Map(tableColumns.value.map((col) => [col.name, col]));
+
         return primaryKeyColumns.value
             .map((columnName) => {
                 const value = row[columnName] ?? null;
                 const identifier = quoteSqlIdentifier(columnName, sqlDialect.value);
-                return value == null ? `${identifier} IS NULL` : `${identifier} = ${formatValue(value, { mode: 'sql', binaryMode: 'hex' })}`;
+                if (value == null) return `${identifier} IS NULL`;
+                const col = pkColumnMap.get(columnName);
+                return `${identifier} = ${formatSqlValue(value, col?.type, sqlDialect.value)}`;
             })
             .join(' AND ');
     }
