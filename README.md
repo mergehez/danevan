@@ -46,12 +46,12 @@ Other environments may work for development, and parts of the backend already in
 
 ## Repository Layout
 
-- `apps/app/electrobun`: Electrobun entrypoint, window setup, menu wiring, and RPC handlers.
-- `apps/app/backend`: database drivers, schema/query logic, app metadata storage, SQL diagnostics, and secure credential helpers.
-- `apps/app/mainview`: Vue renderer, composables, styles, and UI components.
-- `packages/shared`: shared UI primitives and frontend utilities.
-- `packages/datagrid`: reusable datagrid used for query results and table data.
-- `packages/directives`: shared Vue directives and overlay helpers.
+- `src/electrobun`: Electrobun entrypoint, window setup, menu wiring, and RPC handlers.
+- `src/backend`: database drivers, schema/query logic, app metadata storage, SQL diagnostics, and secure credential helpers.
+- `src/mainview`: Vue renderer, composables, styles, and UI components.
+- `src/shared`: shared UI primitives and frontend utilities.
+- `src/datagrid`: reusable datagrid used for query results and table data.
+- `src/directives`: shared Vue directives and overlay helpers.
 
 ## Build From Source
 

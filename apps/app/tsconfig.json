@@ -1,5 +1,0 @@
-{
-    "extends": "../../tsconfig.base.json",
-    "include": ["backend", "mainview", "../../electron", "../../shims.d.ts", "../../packages/shared/src", "../../packages/datagrid/src", "../../packages/directives/src"],
-    "exclude": ["node_modules", "dist"]
-}

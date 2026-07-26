@@ -13,11 +13,11 @@
  */
 
 import { execSync } from 'child_process';
-import { rm } from 'fs/promises';
+import { readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 const projectRoot = new URL('..', import.meta.url).pathname;
-const entryPoint = join(projectRoot, 'apps/app/backend/devServer.ts');
+const entryPoint = join(projectRoot, 'src/backend/devServer.ts');
 const outDir = join(projectRoot, process.env.BUILD_API_OUTPUT || 'build/api');
 const outPath = join(outDir, 'danevan-api.exe');
 const target = process.env.BUILD_TARGET || 'bun-windows-x64';
@@ -26,29 +26,26 @@ await rm(outDir, { recursive: true, force: true }).catch(() => {});
 
 // Step 1: Build the Vue frontend
 console.log(`[build-api] Building frontend…`);
-const frontendResult = Bun.spawnSync(['bun', 'run', 'vp', 'build'], {
-    cwd: projectRoot,
-    stdio: ['inherit', 'inherit', 'inherit'],
-});
-
-if (frontendResult.exitCode !== 0) {
-    process.exit(frontendResult.exitCode);
+try {
+    execSync('bun run vp build', { cwd: projectRoot, stdio: 'inherit' });
+} catch {
+    process.exit(1);
 }
 
 // Strip modulepreload links from dist HTML — Bun's route processor leaves them
 // as-is, causing "text/plain" MIME errors when the browser fetches them.
-const distHtmlPath = join(projectRoot, 'apps/app/mainview/dist/index.html');
-const distHtml = Bun.file(distHtmlPath);
-const cleaned = (await distHtml.text()).replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '');
-await Bun.write(distHtmlPath, cleaned);
+const distHtmlPath = join(projectRoot, 'dist/index.html');
+let distHtml = await readFile(distHtmlPath, 'utf-8');
+distHtml = distHtml.replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '');
+await writeFile(distHtmlPath, distHtml, 'utf-8');
 
 // Inject build timestamp into db-app.ts before compiling
-const dbAppPath = join(projectRoot, 'apps/app/backend/db-app.ts');
-const dbAppContent = await Bun.file(dbAppPath).text();
+const dbAppPath = join(projectRoot, 'src/backend/db-app.ts');
+const dbAppContent = await readFile(dbAppPath, 'utf-8');
 const timestamped = dbAppContent.replace(/(console\.log\(`App built at: )[\dT:.-]+Z(`\))/, `$1${new Date().toISOString()}$2`);
 const needsRestore = timestamped !== dbAppContent;
 if (needsRestore) {
-    await Bun.write(dbAppPath, timestamped);
+    await writeFile(dbAppPath, timestamped, 'utf-8');
 }
 
 // Step 2: Compile standalone binary (embeds frontend assets via HTML import)
@@ -57,14 +54,14 @@ console.log(`[build-api]   Entry:  ${entryPoint}`);
 console.log(`[build-api]   Target: ${target}`);
 console.log(`[build-api]   Output: ${outPath}`);
 
-const compileResult = Bun.spawnSync(['bun', 'build', '--compile', '--target', target, '--outfile', outPath, entryPoint], {
-    cwd: projectRoot,
-    stdio: ['inherit', 'inherit', 'inherit'],
-    env: { ...process.env, STANDALONE: 'true', NODE_ENV: process.env.NODE_ENV || 'production' },
-});
-
-if (compileResult.exitCode !== 0) {
-    process.exit(compileResult.exitCode);
+try {
+    execSync(`bun build --compile --target ${target} --outfile ${outPath} ${entryPoint}`, {
+        cwd: projectRoot,
+        stdio: 'inherit',
+        env: { ...process.env, STANDALONE: 'true', NODE_ENV: process.env.NODE_ENV || 'production' },
+    });
+} catch {
+    process.exit(1);
 }
 
 console.log(`[build-api] Done: ${outPath}`);

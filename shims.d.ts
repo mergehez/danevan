@@ -1,4 +1,4 @@
-/// <reference types="vite-plus/client" />
+/// <reference types="vite/client" />
 
 declare module '*.vue' {
     import type { DefineComponent } from 'vue';
@@ -8,9 +8,9 @@ declare module '*.vue' {
 }
 
 interface Window {
-    appClient?: import('./electron/preload.ts').ElectronAPI;
+    appClient?: import('./src/electron/preload.ts').ElectronAPI;
 }
 
 interface Element {
-    openContextMenu?: import('./packages/directives/src/VContextMenu').ContextMenuHostElement['openContextMenu'];
+    openContextMenu?: import('./src/directives/VContextMenu').ContextMenuHostElement['openContextMenu'];
 }

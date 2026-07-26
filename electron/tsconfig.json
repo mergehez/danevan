@@ -1,5 +1,0 @@
-{
-    "extends": "../tsconfig.base.json",
-    "include": [".", "../apps/app/backend", "../shims.d.ts", "../packages/shared/src"],
-    "exclude": ["node_modules", "dist"]
-}

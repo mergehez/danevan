@@ -1,82 +1,54 @@
+/// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
+import { existsSync } from 'fs';
 import { resolve } from 'path';
-import { defineConfig } from 'vite-plus';
+import { defineConfig } from 'vite';
+import electronApiMethods from './vite-export-api-methods.ts';
 
 export default defineConfig({
-    staged: {
-        '*': 'vp check --fix',
-    },
-
-    plugins: [vue(), tailwindcss()],
-    base: './',
-    root: 'apps/app/mainview',
-    resolve: {
-        // tsconfigPaths: true,
-        alias: {
-            // "@directives/*": ["./packages/directives/src/*"],
-            // "@directives": ["./packages/directives/src/index"],
-            // "@shared/*": ["./packages/shared/src/*"],
-            // "@ui/*": ["./packages/shared/src/components/*"],
-            // "@utils/*": ["./packages/shared/src/utils/*"],
-            // "@datagrid/*": ["./packages/datagrid/src/*"],
-            // "@datagrid": ["./packages/datagrid/src/index"],
-            // "@backend/*": ["./apps/app/backend/*"],
-            // "@electron/*": ["./electron/*"],
-            // "@electron": ["./electron/index"],
-            // "@backend/*": ["./apps/app/backend/*"],
-            // "@electrobun/*": ["./apps/app/electrobun/*"],  // removed — migrated to electron
-            // "@lib/*": ["./apps/app/mainview/lib/*"],
-            // "@composables/*": ["./apps/app/mainview/composables/*"],
-            // "@components/*": ["./apps/app/mainview/components/*"]
-            // replacement: resolve(__dirname, './src/server/')
-
-            '@directives': resolve(__dirname, './packages/directives/src'),
-            '@shared': resolve(__dirname, './packages/shared/src'),
-            '@ui': resolve(__dirname, './packages/shared/src/components'),
-            '@utils': resolve(__dirname, './packages/shared/src/utils'),
-            '@datagrid': resolve(__dirname, './packages/datagrid/src'),
-            '@backend': resolve(__dirname, './apps/app/backend'),
-            '@electron': resolve(__dirname, './electron'),
-            '@lib': resolve(__dirname, './apps/app/mainview/lib'),
-            '@composables': resolve(__dirname, './apps/app/mainview/composables'),
-            '@components': resolve(__dirname, './apps/app/mainview/components'),
-        },
-    },
-    fmt: {
-        semi: true,
-        singleQuote: true,
-        printWidth: 180,
-        trailingComma: 'es5',
-        tabWidth: 4,
-        singleAttributePerLine: false,
-        experimentalSortPackageJson: false,
-        ignorePatterns: ['builder.html', 'assets/*'],
-    },
-    lint: {
-        plugins: ['eslint', 'typescript', 'unicorn', 'oxc', 'vue', 'promise', 'node'],
-        jsPlugins: [{ name: 'import-js', specifier: 'eslint-plugin-import' }],
-        settings: {
-            'import/resolver': {
-                typescript: true,
-                node: {
-                    extensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.d.ts', '.vue'],
-                },
+    plugins: [
+        vue(),
+        tailwindcss(),
+        electronApiMethods,
+        // Resolve monaco-editor deep imports that Rolldown can't resolve
+        // due to the package's restrictive exports map.
+        {
+            name: 'monaco-resolve',
+            resolveId(source) {
+                const prefix = 'monaco-editor/esm/vs/';
+                if (source.startsWith(prefix)) {
+                    const filePath = resolve(__dirname, 'node_modules/monaco-editor/esm/vs/', source.slice(prefix.length));
+                    const withExt = filePath.endsWith('.js') ? filePath : filePath + '.js';
+                    if (existsSync(withExt)) {
+                        return withExt;
+                    }
+                }
+                return null;
             },
         },
-        rules: {
-            'import-js/no-unresolved': ['error', { ignore: ['^bun:'] }],
-            'no-floating-promises': 'allow',
-            'no-unused-vars': 'off',
-            'no-empty-file': 'off',
-        },
-        options: {
-            typeCheck: true,
-            typeAware: true,
+    ],
+    base: './',
+    root: 'src/mainview',
+    worker: {
+        format: 'es',
+    },
+    resolve: {
+        tsconfigPaths: true,
+        alias: {
+            '@directives': resolve(__dirname, './src/directives'),
+            '@shared': resolve(__dirname, './src/shared'),
+            '@ui': resolve(__dirname, './src/shared/components'),
+            '@utils': resolve(__dirname, './src/shared/utils'),
+            '@datagrid': resolve(__dirname, './src/datagrid'),
+            '@backend': resolve(__dirname, './src/backend'),
+            '@electron': resolve(__dirname, './src/electron'),
+            '@lib': resolve(__dirname, './src/mainview/lib'),
         },
     },
-    run: {
-        cache: false,
+    build: {
+        outDir: '../../dist',
+        emptyOutDir: true,
     },
     server: {
         host: '127.0.0.1',
@@ -88,15 +60,12 @@ export default defineConfig({
                 changeOrigin: true,
             },
         },
-        watch: {
-            // ignored: ['**/sandbox/**'],
-        },
     },
     test: {
         environment: 'node',
         globals: true,
-        include: ['../../../tests/**/*.spec.ts'],
-        exclude: ['../../../tests/e2e/**'],
-        setupFiles: ['../../../tests/setup.ts'],
+        include: ['**/*.spec.ts'],
+        exclude: ['**/e2e/**', '**/playwright/**'],
+        setupFiles: ['./tests/setup.ts'],
     },
 });

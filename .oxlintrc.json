@@ -1,7 +1,6 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "plugins": ["eslint", "typescript", "unicorn", "oxc", "vue", "promise", "node"],
-    "jsPlugins": [{ "name": "import-js", "specifier": "eslint-plugin-import" }],
+    "plugins": ["typescript", "unicorn", "oxc", "vue", "promise", "node", "import"],
     "settings": {
         "import/resolver": {
             "typescript": true,
@@ -11,7 +10,6 @@
         }
     },
     "rules": {
-        "import-js/no-unresolved": ["error", { "ignore": ["^bun:"] }],
         "no-floating-promises": "allow",
         "no-unused-vars": "off",
         "no-empty-file": "off",

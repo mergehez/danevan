@@ -3,92 +3,68 @@
     "version": "0.1.0",
     "private": true,
     "description": "Danevan desktop database client with Vue and Vite. Supports MySQL, PostgreSQL, SQLite, SQL Server, and MS Access.",
-    "homepage": "https://github.com/mergehez/danevan#readme",
-    "bugs": {
-        "url": "https://github.com/mergehez/danevan/issues"
-    },
     "license": "MIT",
     "author": {
-        "name": "Mergesoft",
-        "email": "argesozdogan@gmail.com"
+        "name": "Mergesoft"
     },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/mergehez/danevan.git"
-    },
-    "workspaces": [
-        "packages/*",
-        "apps/*"
-    ],
     "type": "module",
-    "main": "electron/main.ts",
+    "main": "src/electron/main.ts",
     "scripts": {
-        "build": "vp build && electron-builder",
-        "ready": "vp check && vp run -r test && vp run build",
-        "prepare": "vp config",
-        "lint": "vp check --fix && vue-tsc --noEmit",
+        "build": "vite build && electron-builder",
+        "lint": "oxfmt && oxlint --fix && vue-tsc --noEmit",
+        "dev": "concurrently -k \"node --import tsx --watch src/backend/devServer.ts\" \"sleep 2 && VITE_DEV2=true vite dev --port 3263\"",
+        "dev:electron": "vite build && lsof -ti:3263 | xargs kill -9 2>/dev/null; concurrently -k \"vite dev --port 3263\" \"NODE_OPTIONS='--import tsx' electron .\"",
+        "electron:dev": "NODE_ENV=development NODE_OPTIONS='--import tsx' electron .",
         "build:api": "bun run ./scripts/build-api.ts",
-        "bundle:msaccess-runtime": "bun run ./scripts/vendor-msaccess-runtime.ts",
+        "build:electron": "electron-builder",
         "test:ui": "vitest run",
         "test:e2e": "playwright test",
-        "test:msaccess": "bun msaccess-test.ts",
-        "test:remote": "bun run ./scripts/test-remote-db.ts",
-        "release:audit": "bash ./scripts/release-audit.sh",
-        "release:validate": "vitest run && vp run build",
-        "release:mac": "bun run ./scripts/build.ts",
-        "release:mac:signed": "bun run ./scripts/build.ts --signed",
-        "release:mac:notarize": "bun run ./scripts/build.ts --notarize",
-        "dev": "lsof -ti:3263 | xargs kill -9 2>/dev/null; lsof -ti:3264 | xargs kill -9 2>/dev/null; concurrently -k \"node --import tsx --watch apps/app/backend/devServer.ts\" \"sleep 2 && VITE_DEV2=true vp dev --port 3263\"",
-        "dev:electron": "vp build && lsof -ti:3263 | xargs kill -9 2>/dev/null; concurrently -k \"vp dev --port 3263\" \"NODE_OPTIONS='--import tsx' electron .\"",
-        "electron:dev": "NODE_ENV=development NODE_OPTIONS='--import tsx' electron .",
-        "build:electron": "electron-builder",
-        "build:canary": "electron-builder --config electron-builder.canary.json",
-        "build:stable": "electron-builder --config electron-builder.stable.json"
+        "release:audit": "bash ./scripts/release-audit.sh"
     },
     "dependencies": {
+        "@guolao/vue-monaco-editor": "^1.6.0",
+        "better-sqlite3": "^13.0.1",
         "express": "^5.2.1",
+        "monaco-editor": "^0.56.0",
+        "monaco-sql-languages": "^1.2.0",
+        "mssql": "^12.7.0",
+        "mysql2": "^3.23.1",
+        "pg": "^8.22.0",
+        "reflect-metadata": "^0.2.2",
         "tailwind-merge": "^3.6.0",
-        "vue": "^3.5.33"
+        "typeorm": "^1.1.0",
+        "vue": "^3.5.40"
     },
     "devDependencies": {
-        "@mergehez/barke": "^0.1.1",
-        "@playwright/test": "^1.61.1",
-        "@tailwindcss/vite": "^4.2.4",
+        "@fontsource/jetbrains-mono": "^5.3.0",
+        "@fontsource/roboto": "^5.3.0",
+        "@fontsource/roboto-condensed": "^5.3.0",
+        "@iconify/json": "^2.2.506",
+        "@iconify/tailwind4": "^1.2.3",
+        "@playwright/test": "^1.62.0",
+        "@tailwindcss/vite": "^4.3.3",
         "@types/better-sqlite3": "^7.6.13",
-        "@types/bun": "^1.3.14",
         "@types/express": "^5.0.6",
+        "@types/mssql": "^12.3.0",
         "@types/node": "^26.1.1",
-        "@types/three": "^0.185.1",
-        "@vitejs/plugin-vue": "^6.0.6",
+        "@vitejs/plugin-vue": "^6.0.8",
         "@vue/test-utils": "^2.4.11",
-        "better-sqlite3": "^13.0.1",
         "concurrently": "^9.2.4",
+        "dt-sql-parser": "^4.5.0",
         "electron": "^43.2.0",
-        "eslint-import-resolver-typescript": "^4.4.5",
-        "eslint-plugin-import": "^2.32.0",
         "jsdom": "^29.1.1",
-        "oxfmt": "^0.59.0",
-        "oxlint": "^1.74.0",
-        "oxlint-tsgolint": "^0.25.0",
-        "tailwindcss": "^4.2.4",
+        "oxfmt": "^0.60.0",
+        "oxlint": "^1.75.0",
+        "oxlint-tsgolint": "^7.0.2001",
+        "tailwindcss": "^4.3.3",
         "tsx": "^4.23.1",
-        "typescript": "^6.0.3",
-        "vite-plus": "catalog:",
-        "vitest": "catalog:",
-        "vue-tsc": "^3.2.7"
-    },
-    "overrides": {
-        "vite": "catalog:",
-        "vitest": "catalog:"
+        "typescript": "^7.0.2",
+        "vite": "^8.1.5",
+        "vitest": "^4.1.10",
+        "vue-tsc": "^3.3.8"
     },
     "engines": {
-        "node": ">=22.12.0"
-    },
-    "packageManager": "bun@1.3.13",
-    "catalog": {
-        "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-        "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
-        "vite-plus": "latest"
+        "node": ">=22.13.0"
     },
     "productName": "Danevan"
 }

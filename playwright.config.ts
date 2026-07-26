@@ -17,7 +17,7 @@ export default defineConfig({
     },
     webServer: [
         {
-            command: `bun run apps/app/backend/devServer.ts`,
+            command: `bun run src/backend/devServer.ts`,
             port: BACKEND_PORT,
             reuseExistingServer: !process.env.CI,
             cwd: process.cwd(),

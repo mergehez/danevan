@@ -1,5 +1,4 @@
-/// <reference types="bun" />
-
+import { spawn } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -81,15 +80,16 @@ function combineEnv() {
 }
 
 async function runCommand(command: string, args: string[], env: NodeJS.ProcessEnv = process.env, cwd = projectRoot) {
-    const processHandle = Bun.spawn([command, ...args], {
-        cwd,
-        env,
-        stdin: 'inherit',
-        stdout: 'inherit',
-        stderr: 'inherit',
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+        const child = spawn(command, args, {
+            cwd,
+            env,
+            stdio: 'inherit',
+        });
+        child.on('close', resolve);
+        child.on('error', reject);
     });
 
-    const exitCode = await processHandle.exited;
     if (exitCode !== 0) {
         throw new Error(`${command} ${args.join(' ')} exited with code ${exitCode}.`);
     }
@@ -219,7 +219,7 @@ async function ensureMacIconset() {
             await runCommand('/usr/bin/sips', ['-z', String(size), String(size), previewPath, '--out', join(tempIconsetDir, fileName)]);
         }
 
-        await Bun.write(join(tempIconsetDir, 'icon_512x512@2x.png'), Bun.file(previewPath));
+        await cp(previewPath, join(tempIconsetDir, 'icon_512x512@2x.png'));
 
         if (await pathExists(iconsetDir)) {
             await rm(iconsetDir, { recursive: true, force: true });
