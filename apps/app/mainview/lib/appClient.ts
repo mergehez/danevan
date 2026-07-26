@@ -1,10 +1,12 @@
-import type { AppRequestApi, AppRequestMap } from '@electrobun/index';
+import type { AppRequestApi } from '@electron/bridge.ts';
 
-const request = new Proxy({} as AppRequestApi, {
+export type AppApi = AppRequestApi;
+
+const request = new Proxy({} as AppApi, {
     get(_target, propertyKey) {
-        return (params?: unknown) => window.appClient.invoke(propertyKey as keyof AppRequestMap, params as AppRequestMap[keyof AppRequestMap]['params']);
+        return (params?: unknown) => window.appClient!.invoke(propertyKey as any, params);
     },
-}) as AppRequestApi;
+}) as AppApi;
 
 export const appClientRpc = {
     request,

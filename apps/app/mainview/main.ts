@@ -4,35 +4,29 @@ import { vContextMenu } from '@directives/VContextMenu';
 import { vError } from '@directives/VError';
 import { vLoading } from '@directives/VLoading';
 import { vTooltip } from '@directives/VTooltip';
-import '@fontsource/jetbrains-mono/400.css';
-import '@fontsource/jetbrains-mono/500.css';
-import '@fontsource/roboto-condensed/400.css';
-import '@fontsource/roboto-condensed/500.css';
-import '@fontsource/roboto/400.css';
-import '@fontsource/roboto/500.css';
-import { ensureAppClientBridge } from '@lib/installAppClientBridge';
+import { installRendererDiagnostics } from '@lib/installRendererDiagnostics';
 import { createApp } from 'vue';
 import App from './App.vue';
 import './css/app.css';
 import './css/scrollbar.css';
 
-const isDev2 = import.meta.env.VITE_DEV2 === 'true' || !(window as any).__electrobunWebviewId;
+installRendererDiagnostics();
+
+const isDev2 = import.meta.env.VITE_DEV2 === 'true';
 
 if (isDev2) {
     const { installDev2AppClientBridge } = await import('@lib/appClientDev2');
     installDev2AppClientBridge();
 }
 
-void (isDev2 ? Promise.resolve() : ensureAppClientBridge()).then(() => {
-    const app = createApp(App);
+const app = createApp(App);
 
-    app.directive('loading', vLoading);
-    app.directive('tooltip', vTooltip);
-    app.directive('context-menu', vContextMenu);
-    app.directive('menu', vContextMenu);
-    app.directive('error', vError);
+app.directive('loading', vLoading);
+app.directive('tooltip', vTooltip);
+app.directive('context-menu', vContextMenu);
+app.directive('menu', vContextMenu);
+app.directive('error', vError);
 
-    initTasks();
+initTasks();
 
-    app.mount('#app');
-});
+app.mount('#app');

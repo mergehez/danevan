@@ -1,5 +1,5 @@
-import type { ConnectionRecord, ServerRecord, TableData, TableInfo, TableSummary, TestConnectionResult } from '@utils/appClient';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ConnectionRecord, ServerRecord, TableData, TableInfo, TableSummary, TestConnectionResult } from '../../packages/shared/src/utils/appClient';
 
 function createTableInfo(name: string, overrides: Partial<TableInfo> = {}): TableInfo {
     return {
@@ -196,7 +196,7 @@ vi.mock('@backend/useSqlServerDriver', () => ({
     useSqlServerDriverTools: vi.fn(() => testHarness.driverToolsByType.sqlserver),
 }));
 
-const { dbTools } = await import('@backend/db-tools');
+const { dbTools } = await import('../../apps/app/backend/db-tools');
 
 function seedServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
     const server: ServerRecord = {

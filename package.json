@@ -21,8 +21,9 @@
         "apps/*"
     ],
     "type": "module",
+    "main": "electron/main.ts",
     "scripts": {
-        "build": "vp build && electrobun build",
+        "build": "vp build && electron-builder",
         "ready": "vp check && vp run -r test && vp run build",
         "prepare": "vp config",
         "lint": "vp check --fix && vue-tsc --noEmit",
@@ -37,13 +38,14 @@
         "release:mac": "bun run ./scripts/build.ts",
         "release:mac:signed": "bun run ./scripts/build.ts --signed",
         "release:mac:notarize": "bun run ./scripts/build.ts --notarize",
-        "dev": "bun --watch run apps/app/backend/devServer.ts & sleep 2 && VITE_DEV2=true vp dev --port 3263",
-        "dev:app": "vp build && concurrently \"vp dev --port 3263\" \"electrobun dev --watch\"",
-        "build:canary": "electrobun build --env=canary",
-        "build:stable": "electrobun build --env=stable"
+        "dev": "lsof -ti:3263 | xargs kill -9 2>/dev/null; lsof -ti:3264 | xargs kill -9 2>/dev/null; concurrently -k \"node --import tsx --watch apps/app/backend/devServer.ts\" \"sleep 2 && VITE_DEV2=true vp dev --port 3263\"",
+        "dev:electron": "vp build && lsof -ti:3263 | xargs kill -9 2>/dev/null; concurrently -k \"vp dev --port 3263\" \"NODE_OPTIONS='--import tsx' electron .\"",
+        "electron:dev": "NODE_ENV=development NODE_OPTIONS='--import tsx' electron .",
+        "build:electron": "electron-builder",
+        "build:canary": "electron-builder --config electron-builder.canary.json",
+        "build:stable": "electron-builder --config electron-builder.stable.json"
     },
     "dependencies": {
-        "electrobun": "^1.18.1",
         "express": "^5.2.1",
         "tailwind-merge": "^3.6.0",
         "vue": "^3.5.33"
@@ -69,6 +71,7 @@
         "oxlint": "^1.74.0",
         "oxlint-tsgolint": "^0.25.0",
         "tailwindcss": "^4.2.4",
+        "tsx": "^4.23.1",
         "typescript": "^6.0.3",
         "vite-plus": "catalog:",
         "vitest": "catalog:",

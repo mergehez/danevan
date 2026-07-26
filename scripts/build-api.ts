@@ -2,7 +2,7 @@
  * Build script for a standalone binary that serves both the frontend and API.
  *
  * 1. Builds the Vue frontend (vp build)
- * 2. Cross-compiles standaloneServer.ts into a single .exe with all assets embedded
+ * 2. Cross-compiles devServer.ts (with STANDALONE=true) into a single .exe
  *
  * The resulting binary needs nothing else — no IIS, no node_modules, just run it.
  *
@@ -17,7 +17,7 @@ import { rm } from 'fs/promises';
 import { join } from 'path';
 
 const projectRoot = new URL('..', import.meta.url).pathname;
-const entryPoint = join(projectRoot, 'apps/app/backend/standaloneServer.ts');
+const entryPoint = join(projectRoot, 'apps/app/backend/devServer.ts');
 const outDir = join(projectRoot, process.env.BUILD_API_OUTPUT || 'build/api');
 const outPath = join(outDir, 'danevan-api.exe');
 const target = process.env.BUILD_TARGET || 'bun-windows-x64';
@@ -60,7 +60,7 @@ console.log(`[build-api]   Output: ${outPath}`);
 const compileResult = Bun.spawnSync(['bun', 'build', '--compile', '--target', target, '--outfile', outPath, entryPoint], {
     cwd: projectRoot,
     stdio: ['inherit', 'inherit', 'inherit'],
-    env: { ...process.env, NODE_ENV: process.env.NODE_ENV || 'production' },
+    env: { ...process.env, STANDALONE: 'true', NODE_ENV: process.env.NODE_ENV || 'production' },
 });
 
 if (compileResult.exitCode !== 0) {

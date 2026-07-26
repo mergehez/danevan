@@ -1,7 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
-import { defineConfig } from 'vite-plus';
 import { resolve } from 'path';
+import { defineConfig } from 'vite-plus';
 
 export default defineConfig({
     staged: {
@@ -22,8 +22,10 @@ export default defineConfig({
             // "@datagrid/*": ["./packages/datagrid/src/*"],
             // "@datagrid": ["./packages/datagrid/src/index"],
             // "@backend/*": ["./apps/app/backend/*"],
-            // "@electrobun/*": ["./apps/app/electrobun/*"],
-            // "@electrobun": ["./apps/app/electrobun/index"],
+            // "@electron/*": ["./electron/*"],
+            // "@electron": ["./electron/index"],
+            // "@backend/*": ["./apps/app/backend/*"],
+            // "@electrobun/*": ["./apps/app/electrobun/*"],  // removed — migrated to electron
             // "@lib/*": ["./apps/app/mainview/lib/*"],
             // "@composables/*": ["./apps/app/mainview/composables/*"],
             // "@components/*": ["./apps/app/mainview/components/*"]
@@ -35,7 +37,7 @@ export default defineConfig({
             '@utils': resolve(__dirname, './packages/shared/src/utils'),
             '@datagrid': resolve(__dirname, './packages/datagrid/src'),
             '@backend': resolve(__dirname, './apps/app/backend'),
-            '@electrobun': resolve(__dirname, './apps/app/electrobun'),
+            '@electron': resolve(__dirname, './electron'),
             '@lib': resolve(__dirname, './apps/app/mainview/lib'),
             '@composables': resolve(__dirname, './apps/app/mainview/composables'),
             '@components': resolve(__dirname, './apps/app/mainview/components'),

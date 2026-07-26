@@ -5,7 +5,7 @@
         "packages/datagrid/src",
         "packages/directives",
         "apps/app/src/backend",
-        "apps/app/electrobun",
+        "electron",
         "apps/app/mainview",
         // "tests",
         "scripts",

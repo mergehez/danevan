@@ -27,8 +27,8 @@
             "@datagrid/*": ["./packages/datagrid/src/*"],
             "@datagrid": ["./packages/datagrid/src/index"],
             "@backend/*": ["./apps/app/backend/*"],
-            "@electrobun/*": ["./apps/app/electrobun/*"],
-            "@electrobun": ["./apps/app/electrobun/index"],
+            "@electron/*": ["./electron/*"],
+            "@electron": ["./electron/index"],
             "@lib/*": ["./apps/app/mainview/lib/*"],
             "@composables/*": ["./apps/app/mainview/composables/*"],
             "@components/*": ["./apps/app/mainview/components/*"]

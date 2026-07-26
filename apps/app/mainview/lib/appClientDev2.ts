@@ -1,6 +1,5 @@
 /**
- * Browser-only dev mode adapter that replaces the Electrobun RPC bridge
- * with fetch() calls to the backend HTTP server.
+ * Browser-only dev mode adapter that uses HTTP fetch() to the backend server.
  *
  * Activated when VITE_DEV2=true.
  */
@@ -55,7 +54,7 @@ export async function invoke(method: string, params?: unknown): Promise<any> {
     }
 }
 
-// Minimal stub of the Electrobun bridge shape
+// Minimal stub of the Electron bridge shape
 const dev2Bridge = {
     invoke,
     onNativeCommand: () => () => {},

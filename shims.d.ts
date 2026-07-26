@@ -8,7 +8,7 @@ declare module '*.vue' {
 }
 
 interface Window {
-    appClient: import('./apps/app/electrobun/index.ts').AppBridge<import('./apps/app/electrobun/index.ts').AppRequestMap>;
+    appClient?: import('./electron/preload.ts').ElectronAPI;
 }
 
 interface Element {

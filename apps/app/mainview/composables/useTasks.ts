@@ -1,7 +1,7 @@
+import type { AppApi as Api } from '@lib/appClient.ts';
+import { appClientRpc } from '@lib/appClient.ts';
 import { apiMethods } from '@utils/apiMethods';
 import { reactive, ref } from 'vue';
-import type { AppRequestApi as Api } from '@electrobun/index.ts';
-import { appClientRpc } from '@lib/appClient.ts';
 
 const runningOperations = reactive({} as Record<string, number | undefined>); // key => timestamp
 const errors = reactive({} as Record<string, string | undefined>);
