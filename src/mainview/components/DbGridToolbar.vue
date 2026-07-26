@@ -18,6 +18,7 @@ const props = defineProps<{
     pageSizeMenuOptions?: { value: number; label: string; isDefault: boolean }[];
     selectedDataLimit?: number;
     onSelectPageSize?: (limit: number) => void;
+    disabled?: boolean;
     onAddRow?: () => void;
     onReload?: () => void;
 }>();
@@ -97,6 +98,10 @@ watch(isPageSizeMenuOpen, () => {
         <!-- Title -->
         <h2 class="shrink-0 text-sm font-semibold text-reverse">
             {{ title }}
+        </h2>
+
+        <!-- Custom controls — hidden when custom query is active -->
+        <template v-if="!disabled">
             <span class="relative" ref="columnButtonElement">
                 <button type="button" class="border border-x7 bg-x2 px-1 rounded-md text-2xs opacity-60 hover:opacity-100 transition" @click="toggleColumnMenu">
                     {{ visibleColumnCount }} of {{ totalColumnCount }} columns
@@ -114,77 +119,81 @@ watch(isPageSizeMenuOpen, () => {
                     </label>
                 </div>
             </span>
-        </h2>
 
-        <!-- Page navigation -->
-        <div v-if="showPageNav" class="relative flex items-center text-2xs text-white">
-            <IconButton
-                icon="icon-[mdi--chevron-left]"
-                v-tooltip.xs.nowrap="'Previous page'"
-                severity="secondary"
-                small
-                :disabled="!canGoToPreviousPage"
-                @click="onGoToPreviousPage?.()"
-                class="rounded-r-none"
-            />
-            <div class="relative">
-                <button
-                    ref="pageSizeButtonElement"
-                    type="button"
-                    class="inline-flex h-7 items-center gap-1 border border-x4 bg-x2 px-2 text-2xs opacity-80 transition hover:bg-x3 hover:opacity-100"
-                    :disabled="isLoading"
-                    @click="togglePageSizeMenu"
-                >
-                    <span>{{ pageRangeStart }}-{{ pageRangeEnd }}</span>
-                    <span class="opacity-60">of {{ totalRowCount }}</span>
-                    <span class="iconify icon-[mdi--chevron-down] h-3.5 w-3.5 opacity-70"></span>
-                </button>
-                <div v-if="isPageSizeMenuOpen" ref="pageSizeMenuElement" class="absolute left-0 right-0 top-full z-20 border-y border-x4 bg-x1 py-1">
-                    <div class="px-3 py-1 text-2xs opacity-60">Page Size</div>
+            <!-- Page navigation -->
+            <div v-if="showPageNav" class="relative flex items-center text-2xs text-white">
+                <IconButton
+                    icon="icon-[mdi--chevron-left]"
+                    v-tooltip.xs.nowrap="'Previous page'"
+                    severity="secondary"
+                    small
+                    :disabled="!canGoToPreviousPage"
+                    @click="onGoToPreviousPage?.()"
+                    class="rounded-r-none"
+                />
+                <div class="relative">
                     <button
-                        v-for="option in pageSizeMenuOptions ?? []"
-                        :key="option.value"
+                        ref="pageSizeButtonElement"
                         type="button"
-                        class="flex w-full items-center justify-between gap-3 px-3.5 py-1 text-left text-xs transition hover:bg-white/8"
-                        @click="
-                            onSelectPageSize?.(option.value);
-                            closePageSizeMenu();
-                        "
+                        class="inline-flex h-7 items-center gap-1 border border-x4 bg-x2 px-2 text-2xs opacity-80 transition hover:bg-x3 hover:opacity-100"
+                        :disabled="isLoading"
+                        @click="togglePageSizeMenu"
                     >
-                        <span class="inline-flex min-w-0 items-center gap-2">
-                            <span>{{ option.label }}</span>
-                            <span class="h-4 w-4 text-center text-xs opacity-80">{{ selectedDataLimit === option.value ? '✓' : '' }}</span>
-                        </span>
+                        <span>{{ pageRangeStart }}-{{ pageRangeEnd }}</span>
+                        <span class="opacity-60">of {{ totalRowCount }}</span>
+                        <span class="iconify icon-[mdi--chevron-down] h-3.5 w-3.5 opacity-70"></span>
                     </button>
+                    <div v-if="isPageSizeMenuOpen" ref="pageSizeMenuElement" class="absolute left-0 right-0 top-full z-20 border-y border-x4 bg-x1 py-1">
+                        <div class="px-3 py-1 text-2xs opacity-60">Page Size</div>
+                        <button
+                            v-for="option in pageSizeMenuOptions ?? []"
+                            :key="option.value"
+                            type="button"
+                            class="flex w-full items-center justify-between gap-3 px-3.5 py-1 text-left text-xs transition hover:bg-white/8"
+                            @click="
+                                onSelectPageSize?.(option.value);
+                                closePageSizeMenu();
+                            "
+                        >
+                            <span class="inline-flex min-w-0 items-center gap-2">
+                                <span>{{ option.label }}</span>
+                                <span class="h-4 w-4 text-center text-xs opacity-80">{{ selectedDataLimit === option.value ? '✓' : '' }}</span>
+                            </span>
+                        </button>
+                    </div>
                 </div>
+                <IconButton
+                    icon="icon-[mdi--chevron-right]"
+                    v-tooltip.xs.nowrap="'Next page'"
+                    small
+                    :disabled="!canGoToNextPage"
+                    @click="onGoToNextPage?.()"
+                    class="rounded-l-none"
+                    severity="secondary"
+                />
             </div>
+
+            <!-- Row count info when no page nav -->
+            <div v-else class="flex-1">
+                <slot />
+            </div>
+
+            <!-- Add row button -->
+            <IconButton v-if="onAddRow" icon="icon-[mdi--plus]" v-tooltip.xs.nowrap="'Add row'" smaller severity="secondary" @click="onAddRow" />
+
+            <!-- Reload button -->
             <IconButton
-                icon="icon-[mdi--chevron-right]"
-                v-tooltip.xs.nowrap="'Next page'"
-                small
-                :disabled="!canGoToNextPage"
-                @click="onGoToNextPage?.()"
-                class="rounded-l-none"
-                severity="secondary"
+                v-if="onReload"
+                :icon="isLoading ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--reload]'"
+                v-tooltip.xs.nowrap="'Reload'"
+                smaller
+                :disabled="isLoading"
+                @click="onReload"
             />
-        </div>
+        </template>
 
-        <!-- Row count info when no page nav -->
-        <div v-else class="flex-1">
-            <slot />
-        </div>
-
-        <!-- Add row button -->
-        <IconButton v-if="onAddRow" icon="icon-[mdi--plus]" v-tooltip.xs.nowrap="'Add row'" smaller severity="secondary" @click="onAddRow" />
-
-        <!-- Reload button -->
-        <IconButton
-            v-if="onReload"
-            :icon="isLoading ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--reload]'"
-            v-tooltip.xs.nowrap="'Reload'"
-            smaller
-            :disabled="isLoading"
-            @click="onReload"
-        />
+        <template v-else>
+            <span class="font-bold text-2xs text-yellow-500">{{ gridState.disabledFiltersMessage }}</span>
+        </template>
     </div>
 </template>

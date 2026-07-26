@@ -341,6 +341,9 @@ export type TableData = {
     rowCount: number;
     limit: number;
     offset: number;
+    /** The SQL statement that was executed to produce this data.
+     *  Populated when the caller requests it via returnQuery. */
+    sql?: string;
 };
 
 export type QueryExecutionResult =

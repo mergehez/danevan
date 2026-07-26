@@ -62,10 +62,11 @@ type RemoteDriverToolsDeps = {
 };
 
 export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
-    async function readTableData(client: RemoteDriverClient, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
+    async function readTableData(client: RemoteDriverClient, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
+        const statement = deps.helper.buildReadTableStatement(tableName, limit, offset, orderBy);
         const [columns, rows, rowCount] = await Promise.all([
             deps.helper.getTableColumns(client, tableName),
-            client.queryRows<Record<string, SqlValue>>(deps.helper.buildReadTableStatement(tableName, limit, offset, orderBy)),
+            client.queryRows<Record<string, SqlValue>>(statement),
             deps.helper.queryRowCount(client, tableName),
         ]);
         const columnNames = columns.map((column) => column.name);
@@ -77,11 +78,12 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             rowCount,
             limit,
             offset,
+            sql: returnQuery ? statement.sql.replace('?', `${limit}`).replace('?', `${offset}`) : undefined,
         } satisfies TableData;
     }
 
-    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
-        return deps.withRemoteClient(connectionId, async (client) => readTableData(client, tableName, limit, offset, orderBy));
+    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
+        return deps.withRemoteClient(connectionId, async (client) => readTableData(client, tableName, limit, offset, orderBy, returnQuery));
     }
 
     return {

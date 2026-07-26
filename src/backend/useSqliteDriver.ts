@@ -587,14 +587,13 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
         return ` ORDER BY ${quoteIdentifier(orderBy.column)} ${orderBy.direction}`;
     }
 
-    async function getSqliteTableData(queryRunner: QueryRunner, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
+    async function getSqliteTableData(queryRunner: QueryRunner, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
         const columns = (await queryRunner.query(`PRAGMA table_info(${deps.quoteIdentifier(tableName)})`)) as Array<{ name: string }>;
         const orderClause = buildSqliteOrderBy(orderBy, deps.quoteIdentifier);
-        const rows = (await queryRunner.query(`SELECT * FROM ${deps.quoteIdentifier(tableName)}${orderClause} LIMIT ? OFFSET ?`, [limit, offset])) as Array<
-            Record<string, SqlValue>
-        >;
+        const sql = `SELECT * FROM ${deps.quoteIdentifier(tableName)}${orderClause} LIMIT ?` + (offset > 0 ? ` OFFSET ?` : '');
+        const rows = (await queryRunner.query(sql, offset > 0 ? [limit, offset] : [limit])) as Array<Record<string, SqlValue>>;
         const columnNames = columns.map((column) => column.name);
-
+        const sqlWithParams = sql.replace('?', limit.toString()).replace('?', offset.toString());
         return {
             columns: columnNames,
             columnStats: deps.buildColumnStats(columnNames, rows),
@@ -602,6 +601,7 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
             rowCount: await queryRowCount(queryRunner, tableName),
             limit,
             offset,
+            sql: returnQuery ? sqlWithParams : undefined,
         };
     }
 
@@ -822,8 +822,8 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
 
             return [{ name: schemaName }];
         },
-        async getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
-            return withSqliteTypeOrm(connectionId, async ({ queryRunner }) => getSqliteTableData(queryRunner, tableName, limit, offset, orderBy));
+        async getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
+            return withSqliteTypeOrm(connectionId, async ({ queryRunner }) => getSqliteTableData(queryRunner, tableName, limit, offset, orderBy, returnQuery));
         },
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
             return withSqliteTypeOrm(connectionId, async ({ queryRunner }) => {

@@ -952,7 +952,7 @@ export const app = {
         appDb.touchConnectionLastUsed(ps.connectionId);
         return withTimedAppOperation('dropTable', { connectionId: ps.connectionId, tableName: ps.tableName }, () => dbTools.dropTable(ps.connectionId, ps.tableName));
     },
-    getTableData: async (ps: { connectionId: number; tableName: string; limit?: number; offset?: number; orderBy?: SortOrder }): Promise<TableData> => {
+    getTableData: async (ps: { connectionId: number; tableName: string; limit?: number; offset?: number; orderBy?: SortOrder; returnQuery?: boolean }): Promise<TableData> => {
         ensureConnectionExists(ps.connectionId);
         appDb.touchConnectionLastUsed(ps.connectionId);
         return withTimedAppOperation(

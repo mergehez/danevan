@@ -64,7 +64,7 @@ export type DriverTools = {
     getTableDdl: (connectionId: number, tableName: string) => Promise<string>;
     listServerSchemas: (serverId: number, connectionId?: number) => Promise<ServerSchemaRecord[]>;
     disconnectConnection?: (connectionId: number) => Promise<void>;
-    getTableData: (connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder) => Promise<TableData>;
+    getTableData: (connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean) => Promise<TableData>;
     runQuery: (connectionId: number, sql: string, params?: SqlValue[]) => Promise<QueryExecutionResult>;
     validateSql?: (connectionId: number, sql: string) => Promise<void>;
     modifyTable: (connectionId: number, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) => Promise<void>;
@@ -766,11 +766,10 @@ export const dbTools = {
     async disconnectConnection(connectionId: number): Promise<void> {
         await getConnectionDriverTools(connectionId).disconnectConnection?.(connectionId);
     },
-    async getTableData(connectionId: number, params: { tableName: string; limit?: number; offset?: number; orderBy?: SortOrder }): Promise<TableData> {
+    async getTableData(connectionId: number, params: { tableName: string; limit?: number; offset?: number; orderBy?: SortOrder; returnQuery?: boolean }): Promise<TableData> {
         const normalizedTableName = normalizeTableName(params.tableName);
         const { limit, offset } = getNormalizedPaging(params);
-
-        return getConnectionDriverTools(connectionId).getTableData(connectionId, normalizedTableName, limit, offset, params.orderBy);
+        return getConnectionDriverTools(connectionId).getTableData(connectionId, normalizedTableName, limit, offset, params.orderBy, params.returnQuery);
     },
     async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
         const normalizedSql = normalizeSqlInputWhitespace(sql).trim();

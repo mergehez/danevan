@@ -1429,7 +1429,7 @@ function createTableData(
 }
 
 export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverTools {
-    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
+    async function getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
         const orderByArgs = orderBy ? [orderBy.column, orderBy.direction] : [];
         const databasePath = getMsAccessDatabasePath(deps, connectionId);
         const bridgeResponse = await runWorkerBridge<{
@@ -1439,6 +1439,7 @@ export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverToo
             rows?: unknown;
             rowCount?: unknown;
             perf?: unknown;
+            sql?: unknown;
         }>(deps, databasePath, ['getTableData', tableName, String(limit), String(offset), ...orderByArgs]);
         const response =
             bridgeResponse.transport === 'file'
@@ -1447,10 +1448,15 @@ export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverToo
                       rows?: unknown;
                       rowCount?: unknown;
                       perf?: unknown;
+                      sql?: unknown;
                   }>(bridgeResponse)
                 : bridgeResponse;
 
-        return createTableData(deps, response, limit, offset);
+        const result = createTableData(deps, response, limit, offset);
+        if (returnQuery && typeof response.sql === 'string') {
+            result.sql = response.sql;
+        }
+        return result;
     }
 
     async function applyChanges(params: NormalizedApplyTableChanges): Promise<ApplyTableChangesResult> {

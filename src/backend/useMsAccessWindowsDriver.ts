@@ -616,15 +616,19 @@ export function useMsAccessWindowsDriverTools(deps: MsAccessWindowsDriverToolsDe
             };
         },
 
-        async getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder): Promise<TableData> {
+        async getTableData(connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
             const databasePath = getMsAccessDatabasePath(deps, connectionId);
             const quotedName = quoteMsAccessName(tableName);
             const orderClause = orderBy ? ` ORDER BY ${quoteMsAccessName(orderBy.column)} ${orderBy.direction}` : '';
 
+            // MS Access doesn't support OFFSET.  For offset=0 we can use TOP.
+            // For offset>0 we have to fetch all rows and page in PowerShell.
+            const topClause = limit > 0 && offset === 0 ? ` TOP ${limit}` : '';
+            const selectSql = `SELECT${topClause} * FROM ${quotedName}${orderClause};`;
+
             // Single script: count + data in one invocation
             const scriptBody = `
     $qName = '${quotedName}'
-    $topClause = if (${limit} -gt 0) { " TOP ${limit + offset}" } else { "" }
 
     $cmd = $conn.CreateCommand()
     $cmd.CommandText = "SELECT COUNT(*) AS cnt FROM $qName"
@@ -633,7 +637,7 @@ export function useMsAccessWindowsDriverTools(deps: MsAccessWindowsDriverToolsDe
     if ($reader.Read()) { $total = [long]$reader["cnt"] }
     $reader.Close()
 
-    $cmd.CommandText = "SELECT$topClause * FROM $qName${orderClause}"
+    $cmd.CommandText = "SELECT${topClause} * FROM $qName${orderClause}"
     $adapter = New-Object System.Data.OleDb.OleDbDataAdapter($cmd)
     $dt = New-Object System.Data.DataTable
     $adapter.Fill($dt) | Out-Null
@@ -648,8 +652,7 @@ export function useMsAccessWindowsDriverTools(deps: MsAccessWindowsDriverToolsDe
         }
         $rows += $obj
     }
-    $allRows = $rows
-    $offsetRows = if (${offset} -gt 0) { $allRows | Select-Object -Skip ${offset} } else { $allRows }
+    $offsetRows = if (${offset} -gt 0) { $rows | Select-Object -Skip ${offset} } else { $rows }
     $limited = if (${limit} -gt 0 -and ${limit} -lt $offsetRows.Count) { $offsetRows | Select-Object -First ${limit} } else { $offsetRows }
     $result = @{ total = $total; rows = @($limited); columns = $columns }
   `;
@@ -662,7 +665,15 @@ export function useMsAccessWindowsDriverTools(deps: MsAccessWindowsDriverToolsDe
             const columnStats: Record<string, number> = {};
             for (const col of columns) columnStats[col] = allRows.length;
 
-            return { columns, columnStats, rows: allRows, rowCount: totalCount, limit, offset };
+            return {
+                columns,
+                columnStats,
+                rows: allRows,
+                rowCount: totalCount,
+                limit,
+                offset,
+                sql: returnQuery ? selectSql : undefined,
+            };
         },
 
         async runQuery(_connectionId: number, _sql: string, _params?: SqlValue[]): Promise<QueryExecutionResult> {

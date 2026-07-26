@@ -144,6 +144,7 @@ function createInternalState(options: UseDataGridFinalOptions) {
         sourceOrderedColumns: sourceOrderedColumns,
 
         transposeTooltip: computed(() => unref(options.transposeTooltip) ?? 'Transpose grid'),
+        disabledFiltersMessage: computed(() => unref(options.disabledFiltersMessage) ?? 'Filters are disabled'),
         emptyText: computed((): string | undefined => {
             return state.normalizedSearchQuery ? 'No matching rows.' : unref(options.emptyText);
         }),
@@ -163,6 +164,7 @@ function createInternalState(options: UseDataGridFinalOptions) {
 
 function createTransposedState(options: UseDataGridFinalOptions, _state: DataGridInternalState) {
     const _isTransposed = computed(() => options.enableTranspose && _state.isTransposed);
+    const _ignoreFilters = computed(() => unref(options.ignoreLayoutFilters));
     const _getRawCellValue = (rowIndex: number, columnName: string) => _state.sourceRows[rowIndex]?.[columnName] ?? null;
 
     const transposeColumnEntries = computed(() =>
@@ -193,13 +195,19 @@ function createTransposedState(options: UseDataGridFinalOptions, _state: DataGri
     });
     const allColumnsSet = computed(() => new Set(allColumns.value));
     const orderedColumns = computed(() => {
-        if (_isTransposed.value) {
+        if (_isTransposed.value || _ignoreFilters.value) {
             return allColumns.value;
         }
 
         return _state.sourceOrderedColumns;
     });
-    const hiddenColumns = computed(() => _state.normalizedLayoutState.hiddenColumns.filter((columnName: string) => allColumnsSet.value.has(columnName)));
+    const hiddenColumns = computed(() => {
+        if (_ignoreFilters.value) {
+            return [];
+        }
+
+        return _state.normalizedLayoutState.hiddenColumns.filter((columnName: string) => allColumnsSet.value.has(columnName));
+    });
     const transposeRowIndexByColumnName = computed(
         () =>
             new Map<string, number>(
@@ -243,7 +251,7 @@ function createTransposedState(options: UseDataGridFinalOptions, _state: DataGri
         hiddenColumns: hiddenColumns,
 
         get sortState() {
-            if (_isTransposed.value) {
+            if (_isTransposed.value || _ignoreFilters.value) {
                 return null;
             }
 
@@ -676,6 +684,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         isTransposed: computed(() => baseState.isTransposed),
         toggleTranspose: options.enableTranspose ? menus.toggleTranspose : undefined,
         transposeTooltip: computed(() => baseState.transposeTooltip),
+        disabledFiltersMessage: computed(() => baseState.disabledFiltersMessage),
         cellContextMenuCustomItems: options.cellContextMenuCustomItems,
         headerContextMenuCustomItems: options.headerContextMenuCustomItems,
         canAddRow: computed(() => unref(options.canAddRow)),

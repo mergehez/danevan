@@ -451,6 +451,8 @@ public class MsAccessBridge {
 
                     writer.write(",\"rowCount\":");
                     writer.write(Integer.toString(rowCount));
+                    writer.write(",\"sql\":");
+                    writer.write(quoteJson(sql));
                     writer.write(",\"perf\":");
                     writer.write(
                         toJson(

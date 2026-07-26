@@ -38,6 +38,8 @@ export function _useQuery() {
     const isRunningQuery = ref(false);
     const customQueryText = ref('');
     const isCustomQueryMode = ref(false);
+    /** SQL returned by the backend for the current grid view. */
+    const gridQueryText = ref('');
 
     async function loadSelectedTable(connectionId: number, tableName: string, options?: LoadSelectedTableOptions) {
         isCustomQueryMode.value = false;
@@ -68,6 +70,7 @@ export function _useQuery() {
                     limit: settings.state.queryRowLimit,
                     offset,
                     orderBy: options?.orderBy,
+                    returnQuery: true,
                 });
                 dataDurationMs = Math.round(performance.now() - operationStartedAt);
                 return result;
@@ -75,6 +78,8 @@ export function _useQuery() {
 
             const [tableInfo2, tableData2] = await Promise.all([tableInfoPromise, tableDataPromise]);
 
+            gridQueryText.value = tableData2.sql ?? '';
+            customQueryText.value = gridQueryText.value;
             tableInfo.value = tableInfo2;
             tableData.value = tableData2;
             console.log(
@@ -97,6 +102,7 @@ export function _useQuery() {
         queryResult: queryResult,
         customQueryText: customQueryText,
         isCustomQueryMode: isCustomQueryMode,
+        gridQueryText: gridQueryText,
         isLoadingTables: isLoadingTables,
         isLoadingSelectedTable: isLoadingSelectedTable,
         isRunningQuery: isRunningQuery,
@@ -186,6 +192,7 @@ export function _useQuery() {
                 });
 
                 if (result.kind === 'rows') {
+                    const isSameAsGrid = customQueryText.value.trim() === gridQueryText.value.trim();
                     tableData.value = {
                         columns: result.columns,
                         rows: result.rows,
@@ -194,7 +201,7 @@ export function _useQuery() {
                         limit: settings.state.queryRowLimit,
                         offset: 0,
                     };
-                    isCustomQueryMode.value = true;
+                    isCustomQueryMode.value = !isSameAsGrid;
                 } else {
                     tableData.value = getEmptyTableData();
                     isCustomQueryMode.value = false;

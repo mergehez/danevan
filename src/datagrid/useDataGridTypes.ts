@@ -174,6 +174,10 @@ export type UseDataGridOptions = {
     toolbarCopyAsCustomItems?: MaybeReactiveValue<ContextMenuEntry[] | undefined>;
     copyTableAsDdl?: () => Promise<void>;
     showTableDdl?: () => Promise<void>;
+    /** When true, column visibility and sort from the layout state are
+     *  ignored – all columns are shown and no sort is applied. */
+    ignoreLayoutFilters?: MaybeReactiveValue<boolean | undefined>;
+    disabledFiltersMessage?: string;
 };
 export type UseDataGridFinalOptions = ReturnType<typeof fillMissionOptions>;
 export function fillMissionOptions(options: UseDataGridOptions) {

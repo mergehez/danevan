@@ -6,7 +6,6 @@ import Checkbox from '@ui/Checkbox.vue';
 import IconButton from '@ui/IconButton.vue';
 import Popover from '@ui/Popover.vue';
 import type { SqlValue } from '@utils/appClient';
-import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { formatValue } from '@utils/valueFormatting';
 import { computed, effectScope, onBeforeUnmount, ref, watch, type EffectScope } from 'vue';
 import { useConnections } from '../composables/useConnections';
@@ -132,15 +131,9 @@ const dataGridState = useDbDataGrid({
     tableData: () => query.tableData,
     tableInfo: () => query.tableInfo,
     tableName: () => query.selectedTableName,
+    ignoreDisplayFilters: () => query.isCustomQueryMode,
+    disabledFiltersMessage: 'Filters are disabled. To re-enable: click the "Reset to generated query" button.',
 });
-
-const visibleColumnNames = computed(() => {
-    const allCols = dataGridState.allColumns;
-    const hidden = new Set(dataGridState.hiddenColumns);
-    return allCols.filter((c: string) => !hidden.has(c));
-});
-
-const allColumnsVisible = computed(() => visibleColumnNames.value.length === dataGridState.allColumns.length);
 
 const tableColumns = computed(() => query.tableInfo?.columns ?? []);
 const addRowFormState = ref<Record<string, string>>({});
@@ -191,13 +184,6 @@ function commitEditRow() {
     dataGridState.commitEditRow(values);
 }
 
-/** Tracks whether the user has manually edited the custom query text.
- *  When true, auto-sync is suppressed so the user's edits are preserved. */
-const isQueryManuallyEdited = ref(false);
-/** Guards the customQueryText watcher so it can distinguish our own writes
- *  from user edits. */
-let isAutoSyncingQuery = false;
-
 const currentSort = computed(() => dataGridState.sortState);
 const orderBy = computed(() => {
     const sort = currentSort.value;
@@ -205,46 +191,8 @@ const orderBy = computed(() => {
     return { column: sort.columnName, direction: sort.direction === 'asc' ? 'ASC' : 'DESC' } as const;
 });
 
-const defaultTableQuery = computed(() => {
-    const tableName = query.selectedTableName;
-
-    if (!tableName) {
-        return '';
-    }
-
-    const identifier = quoteSqlIdentifier(tableName, sqlDialect.value);
-    const cols = allColumnsVisible.value
-        ? '*'
-        : visibleColumnNames.value.length
-          ? visibleColumnNames.value.map((c: string) => quoteSqlIdentifier(c, sqlDialect.value)).join(', ')
-          : '*';
-    const orderClause = orderBy.value ? ` order by ${quoteSqlIdentifier(orderBy.value.column, sqlDialect.value)} ${orderBy.value.direction}` : '';
-    const limitClause = isUnlimitedDataLimit.value ? '' : ` limit ${settings.state.queryRowLimit}`;
-    return `select ${cols} from ${identifier}${orderClause}${limitClause};`;
-});
-
-watch(
-    () => [query.selectedTableName, settings.state.queryRowLimit, visibleColumnNames.value.join(','), currentSort.value],
-    () => {
-        // Only auto-sync if the user hasn't manually edited the query
-        if (query.selectedTableName && !query.isCustomQueryMode && !isQueryManuallyEdited.value) {
-            isAutoSyncingQuery = true;
-            query.customQueryText = defaultTableQuery.value;
-            isAutoSyncingQuery = false;
-        }
-    },
-    { immediate: true }
-);
-
-// Detect manual edits to the custom query text
-watch(
-    () => query.customQueryText,
-    () => {
-        if (!isAutoSyncingQuery && query.selectedTableName && !query.isCustomQueryMode) {
-            isQueryManuallyEdited.value = true;
-        }
-    }
-);
+// The generated query is built and executed by the backend when loading a
+// table.  The input below is only meaningful in custom-query mode.
 
 // Reload data when the sort column or direction changes (skip initial
 // trigger to avoid double-loading when the grid hydrates cached sort state).
@@ -256,17 +204,8 @@ watch(
 
         const connId = connections.selectedConnectionId;
         if (connId && query.selectedTableName && !query.isCustomQueryMode) {
-            isQueryManuallyEdited.value = false;
             void query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
         }
-    }
-);
-
-// Reset the manual-edit flag when the user navigates to a different table
-watch(
-    () => query.selectedTableName,
-    () => {
-        isQueryManuallyEdited.value = false;
     }
 );
 
@@ -395,25 +334,26 @@ onBeforeUnmount(() => {
                         v-model="query.customQueryText"
                         class="w-full border border-x4 bg-x1 px-2 py-1 text-xs font-mono outline-none transition focus:border-x5"
                         placeholder="select * from myTable limit 100;"
-                        @keydown.enter.prevent="query.runCustomQuery"
+                        @keydown.enter.prevent="query.runCustomQuery()"
                     />
                 </div>
+                <IconButton
+                    v-if="query.isCustomQueryMode"
+                    icon="icon-[mdi--backup-restore]"
+                    v-tooltip.xs.nowrap="'Reset to generated query'"
+                    smaller
+                    severity="secondary"
+                    @click="query.clearCustomQuery()"
+                />
                 <IconButton
                     icon="icon-[mdi--play]"
                     v-tooltip.xs.nowrap="'Run query'"
                     smaller
                     severity="primary"
                     :disabled="!query.customQueryText.trim() || query.isRunningQuery"
-                    @click="query.runCustomQuery"
+                    @click="query.runCustomQuery()"
                 />
-                <IconButton
-                    v-if="query.isCustomQueryMode"
-                    icon="icon-[mdi--backup-restore]"
-                    v-tooltip.xs.nowrap="'Reset to table view'"
-                    smaller
-                    severity="secondary"
-                    @click="query.clearCustomQuery"
-                />
+                <!-- /> -->
             </div>
             <div :class="isLoading ? 'pointer-events-none opacity-60' : ''" class="h-full w-full flex flex-col overflow-auto">
                 <DataGrid :state="dataGridState" :has-toolbar="true" :with-checkboxes="false">
@@ -433,6 +373,7 @@ onBeforeUnmount(() => {
                             :page-size-menu-options="pageSizeMenuOptions"
                             :selected-data-limit="selectedDataLimit"
                             :on-select-page-size="selectPageSize"
+                            :disabled="query.isCustomQueryMode"
                             :on-add-row="dataGridState.openAddRowDialog"
                             :on-reload="
                                 () => {
@@ -443,6 +384,9 @@ onBeforeUnmount(() => {
                             "
                             @toggle-column="toggleColumnVisibility"
                         />
+                    </template>
+                    <template #disabled-filters-message>
+                        <slot name="disabled-filters-message"></slot>
                     </template>
                 </DataGrid>
             </div>

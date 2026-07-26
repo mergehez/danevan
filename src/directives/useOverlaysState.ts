@@ -11,7 +11,7 @@ export function _useOverlaysState() {
         zInd.value = newVal;
         zIndStack.push(newVal);
 
-        console.log('Increased z-index, new value:', zInd.value);
+        // console.log('Increased z-index, new value:', zInd.value);
         return newVal;
     }
 
@@ -21,7 +21,7 @@ export function _useOverlaysState() {
             zIndStack.splice(index, 1);
             zInd.value = zIndStack.length > 0 ? Math.max(...zIndStack) : defaultZIndex;
 
-            console.warn('Decreased z-index, new value:', zInd.value);
+            // console.warn('Decreased z-index, new value:', zInd.value);
         }
 
         return zInd.value;

@@ -47,6 +47,8 @@ type UseDbDataGridOptions = {
         event: MouseEvent;
     }) => void | Promise<void>;
     onSaved?: () => void;
+    ignoreDisplayFilters?: () => boolean | undefined;
+    disabledFiltersMessage?: string;
     tableData: () => TableData;
     tableInfo: () => TableInfo | undefined;
     tableName: () => string | undefined;
@@ -659,6 +661,8 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
 
             return !hasExistingRowsToDelete || primaryKeyColumns.value.length > 0;
         }),
+        ignoreLayoutFilters: computed(() => options.ignoreDisplayFilters?.()),
+        disabledFiltersMessage: options.disabledFiltersMessage,
     });
 
     const columnDisplayTypes = computed(() => {
