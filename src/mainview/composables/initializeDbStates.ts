@@ -21,7 +21,7 @@ export function initializeDbStates() {
             const nextBootstrap = await tasks.getBootstrap.run(undefined);
             _dbCoreState.applyBootstrap(nextBootstrap);
             await settings.load();
-            await query.loadTables();
+            await query.loadTables(_dbCoreState.selectedConnectionId);
         })();
     });
 }

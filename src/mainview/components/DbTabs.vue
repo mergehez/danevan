@@ -8,7 +8,7 @@ import { computed } from 'vue';
 import { useConnections } from '../composables/useConnections';
 import { useNavState } from '../composables/useNavState';
 import { useServerTree } from '../composables/useServerTree';
-import { Tab } from '../composables/useSettings';
+import type { Tab } from '../composables/useSettings';
 
 const navState = useNavState();
 const contextMenu = useContextMenu();

@@ -132,6 +132,7 @@ const dataGridState = useDbDataGrid({
     tableInfo: () => query.tableInfo,
     tableName: () => query.selectedTableName,
     ignoreDisplayFilters: () => query.isCustomQueryMode,
+    onSortChange: onGridSortChange,
     disabledFiltersMessage: 'Filters are disabled. To re-enable: click the "Reset to generated query" button.',
 });
 
@@ -191,23 +192,14 @@ const orderBy = computed(() => {
     return { column: sort.columnName, direction: sort.direction === 'asc' ? 'ASC' : 'DESC' } as const;
 });
 
-// The generated query is built and executed by the backend when loading a
-// table.  The input below is only meaningful in custom-query mode.
-
-// Reload data when the sort column or direction changes (skip initial
-// trigger to avoid double-loading when the grid hydrates cached sort state).
-watch(
-    () => currentSort.value,
-    (newSort, oldSort) => {
-        if (!oldSort && !newSort) return;
-        if (oldSort?.columnName === newSort?.columnName && oldSort?.direction === newSort?.direction) return;
-
-        const connId = connections.selectedConnectionId;
-        if (connId && query.selectedTableName && !query.isCustomQueryMode) {
-            void query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
-        }
+// The grid calls onSortChange when the user clicks a column header.
+// We reload the table data with the new sort order explicitly.
+function onGridSortChange(_columnName: string) {
+    const connId = connections.selectedConnectionId;
+    if (connId && query.selectedTableName && !query.isCustomQueryMode) {
+        void query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
     }
-);
+}
 
 const peekGridScopes = new Map<string, EffectScope>();
 const peekGridStates = new Map<string, EditableDataGridState>();

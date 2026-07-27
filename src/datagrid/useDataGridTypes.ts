@@ -178,6 +178,8 @@ export type UseDataGridOptions = {
      *  ignored – all columns are shown and no sort is applied. */
     ignoreLayoutFilters?: MaybeReactiveValue<boolean | undefined>;
     disabledFiltersMessage?: string;
+    /** Called after the user toggles a column sort via the grid header. */
+    onSortChange?: (columnName: string) => void;
 };
 export type UseDataGridFinalOptions = ReturnType<typeof fillMissionOptions>;
 export function fillMissionOptions(options: UseDataGridOptions) {

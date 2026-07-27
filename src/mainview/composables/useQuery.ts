@@ -109,8 +109,9 @@ export function _useQuery() {
         /** Loads the table list for the current connection. Does NOT
          *  auto-select or auto-load a table — the caller (e.g. activateTab)
          *  is responsible for calling selectTable / loadSelectedTable. */
-        async loadTables() {
-            if (!connections.selectedConnectionId) {
+        async loadTables(connectionId: number | undefined) {
+            // connectionId ??= connections.selectedConnectionId;
+            if (!connectionId) {
                 tables.value = [];
                 selectedTableName.value = undefined;
                 tableInfo.value = undefined;
@@ -119,7 +120,6 @@ export function _useQuery() {
                 return;
             }
 
-            const connectionId = connections.selectedConnectionId;
             isLoadingTables.value = true;
 
             try {
@@ -142,9 +142,7 @@ export function _useQuery() {
                 selectedTableName.value = tables.value[0]?.name;
             }
         },
-        async selectTable(tableName: string) {
-            const connectionId = connections.selectedConnectionId;
-
+        async selectTable(connectionId: number, tableName: string) {
             if (!connectionId) {
                 return;
             }

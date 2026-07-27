@@ -39,15 +39,13 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
 
         if (!currentSort || currentSort.columnName !== columnName) {
             args.updateLayoutState({ sort: { columnName, direction: 'desc' } });
-            return;
-        }
-
-        if (currentSort.direction === 'desc') {
+        } else if (currentSort.direction === 'desc') {
             args.updateLayoutState({ sort: { columnName, direction: 'asc' } });
-            return;
+        } else {
+            args.updateLayoutState({ sort: null });
         }
 
-        args.updateLayoutState({ sort: null });
+        options.onSortChange?.(columnName);
     }
 
     function toggleTranspose() {

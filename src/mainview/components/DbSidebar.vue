@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ContextMenuEntry } from '@directives/contextMenuTypes';
+import type { ContextMenuEntry } from '@directives/contextMenuTypes';
 import { useContextMenu } from '@directives/useContextMenu';
 import { uniqueId } from '@lib/utils';
-import { FileTreeItem, useFileTree } from '@shared/utils/useFileTree';
+import { type FileTreeItem, useFileTree } from '@shared/utils/useFileTree';
 import FileTree from '@ui/FileTree.vue';
 import IconButton from '@ui/IconButton.vue';
 import SplitterVertical from '@ui/SplitterVertical.vue';
@@ -415,7 +415,7 @@ async function invalidateDebugCaches() {
 
     const currentConnectionId = connections.selectedConnectionId;
     if (currentConnectionId) {
-        await query.loadTables();
+        await query.loadTables(currentConnectionId);
 
         // Reload the currently selected table so the data matches the refreshed metadata.
         const currentTableName = query.selectedTableName;

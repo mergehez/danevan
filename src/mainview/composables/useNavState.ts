@@ -3,6 +3,7 @@ import type { QueryExecutionResult, SqlDiagnosticMarker } from '@utils/appClient
 import { computed, reactive, watch } from 'vue';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
+import { useGridFormatters } from './useGridFormatters';
 import { useQuery } from './useQuery';
 import { useScriptsDb } from './useScriptsDb';
 import { useServers } from './useServers';
@@ -441,8 +442,9 @@ const createNavState = () => {
             }
 
             if (tab.type === 'table') {
+                await query.loadTables(tab.connectionId);
+
                 await scripts.selectScript(undefined);
-                await query.loadTables();
 
                 const tableName = resolveTableName(tab);
 
@@ -452,8 +454,11 @@ const createNavState = () => {
                 }
 
                 if (query.selectedTableName !== tableName) {
-                    await query.selectTable(tableName);
+                    await query.selectTable(tab.connectionId, tableName);
                 }
+
+                // Load grid formatters for the current connection + table.
+                useGridFormatters().loadContext(conns.selectedConnectionId!, tableName);
 
                 return;
             }

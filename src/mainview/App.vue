@@ -58,13 +58,13 @@ const mainPanel = computed(() => {
     return activeTab.value.type === 'table' ? 'data' : 'scripts';
 });
 
-watch(
-    () => connections.selectedConnectionId,
-    () => {
-        void query.loadTables();
-    },
-    { immediate: true }
-);
+// watch(
+//     () => connections.selectedConnectionId,
+//     () => {
+//         void query.loadTables();
+//     },
+//     { immediate: true }
+// );
 
 watch(
     () => [selectedConnection.value?.name, selectedServer.value?.name],

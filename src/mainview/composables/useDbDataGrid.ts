@@ -49,6 +49,7 @@ type UseDbDataGridOptions = {
     onSaved?: () => void;
     ignoreDisplayFilters?: () => boolean | undefined;
     disabledFiltersMessage?: string;
+    onSortChange?: (columnName: string) => void;
     tableData: () => TableData;
     tableInfo: () => TableInfo | undefined;
     tableName: () => string | undefined;
@@ -662,6 +663,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             return !hasExistingRowsToDelete || primaryKeyColumns.value.length > 0;
         }),
         ignoreLayoutFilters: computed(() => options.ignoreDisplayFilters?.()),
+        onSortChange: options.onSortChange,
         disabledFiltersMessage: options.disabledFiltersMessage,
     });
 
@@ -731,13 +733,13 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         return insertedRow.isDiscarded ? 'deleted' : 'inserted';
     }
 
-    watch(
-        () => [options.connectionId(), tableName.value],
-        ([connectionId, currentTableName]) => {
-            void gridFormatters.loadContext(connectionId as number | undefined, currentTableName as string | undefined);
-        },
-        { immediate: true }
-    );
+    // watch(
+    //     () => [options.connectionId(), tableName.value],
+    //     ([connectionId, currentTableName]) => {
+    //         void gridFormatters.loadContext(connectionId as number | undefined, currentTableName as string | undefined);
+    //     },
+    //     { immediate: true }
+    // );
 
     function getDisplayedCellValue(rowIndex: number, columnName: string) {
         return coerceSqlValue(gridState.resolveCell(rowIndex, columnName).value);
