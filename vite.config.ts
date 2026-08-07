@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import { existsSync } from 'fs';
@@ -57,12 +56,5 @@ export default defineConfig({
                 changeOrigin: true,
             },
         },
-    },
-    test: {
-        environment: 'node',
-        globals: true,
-        include: ['**/*.spec.ts'],
-        exclude: ['**/e2e/**', '**/playwright/**'],
-        setupFiles: ['./tests/setup.ts'],
     },
 });

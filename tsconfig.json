@@ -19,7 +19,7 @@
         "moduleResolution": "bundler",
         "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
-        "types": ["node", "vite/client"]
+        "types": ["node", "vite/client", "vitest/config"]
     },
     "include": ["src", "env.d.ts", "vite.config.ts", "scripts"],
     "exclude": ["node_modules", "dist", "build", "dist-electron"]
