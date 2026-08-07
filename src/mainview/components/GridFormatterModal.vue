@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
+import Button from '../../shared/components/Button.vue';
+import CenteredModal from '../../shared/components/CenteredModal.vue';
 import { useGridFormatters } from '../composables/useGridFormatters';
 import MonacoEditor from './MonacoEditor.vue';
 

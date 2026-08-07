@@ -1,6 +1,6 @@
-import { confirmAction } from '@lib/utils';
-import type { CreateScriptParams, UpdateScriptParams } from '@utils/appClient';
 import { reactive } from 'vue';
+import type { CreateScriptParams, UpdateScriptParams } from '../../shared/types';
+import { confirmAction } from '../lib/utils';
 import { _dbCoreState } from './dbCoreState';
 import { tasks } from './useTasks';
 

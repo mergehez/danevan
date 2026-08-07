@@ -1,5 +1,5 @@
-import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from '@datagrid/dataGrid';
-import type { DataGridCanvasViewportArgs } from '@datagrid/useDataGridView';
+import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from './dataGrid';
+import type { DataGridCanvasViewportArgs } from './useDataGridView';
 
 export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
     const { runtime: canvasRuntime, sharedState: shared } = args;

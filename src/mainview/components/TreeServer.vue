@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { formatNumber, tryCatch } from '@lib/utils';
-import { FileTreeAction } from '@shared/utils/useFileTree';
-import Button from '@ui/Button.vue';
-import { dbTypeIcons, type ServerRecord } from '@utils/appClient';
-import { withMinLifetime } from '@utils/useMinLifetime';
 import { computed, reactive } from 'vue';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import Button from '../../shared/components/Button.vue';
+import { dbTypeIcons, type ServerRecord } from '../../shared/types';
+import type { FileTreeAction } from '../../shared/utils/useFileTree';
+import { withMinLifetime } from '../../shared/utils/useMinLifetime';
+import { formatNumber, tryCatch } from '../../shared/utils/utils.ts';
 import { useConnections } from '../composables/useConnections';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useModifyTable } from '../composables/useModifyTable';
 import { useServers } from '../composables/useServers';
-import { ConnectionTreeItem, PersistedTreeState, TableCollectionKind, TableCollectionTreeItem, TreeServerItem, useServerTree } from '../composables/useServerTree';
+import type { ConnectionTreeItem, PersistedTreeState, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
+import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
 import DbServerFormModal from './DbServerFormModal.vue';
 import DbServerSchemasModal from './DbServerSchemasModal.vue';

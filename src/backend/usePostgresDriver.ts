@@ -1,12 +1,12 @@
-import type { DriverTools, RemoteConnectionTarget, SortOrder } from '@backend/db-tools.ts';
-import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from '@backend/typeOrmMappers.ts';
-import { prepareTypeOrmParameterizedStatement } from '@backend/typeOrmStatementParameters.ts';
-import { useMySqlSchemaHelper } from '@backend/useMySqlDriver.ts';
-import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from '@backend/useRemoteDriverTools.ts';
-import type { ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from '@backend/useSqliteDriver.ts';
-import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '@utils/appClient';
 import 'reflect-metadata';
 import { DataSource, type QueryRunner, type Table, type View } from 'typeorm';
+import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
+import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
+import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
+import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
+import { useMySqlSchemaHelper } from './useMySqlDriver.ts';
+import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import type { ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type PostgresSchemaHelperDeps = {
     escapeSqlString: (value: string) => string;

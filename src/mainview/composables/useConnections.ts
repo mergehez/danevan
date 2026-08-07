@@ -1,6 +1,6 @@
-import { confirmAction } from '@lib/utils';
-import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '@utils/appClient';
 import { reactive, watch } from 'vue';
+import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
+import { confirmAction } from '../lib/utils';
 import { _dbCoreState } from '../composables/dbCoreState';
 import { useDbCaches } from '../composables/useDbCaches';
 import { tasks } from '../composables/useTasks';

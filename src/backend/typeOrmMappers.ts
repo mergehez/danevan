@@ -1,5 +1,5 @@
-import type { TableColumnInfo, TableForeignKeyInfo, TableIndexInfo } from '@utils/appClient';
 import type { Table, TableForeignKey, TableIndex, TableUnique, TableColumn as TypeOrmTableColumn, View } from 'typeorm';
+import type { TableColumnInfo, TableForeignKeyInfo, TableIndexInfo } from '../shared/types';
 
 type NormalizeOptionalText = (value: string | null | undefined) => string | null;
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { TDataGridState } from '@datagrid/useDataGrid';
-import IconButton from '@ui/IconButton.vue';
 import { computed, ref, watch } from 'vue';
+import type { TDataGridState } from '../../datagrid/useDataGrid';
+import IconButton from '../../shared/components/IconButton.vue';
 
 const props = defineProps<{
     gridState: TDataGridState;

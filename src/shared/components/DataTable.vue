@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatValue as _formatValue } from '@utils/valueFormatting';
+import { formatValue as _formatValue } from '../utils/valueFormatting';
 
 export type CellValue = string | number | bigint | Uint8Array | Buffer | null | undefined;
 

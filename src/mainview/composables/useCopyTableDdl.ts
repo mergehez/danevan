@@ -1,5 +1,5 @@
-import type { DbType } from '@utils/appClient';
-import { writeClipboardText } from '@utils/nativePaths';
+import type { DbType } from '../../shared/types';
+import { writeClipboardText } from '../../shared/utils/nativePaths';
 import { tasks } from './useTasks';
 
 function normalizeMySqlDdl(ddl: string) {

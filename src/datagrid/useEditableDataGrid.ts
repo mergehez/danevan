@@ -1,8 +1,8 @@
-import { useDataGrid, type DataGridCellContext, type DataGridRow, type MaybeReactiveValue, type TDataGridState } from '@datagrid/useDataGrid';
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { confirmAction } from '@utils/confirmAction';
-import { formatValue as formatDefaultValue } from '@utils/valueFormatting';
 import { computed, nextTick, ref, unref, watch, type Ref } from 'vue';
+import type { ContextMenuEntry } from '../directives/contextMenuTypes';
+import { confirmAction } from '../shared/utils/confirmAction';
+import { formatValue as formatDefaultValue } from '../shared/utils/valueFormatting';
+import { useDataGrid, type DataGridCellContext, type DataGridRow, type MaybeReactiveValue, type TDataGridState } from './useDataGrid';
 
 export type EditableGridContext = DataGridCellContext & {
     isTransposed: boolean;

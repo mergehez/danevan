@@ -1,6 +1,6 @@
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { useOverlaysState } from '@directives/useOverlaysState';
 import { computed, reactive, ref } from 'vue';
+import type { ContextMenuEntry } from './contextMenuTypes';
+import { useOverlaysState } from './useOverlaysState';
 
 type ContextMenuPosition = {
     x: number;

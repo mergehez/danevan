@@ -1,8 +1,8 @@
-import { DATA_GRID_FONT_OPTIONS } from '@datagrid/dataGridAppearance';
-import type { TDataGridState } from '@datagrid/useDataGrid';
-import type { UseDataGridOptions } from '@datagrid/useDataGridTypes';
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
 import { computed } from 'vue';
+import type { ContextMenuEntry } from '../directives/contextMenuTypes';
+import { DATA_GRID_FONT_OPTIONS } from './dataGridAppearance';
+import type { TDataGridState } from './useDataGrid';
+import type { UseDataGridOptions } from './useDataGridTypes';
 
 export function useDataGridToolbarMenu(state: TDataGridState) {
     const toolbarMenuItems = computed<ContextMenuEntry[]>(() => {

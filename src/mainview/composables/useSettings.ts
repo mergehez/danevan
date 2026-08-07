@@ -1,5 +1,5 @@
-import { useCache } from '@utils/useCache';
 import { computed, reactive } from 'vue';
+import { useCache } from '../../shared/utils/useCache';
 
 export type Tab = {
     hash: string;

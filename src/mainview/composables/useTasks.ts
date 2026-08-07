@@ -1,7 +1,7 @@
-import type { AppApi as Api } from '@lib/appClient.ts';
-import { appClientRpc } from '@lib/appClient.ts';
-import { apiMethods } from '@utils/apiMethods';
 import { reactive, ref } from 'vue';
+import type { AppRequestApi } from '../../electron/bridge.ts';
+import { apiMethods } from '../../shared/utils/apiMethods';
+import { appClientRpc } from '../appClient.ts';
 
 const runningOperations = reactive({} as Record<string, number | undefined>); // key => timestamp
 const errors = reactive({} as Record<string, string | undefined>);
@@ -15,7 +15,7 @@ function updateLongRunningOperations() {
         .map(([key]) => key);
 }
 
-export function useAsyncTask2<TMethod extends Api[keyof Api], TParams = Parameters<TMethod>[0], TResult = Awaited<ReturnType<TMethod>>>(
+export function useAsyncTask2<TMethod extends AppRequestApi[keyof AppRequestApi], TParams = Parameters<TMethod>[0], TResult = Awaited<ReturnType<TMethod>>>(
     methodName: string,
     getMethod: (api: typeof appClientRpc.request) => TMethod
 ) {
@@ -52,10 +52,10 @@ export function useAsyncTask2<TMethod extends Api[keyof Api], TParams = Paramete
 
 function getTasks() {
     return apiMethods.reduce((acc, methodName) => {
-        acc[methodName as keyof Api] = useAsyncTask2(methodName, (api) => api[methodName as keyof Api]);
+        acc[methodName as keyof AppRequestApi] = useAsyncTask2(methodName, (api) => api[methodName as keyof AppRequestApi]);
         return acc;
     }, {} as any) as {
-        [K in keyof Api]: ReturnType<typeof useAsyncTask2<Api[K]>>;
+        [K in keyof AppRequestApi]: ReturnType<typeof useAsyncTask2<AppRequestApi[K]>>;
     };
 }
 // function getTasks(): Record<string, ReturnType<typeof useAsyncTask2>> {
@@ -95,7 +95,7 @@ export const tasks = reactive({
     get isBusy() {
         return Object.values(runningOperations).some((t) => t !== undefined);
     },
-    isOperationRunning(key: keyof Api | `${keyof Api}:${string}`) {
+    isOperationRunning(key: keyof AppRequestApi | `${keyof AppRequestApi}:${string}`) {
         return runningOperations[key] !== undefined;
     },
     isAnyOperationRunning() {

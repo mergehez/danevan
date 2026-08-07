@@ -1,5 +1,5 @@
-import { type TooltipDirectiveModifiers, type TooltipOptions, vTooltip } from '@directives/VTooltip';
 import type { Directive, DirectiveBinding, ObjectDirective, VNode } from 'vue';
+import { type TooltipDirectiveModifiers, type TooltipOptions, vTooltip } from './VTooltip';
 
 export interface ErrorDirectiveOptions extends Omit<TooltipOptions, 'value'> {
     value?: string | undefined;

@@ -7,7 +7,7 @@ import type {
     GridCellRange,
     GridLayoutState,
     UseDataGridFinalOptions,
-} from '@datagrid/useDataGridTypes';
+} from './useDataGridTypes';
 
 export type DataGridSearchMatch = {
     rowIndex: number;

@@ -1,3 +1,7 @@
+import { existsSync, readFileSync } from 'fs';
+import { cp, mkdir, rm, writeFile } from 'fs/promises';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import {
     getMsAccessRuntimeJarName,
     getMsAccessRuntimeJarUrl,
@@ -8,11 +12,7 @@ import {
     MS_ACCESS_RUNTIME_LIB_FOLDER_NAME,
     MS_ACCESS_RUNTIME_MANIFEST_FILE_NAME,
     msAccessRuntimeArtifacts,
-} from '@backend/msAccessRuntimeManifest.ts';
-import { existsSync, readFileSync } from 'fs';
-import { cp, mkdir, rm, writeFile } from 'fs/promises';
-import { dirname, join, resolve } from 'path';
-import { fileURLToPath } from 'url';
+} from '../src/backend/msAccessRuntimeManifest.ts';
 
 const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const runtimeDir = join(projectRoot, 'assets', MS_ACCESS_RUNTIME_FOLDER_NAME);

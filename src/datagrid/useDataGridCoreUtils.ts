@@ -1,5 +1,5 @@
-import type { DataGridCellValue } from '@datagrid/useDataGridTypes';
-import { formatValue } from '@utils/valueFormatting';
+import { formatValue } from '../shared/utils/valueFormatting';
+import type { DataGridCellValue } from './useDataGridTypes';
 
 export function formatDefaultValue(value: DataGridCellValue) {
     return formatValue(value, { functionMode: 'name' });

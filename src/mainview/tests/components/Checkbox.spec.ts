@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import Checkbox from '@ui/Checkbox.vue';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import { defineComponent, ref } from 'vue';
+import Checkbox from '../../../shared/components/Checkbox.vue';
 
 describe('Checkbox', () => {
     it('exposes a tabbable checkbox shell for keyboard users', () => {

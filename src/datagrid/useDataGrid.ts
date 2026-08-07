@@ -1,8 +1,12 @@
-import { DEFAULT_DATA_GRID_FONT_FAMILY, DEFAULT_DATA_GRID_SHOW_ROW_NUMBERS, resolveDataGridTheme, type DataGridFontFamily } from '@datagrid/dataGridAppearance';
-import { createDataGridClipboard } from '@datagrid/useDataGridClipboard';
-import { compareGridValues, formatDefaultValue, gridValuesEqual } from '@datagrid/useDataGridCoreUtils';
-import { createDataGridMenus } from '@datagrid/useDataGridMenus';
-import { createDataGridNavigation } from '@datagrid/useDataGridNavigation';
+import { computed, reactive, toRaw, toRef, unref, watch } from 'vue';
+import { useContextMenu } from '../directives/useContextMenu';
+import { useCache } from '../shared/utils/useCache';
+import { formatValue } from '../shared/utils/valueFormatting';
+import { DEFAULT_DATA_GRID_FONT_FAMILY, DEFAULT_DATA_GRID_SHOW_ROW_NUMBERS, resolveDataGridTheme, type DataGridFontFamily } from './dataGridAppearance';
+import { createDataGridClipboard } from './useDataGridClipboard';
+import { compareGridValues, formatDefaultValue, gridValuesEqual } from './useDataGridCoreUtils';
+import { createDataGridMenus } from './useDataGridMenus';
+import { createDataGridNavigation } from './useDataGridNavigation';
 import {
     fillMissionOptions,
     normalizeGridLayoutState,
@@ -15,15 +19,11 @@ import {
     type TableData,
     type UseDataGridFinalOptions,
     type UseDataGridOptions,
-} from '@datagrid/useDataGridTypes';
-import { useDataGridView } from '@datagrid/useDataGridView';
-import { useContextMenu } from '@directives/useContextMenu';
-import { useCache } from '@utils/useCache';
-import { formatValue } from '@utils/valueFormatting';
-import { computed, reactive, toRaw, toRef, unref, watch } from 'vue';
+} from './useDataGridTypes';
+import { useDataGridView } from './useDataGridView';
 
-export { normalizeGridLayoutState } from '@datagrid/useDataGridTypes';
-export type { DataGridCellContext, DataGridCellValue, DataGridRow, GridDisplayType, GridLayoutState, MaybeReactiveValue, TableData } from '@datagrid/useDataGridTypes';
+export { normalizeGridLayoutState } from './useDataGridTypes';
+export type { DataGridCellContext, DataGridCellValue, DataGridRow, GridDisplayType, GridLayoutState, MaybeReactiveValue, TableData } from './useDataGridTypes';
 
 type DataGridSearchMatch = {
     rowIndex: number;

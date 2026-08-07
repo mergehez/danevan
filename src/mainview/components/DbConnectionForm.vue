@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import Alert from '@ui/Alert.vue';
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
-import { dbTypeLabels, dbTypes, type DbType, type MsAccessRuntimeStatus } from '@utils/appClient';
 import { computed, reactive, watch } from 'vue';
+import Alert from '../../shared/components/Alert.vue';
+import Button from '../../shared/components/Button.vue';
+import CenteredModal from '../../shared/components/CenteredModal.vue';
+import { dbTypeLabels, dbTypes, type DbType, type MsAccessRuntimeStatus } from '../../shared/types';
 import { useConnections } from '../composables/useConnections';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';

@@ -1,6 +1,6 @@
-import { strToNumber, uniqueId } from '@lib/utils';
-import type { QueryExecutionResult, SqlDiagnosticMarker } from '@utils/appClient';
 import { computed, reactive, watch } from 'vue';
+import type { QueryExecutionResult, SqlDiagnosticMarker } from '../../shared/types';
+import { strToNumber, uniqueId } from '../../shared/utils/utils';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
 import { useGridFormatters } from './useGridFormatters';

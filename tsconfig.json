@@ -19,29 +19,8 @@
         "moduleResolution": "bundler",
         "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
-        "types": ["node", "vite/client"],
-        "paths": {
-            "@directives": ["./src/directives"],
-            "@shared": ["./src/shared"],
-            "@shared/*": ["./src/shared/*"],
-            "@ui": ["./src/shared/components"],
-            "@ui/*": ["./src/shared/components/*"],
-            "@utils/*": ["./src/shared/utils/*"],
-            "@utils": ["./src/shared/utils"],
-            "@datagrid/*": ["./src/datagrid/*"],
-            "@datagrid": ["./src/datagrid"],
-            "@backend/*": ["./src/backend/*"],
-            "@electron": ["./src/electron"],
-            "@electron/*": ["./src/electron/*"],
-            "@directives/*": ["./src/directives/*"],
-            "@lib": ["./src/mainview/lib"],
-            "@lib/*": ["./src/mainview/lib/*"],
-            "@composables/*": ["./src/mainview/composables/*"],
-            "@composables": ["./src/mainview/composables"],
-            "@components/*": ["./src/mainview/components/*"],
-            "@components": ["./src/mainview/components"]
-        }
+        "types": ["node", "vite/client"]
     },
-    "include": ["src", "shims.d.ts", "vite-export-api-methods.ts", "vite.config.ts", "scripts"],
+    "include": ["src", "env.d.ts", "vite.config.ts", "scripts"],
     "exclude": ["node_modules", "dist", "build", "dist-electron"]
 }

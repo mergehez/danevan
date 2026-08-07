@@ -1,8 +1,8 @@
-import { appClientRpc } from '@lib/appClient';
-import FormatterWorker from '@lib/gridFormatter.worker.ts?worker';
-import { confirmAction } from '@lib/utils';
-import type { GridCustomFormatter, GridFormatterState } from '@utils/appClient';
 import { computed, reactive } from 'vue';
+import type { GridCustomFormatter, GridFormatterState } from '../../shared/types';
+import FormatterWorker from '../lib/gridFormatter.worker.ts?worker';
+import { confirmAction } from '../lib/utils';
+import { appClientRpc } from '../appClient';
 
 type FormatterContext = {
     connectionId: number;

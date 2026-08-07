@@ -1,8 +1,8 @@
-import { DEFAULT_DATA_GRID_FONT_FAMILY, DEFAULT_DATA_GRID_SHOW_ROW_NUMBERS, isDataGridFontFamily, type DataGridFontFamily, type DataGridTheme } from '@datagrid/dataGridAppearance';
-import { formatDefaultEditingValue, parseDefaultEditingValue } from '@datagrid/useDataGridCoreUtils';
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import type { DbType } from '@utils/appClient';
 import type { ComputedRef, Ref } from 'vue';
+import type { ContextMenuEntry } from '../directives/contextMenuTypes';
+import type { DbType } from '../shared/types';
+import { DEFAULT_DATA_GRID_FONT_FAMILY, DEFAULT_DATA_GRID_SHOW_ROW_NUMBERS, isDataGridFontFamily, type DataGridFontFamily, type DataGridTheme } from './dataGridAppearance';
+import { formatDefaultEditingValue, parseDefaultEditingValue } from './useDataGridCoreUtils';
 
 export type DataGridCellValue = unknown;
 export type DataGridRow = Record<string, DataGridCellValue>;

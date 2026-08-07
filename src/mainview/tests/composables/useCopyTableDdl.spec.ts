@@ -6,7 +6,7 @@ const formatSqlClearError = vi.fn<() => void>();
 const writeClipboardText = vi.fn<(text: string) => Promise<void>>();
 const clipboardWrite = vi.fn<(items: ClipboardItem[]) => Promise<void>>();
 
-vi.mock('@composables/useTasks', () => ({
+vi.mock('../../composables/useTasks', () => ({
     tasks: {
         getTableDdl: {
             run: getTableDdlRun,

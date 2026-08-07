@@ -1,5 +1,5 @@
-import type { QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateColumnParams } from '@utils/appClient';
 import { reactive, ref } from 'vue';
+import type { QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateColumnParams } from '../../shared/types';
 import { useConnections } from './useConnections';
 import { useDbSettings } from './useDbSettings';
 import { tasks } from './useTasks';

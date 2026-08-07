@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import CenteredModal from '@ui/CenteredModal.vue';
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
+import CenteredModal from '../../shared/components/CenteredModal.vue';
 
 const iconButtonStub = defineComponent({
     name: 'IconButton',

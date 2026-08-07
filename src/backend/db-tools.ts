@@ -1,12 +1,4 @@
-import { readServerPassword as readServerPasswordFromKeychain } from '@backend/auth.ts';
-import { useAppDb } from '@backend/db-app.ts';
-import { useMsAccessDriverTools } from '@backend/useMsAccessDriver.ts';
-import { useMsAccessWindowsDriverTools } from '@backend/useMsAccessWindowsDriver.ts';
-import { useMySqlDriverTools } from '@backend/useMySqlDriver.ts';
-import { usePostgresDriverTools } from '@backend/usePostgresDriver.ts';
-import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from '@backend/useSqliteDriver.ts';
-import { useSqliteDriverTools } from '@backend/useSqliteDriver.ts';
-import { useSqlServerDriverTools } from '@backend/useSqlServerDriver.ts';
+import { normalizeSqlInputWhitespace } from '../shared/utils/sqlTextNormalization';
 import type {
     ApplyTableChangesParams,
     ApplyTableChangesResult,
@@ -28,8 +20,16 @@ import type {
     TestConnectionParams,
     TestConnectionResult,
     UpdateColumnParams,
-} from '@utils/appClient';
-import { normalizeSqlInputWhitespace } from '@utils/sqlTextNormalization';
+} from '../shared/types';
+import { readServerPassword as readServerPasswordFromKeychain } from './auth.ts';
+import { useAppDb } from './db-app.ts';
+import { useMsAccessDriverTools } from './useMsAccessDriver.ts';
+import { useMsAccessWindowsDriverTools } from './useMsAccessWindowsDriver.ts';
+import { useMySqlDriverTools } from './useMySqlDriver.ts';
+import { usePostgresDriverTools } from './usePostgresDriver.ts';
+import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
+import { useSqliteDriverTools } from './useSqliteDriver.ts';
+import { useSqlServerDriverTools } from './useSqlServerDriver.ts';
 
 /** Maximum display length used when computing column stats. Prevents expensive
  *  string/JSON conversion on very large values (blobs, long text, etc.). */

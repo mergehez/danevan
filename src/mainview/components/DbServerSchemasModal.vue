@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useOverlaysState } from '@directives/useOverlaysState';
-import Button from '@ui/Button.vue';
-import type { ServerSchemaRecord } from '@utils/appClient';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useOverlaysState } from '../../directives/useOverlaysState';
+import Button from '../../shared/components/Button.vue';
+import type { ServerSchemaRecord } from '../../shared/types';
 import { useConnections } from '../composables/useConnections';
 import { useServers } from '../composables/useServers';
 

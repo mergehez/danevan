@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="TCollection extends FileTreeChild = FileTreeChild, TChild extends { id: string | number } = any">
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { FileTreeChild } from '@shared/utils/useFileTree';
-import type { ServerRecord } from '@utils/appClient';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import type { ServerRecord } from '../../shared/types';
+import { FileTreeChild } from '../../shared/utils/useFileTree';
 import { useServerTree } from '../composables/useServerTree';
 import FileTreeButton from './FileTreeButton.vue';
 

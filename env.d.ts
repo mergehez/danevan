@@ -8,9 +8,9 @@ declare module '*.vue' {
 }
 
 interface Window {
-    appClient?: import('./src/electron/preload.ts').ElectronAPI;
+    electronAPI?: import('./src/electron/preload.ts').ElectronAPI;
 }
 
 interface Element {
-    openContextMenu?: import('./src/directives/VContextMenu').ContextMenuHostElement['openContextMenu'];
+    openContextMenu?: import('./src/directives/VContextMenu.ts').ContextMenuHostElement['openContextMenu'];
 }

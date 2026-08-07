@@ -1,6 +1,6 @@
-import { useOverlaysState } from '@directives/useOverlaysState';
 import { twMerge } from 'tailwind-merge';
 import type { Directive, DirectiveBinding } from 'vue';
+import { useOverlaysState } from './useOverlaysState';
 
 export interface TooltipDirectiveModifiers {
     right?: boolean | undefined;

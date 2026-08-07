@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import Button from '@ui/Button.vue';
-import IconButton from '@ui/IconButton.vue';
 import { computed } from 'vue';
+import Button from '../../shared/components/Button.vue';
+import IconButton from '../../shared/components/IconButton.vue';
 
 const props = defineProps<{
     pendingChangeCount: number;

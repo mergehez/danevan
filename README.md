@@ -34,7 +34,7 @@ Dialogs, menus, state flows, table editing, script management, and workspace beh
 
 ### Stable App Contracts
 
-IPC methods and payload shapes are centralized so the frontend can evolve without constant cross-boundary churn. Shared app-facing types live in `packages/shared/src/utils/appClient.ts`.
+IPC methods and payload shapes are centralized so the frontend can evolve without constant cross-boundary churn. Shared app-facing types live in `packages/shared/src/types.ts`.
 
 ## Supported Platforms
 

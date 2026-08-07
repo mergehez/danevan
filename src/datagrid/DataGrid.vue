@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { DATA_GRID_HEADER_HEIGHT } from '@datagrid/dataGrid';
-import type { TDataGridState } from '@datagrid/useDataGrid';
-import { useDataGridView } from '@datagrid/useDataGridView';
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
-import IconButton from '@ui/IconButton.vue';
+import Button from '../shared/components/Button.vue';
+import CenteredModal from '../shared/components/CenteredModal.vue';
+import IconButton from '../shared/components/IconButton.vue';
+import { DATA_GRID_HEADER_HEIGHT } from './dataGrid';
+import type { TDataGridState } from './useDataGrid';
+import { useDataGridView } from './useDataGridView';
 
 const props = defineProps<{
     state: TDataGridState;

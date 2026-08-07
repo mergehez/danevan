@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useOverlaysState } from '@directives/useOverlaysState';
 import { ref, watch } from 'vue';
+import { useOverlaysState } from '../../directives/useOverlaysState';
 import { useDbSettings } from '../composables/useDbSettings';
 
 const settings = useDbSettings();

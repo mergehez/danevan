@@ -1,9 +1,9 @@
-import { useDataGrid, type DataGridCellValue, type GridDisplayType, type PendingRowState, type TableData } from '@datagrid/index';
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import type { ApplyTableChangesParams, GridCustomFormatter, SqlValue, TableInfo } from '@utils/appClient';
-import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
-import { formatValue } from '@utils/valueFormatting';
 import { computed, reactive, ref, watch } from 'vue';
+import { useDataGrid, type DataGridCellValue, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import type { ApplyTableChangesParams, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
+import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
+import { formatValue } from '../../shared/utils/valueFormatting';
 import { useConnections } from './useConnections';
 import { copyTableAsDdl } from './useCopyTableDdl';
 import { useForeignKeyPeek, type FkPeekRelation } from './useForeignKeyPeek';

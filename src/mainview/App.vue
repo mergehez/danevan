@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import ContextMenu from '@directives/ContextMenu.vue';
-import { useContextMenu } from '@directives/useContextMenu';
-import { useOverlaysState } from '@directives/useOverlaysState';
-import Alert from '@ui/Alert.vue';
-import AppConfirmationModal from '@ui/AppConfirmationModal.vue';
-import Splitter from '@ui/Splitter.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import ContextMenu from '../directives/ContextMenu.vue';
+import { useContextMenu } from '../directives/useContextMenu';
+import { useOverlaysState } from '../directives/useOverlaysState';
+import Alert from '../shared/components/Alert.vue';
+import AppConfirmationModal from '../shared/components/AppConfirmationModal.vue';
+import Splitter from '../shared/components/Splitter.vue';
 import DbData from './components/DbData.vue';
 import DbScripts from './components/DbScripts.vue';
 import DbSidebar from './components/DbSidebar.vue';
@@ -77,7 +77,7 @@ watch(
 let disposeNativeCommandListener: (() => void) | undefined;
 
 onMounted(() => {
-    disposeNativeCommandListener = window.appClient?.onNativeCommand(async (command) => {
+    disposeNativeCommandListener = window.electronAPI?.onNativeCommand(async (command) => {
         if (command.kind === 'open-settings') {
             settings.openSettingsWindow();
         }

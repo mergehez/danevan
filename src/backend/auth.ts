@@ -1,4 +1,4 @@
-import { executeTextCommand } from '@backend/bunSubprocess.ts';
+import { executeTextCommand } from './bunSubprocess.ts';
 
 const KEYCHAIN_SERVICE_NAME = 'Danevan';
 

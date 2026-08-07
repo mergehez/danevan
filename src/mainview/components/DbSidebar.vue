@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { useContextMenu } from '@directives/useContextMenu';
-import { uniqueId } from '@lib/utils';
-import { type FileTreeItem, useFileTree } from '@shared/utils/useFileTree';
-import FileTree from '@ui/FileTree.vue';
-import IconButton from '@ui/IconButton.vue';
-import SplitterVertical from '@ui/SplitterVertical.vue';
-import type { CollectionFilterState, ScriptRecord } from '@utils/appClient';
-import { toast } from '@utils/useToast';
 import { computed, nextTick, ref, watch } from 'vue';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import { useContextMenu } from '../../directives/useContextMenu';
+import FileTree from '../../shared/components/FileTree.vue';
+import IconButton from '../../shared/components/IconButton.vue';
+import SplitterVertical from '../../shared/components/SplitterVertical.vue';
+import type { CollectionFilterState, ScriptRecord } from '../../shared/types';
+import { type FileTreeItem, useFileTree } from '../../shared/utils/useFileTree';
+import { toast } from '../../shared/utils/useToast';
+import { uniqueId } from '../../shared/utils/utils.ts';
 import { useConnections } from '../composables/useConnections';
 import { useDbCaches } from '../composables/useDbCaches';
 import { useDbSettings } from '../composables/useDbSettings';

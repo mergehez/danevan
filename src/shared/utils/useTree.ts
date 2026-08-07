@@ -1,5 +1,5 @@
 import { computed, reactive } from 'vue';
-import { useCache } from '@utils/useCache';
+import { useCache } from './useCache';
 
 type TId = string;
 type TreeNodeBase = {

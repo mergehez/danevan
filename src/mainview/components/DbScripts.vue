@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { DataGrid } from '@datagrid';
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
-import SplitterVertical from '@ui/SplitterVertical.vue';
-import type { SqlDiagnosticMarker, SqlDiagnosticsResult, TableData } from '@utils/appClient';
-import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { computed, reactive, ref, watch } from 'vue';
+import { DataGrid } from '../../datagrid';
+import Button from '../../shared/components/Button.vue';
+import CenteredModal from '../../shared/components/CenteredModal.vue';
+import SplitterVertical from '../../shared/components/SplitterVertical.vue';
+import type { SqlDiagnosticMarker, SqlDiagnosticsResult, TableData } from '../../shared/types';
+import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { useConnections } from '../composables/useConnections';
 import { useDbDataGrid } from '../composables/useDbDataGrid';
 import { useDbSettings } from '../composables/useDbSettings';

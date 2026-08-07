@@ -1,3 +1,7 @@
+import Database from 'better-sqlite3';
+import { existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { resolveAppDataDir } from '../electronUtils/useDatabase';
 import type {
     ConnectionRow,
     CreateConnectionParams,
@@ -8,10 +12,7 @@ import type {
     UpdateConnectionParams,
     UpdateScriptParams,
     UpdateServerParams,
-} from '@utils/appClient';
-import Database from 'better-sqlite3';
-import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+} from '../shared/types';
 
 type SQLInputValue = string | number | bigint | Uint8Array | Buffer | null;
 type SQLOutputValue = string | number | bigint | Uint8Array | Buffer | null;
@@ -68,7 +69,8 @@ function createRuntimeDatabaseClient(databasePath: string, options?: { readOnly?
 
 export const DATABASE_FILE_NAME = 'danevan.sqlite';
 
-function createDbClient(userDataDir: string) {
+function createDbClient(userDataDir?: string) {
+    userDataDir ??= resolveAppDataDir();
     mkdirSync(userDataDir, { recursive: true });
 
     console.log(`App built at: 2026-07-02T08:05:54.273Z`);
@@ -284,11 +286,12 @@ export function useAppDb() {
     }
 
     return {
-        configureDatabase(userDataDir: string) {
+        configureDatabase(userDataDir?: string) {
             if (db) {
                 return;
             }
 
+            userDataDir ??= resolveAppDataDir();
             configuredUserDataDir = userDataDir;
             db = createDbClient(userDataDir);
             db.exec(`

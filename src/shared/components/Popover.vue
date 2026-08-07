@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useOverlaysState } from '@directives/useOverlaysState';
-import IconButton from '@ui/IconButton.vue';
 import { twMerge } from 'tailwind-merge';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useAttrs, useSlots, useTemplateRef, watch, type Ref } from 'vue';
+import { useOverlaysState } from '../../directives/useOverlaysState';
+import IconButton from './IconButton.vue';
 
 export type PopoverPosition = {
     left: number;

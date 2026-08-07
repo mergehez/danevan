@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="TChild extends { id: string | number } = any">
-import { FileTreeAction } from '@shared/utils/useFileTree';
-import Button from '@ui/Button.vue';
-import Icon from '@ui/Icon.vue';
+import Button from '../../shared/components/Button.vue';
+import Icon from '../../shared/components/Icon.vue';
+import { FileTreeAction } from '../../shared/utils/useFileTree';
 
 const props = defineProps<{
     action: FileTreeAction;

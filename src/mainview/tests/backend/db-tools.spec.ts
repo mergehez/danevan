@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ConnectionRecord, ServerRecord, TableData, TableInfo, TableSummary, TestConnectionResult } from '../../../../src/shared/utils/appClient';
+import type { ConnectionRecord, ServerRecord, TableData, TableInfo, TableSummary, TestConnectionResult } from '../../../../src/shared/types';
 
 function createTableInfo(name: string, overrides: Partial<TableInfo> = {}): TableInfo {
     return {
@@ -168,31 +168,31 @@ const testHarness = vi.hoisted(() => {
     };
 });
 
-vi.mock('@backend/auth', () => ({
+vi.mock('../../../backend/auth', () => ({
     readConnectionPassword: vi.fn(async () => 'secret'),
 }));
 
-vi.mock('@backend/db-app', () => ({
+vi.mock('../../../backend/db-app', () => ({
     useAppDb: () => testHarness.appDb,
 }));
 
-vi.mock('@backend/useSqliteDriver', () => ({
+vi.mock('../../../backend/useSqliteDriver', () => ({
     useSqliteDriverTools: vi.fn(() => testHarness.driverToolsByType.sqlite),
 }));
 
-vi.mock('@backend/useMsAccessDriver', () => ({
+vi.mock('../../../backend/useMsAccessDriver', () => ({
     useMsAccessDriverTools: vi.fn(() => testHarness.driverToolsByType.msaccess),
 }));
 
-vi.mock('@backend/useMySqlDriver', () => ({
+vi.mock('../../../backend/useMySqlDriver', () => ({
     useMySqlDriverTools: vi.fn(() => testHarness.driverToolsByType.mysql),
 }));
 
-vi.mock('@backend/usePostgresDriver', () => ({
+vi.mock('../../../backend/usePostgresDriver', () => ({
     usePostgresDriverTools: vi.fn(() => testHarness.driverToolsByType.postgresql),
 }));
 
-vi.mock('@backend/useSqlServerDriver', () => ({
+vi.mock('../../../backend/useSqlServerDriver', () => ({
     useSqlServerDriverTools: vi.fn(() => testHarness.driverToolsByType.sqlserver),
 }));
 

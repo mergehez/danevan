@@ -1,8 +1,8 @@
 <script setup lang="ts" generic="TItem extends DraggableListItem">
-import Icon from '@ui/Icon.vue';
 import type { ClassNameValue } from 'tailwind-merge';
 import { twMerge } from 'tailwind-merge';
 import { ref } from 'vue';
+import Icon from './Icon.vue';
 
 export type DraggableListItem = {
     id: any;

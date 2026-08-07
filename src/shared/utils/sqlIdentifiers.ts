@@ -1,4 +1,4 @@
-import type { DbType } from '@utils/appClient';
+import type { DbType } from '../types';
 
 function quoteSqlIdentifierPart(identifierPart: string, dialect: DbType) {
     if (dialect === 'mysql') {

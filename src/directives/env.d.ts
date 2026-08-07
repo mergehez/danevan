@@ -1,4 +1,4 @@
-import type { ContextMenuHostElement } from '@directives/VContextMenu';
+import type { ContextMenuHostElement } from './VContextMenu';
 
 declare global {
     interface Element {

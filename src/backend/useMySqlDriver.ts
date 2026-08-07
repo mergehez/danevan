@@ -1,9 +1,9 @@
-import type { DriverTools, RemoteConnectionTarget, SortOrder } from '@backend/db-tools.ts';
-import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from '@backend/useRemoteDriverTools.ts';
-import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from '@backend/useSqliteDriver.ts';
-import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '@utils/appClient';
+import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
+import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 import 'reflect-metadata';
 import { DataSource, TableForeignKey, type QueryRunner, type Table, type View } from 'typeorm';
+import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 
 type MySqlSchemaHelperDeps = {
     escapeSqlString: (value: string) => string;

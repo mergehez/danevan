@@ -1,4 +1,4 @@
-import type { DbType } from '@utils/appClient';
+import type { DbType } from '../../shared/types';
 
 const MYSQL_DATA_TYPES = [
     'bit',

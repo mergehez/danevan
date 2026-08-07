@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { appClientRpc } from '@lib/appClient';
-import type { MonacoDiagnosticMarker } from '@lib/monaco';
-import Button from '@ui/Button.vue';
-import type { DbType, SqlDiagnosticMarker, SqlDiagnosticsResult } from '@utils/appClient';
-import { toast } from '@utils/useToast';
 import { computed, ref } from 'vue';
+import Button from '../../shared/components/Button.vue';
+import type { DbType, SqlDiagnosticMarker, SqlDiagnosticsResult } from '../../shared/types';
+import { toast } from '../../shared/utils/useToast';
+import { appClientRpc } from '../appClient';
+import type { MonacoDiagnosticMarker } from '../lib/monaco';
 import MonacoEditor from './MonacoEditor.vue';
 import MonacoEditorSettingsButton from './MonacoEditorSettingsButton.vue';
 import type { MonacoEditorActionZone } from './monacoEditorTypes';

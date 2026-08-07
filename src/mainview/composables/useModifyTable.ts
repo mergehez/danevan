@@ -1,9 +1,9 @@
-import { getDbCollationOptionsQuery, normalizeDbCollationOptions } from '@lib/collations';
-import type { MonacoDiagnosticMarker } from '@lib/monaco';
-import { confirmAction } from '@lib/utils';
-import type { DbType, ModifyTableColumnParams, TableColumnInfo, TableForeignKeyInfo, TableIndexInfo, TableInfo } from '@utils/appClient';
-import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { reactive, watch } from 'vue';
+import type { DbType, ModifyTableColumnParams, TableColumnInfo, TableForeignKeyInfo, TableIndexInfo, TableInfo } from '../../shared/types';
+import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
+import { getDbCollationOptionsQuery, normalizeDbCollationOptions } from '../lib/collations';
+import type { MonacoDiagnosticMarker } from '../lib/monaco';
+import { confirmAction } from '../lib/utils';
 import { useConnections } from './useConnections';
 import { useQuery } from './useQuery';
 import { useServers } from './useServers';

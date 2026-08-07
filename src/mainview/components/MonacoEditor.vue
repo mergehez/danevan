@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { appClientRpc } from '@lib/appClient';
-import type { SqlAutocompleteSchema } from '@lib/monaco';
+import type * as MonacoEditorModule from 'monaco-editor';
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import type { DbType, SqlDiagnosticMarker, SqlDiagnosticsResult, TableInfo } from '../../shared/types';
+import { hasSuspiciousSqlWhitespace, normalizeSqlInputWhitespace } from '../../shared/utils/sqlTextNormalization';
+import { appClientRpc } from '../appClient';
+import { useConnections } from '../composables/useConnections';
+import { useSettings } from '../composables/useSettings';
+import type { SqlAutocompleteSchema } from '../lib/monaco';
 import {
     APP_MONACO_THEME,
     configureMonaco,
@@ -10,14 +16,8 @@ import {
     getMonacoModule as loadMonacoModule,
     type MonacoDiagnosticMarker,
     registerSqlAutocompleteContext,
-} from '@lib/monaco';
-import { parseSqlEditorTableDropPayload, SQL_EDITOR_TABLE_DRAG_MIME } from '@lib/sqlEditorDnd';
-import type { DbType, SqlDiagnosticMarker, SqlDiagnosticsResult, TableInfo } from '@utils/appClient';
-import { hasSuspiciousSqlWhitespace, normalizeSqlInputWhitespace } from '@utils/sqlTextNormalization';
-import type * as MonacoEditorModule from 'monaco-editor';
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { useConnections } from '../composables/useConnections';
-import { useSettings } from '../composables/useSettings';
+} from '../lib/monaco';
+import { parseSqlEditorTableDropPayload, SQL_EDITOR_TABLE_DRAG_MIME } from '../lib/sqlEditorDnd';
 import MonacoEditorSettingsButton from './MonacoEditorSettingsButton.vue';
 
 type MonacoModule = typeof import('monaco-editor');

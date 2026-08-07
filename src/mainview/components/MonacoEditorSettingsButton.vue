@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useOverlaysState } from '@directives/useOverlaysState';
-import IconButton from '@ui/IconButton.vue';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { useOverlaysState } from '../../directives/useOverlaysState';
+import IconButton from '../../shared/components/IconButton.vue';
 import { useSettings } from '../composables/useSettings';
 
 const props = defineProps<{

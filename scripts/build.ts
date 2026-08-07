@@ -1,11 +1,15 @@
+/// <reference types="node" />
+
 import { spawn } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
-import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, readdir, rm, stat } from 'fs/promises';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import pkg from '../package.json' with { type: 'json' };
 
 type EnvMap = Record<string, string>;
+const appName = pkg.productName;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(__dirname);
@@ -15,8 +19,8 @@ const assetsDir = join(projectRoot, 'assets');
 const iconSvgPath = join(assetsDir, 'icon.svg');
 const iconIcnsPath = join(assetsDir, 'icon.icns');
 const iconsetDir = join(assetsDir, 'icon.iconset');
-const buildTargetDir = join(projectRoot, 'build', `stable-macos-${process.arch}`);
-const artifactsDir = join(projectRoot, 'artifacts');
+const buildTargetDir = join(projectRoot, 'build', `mac-${process.arch}`);
+const artifactsDir = join(projectRoot, 'build');
 const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as {
     name: string;
     productName?: string;
@@ -68,7 +72,7 @@ function readEnvFile(filePath: string): EnvMap {
 }
 
 function cleanValue(value: string | undefined) {
-    return value?.replace(/^ELECTROBUN_DEVELOPER_ID:\s*/, '').trim() || '';
+    return value?.replace(/^ELECTRON_DEVELOPER_ID:\s*/, '').trim() || '';
 }
 
 function combineEnv() {
@@ -120,15 +124,19 @@ async function findArtifact(extension: string) {
         throw new Error(`Artifacts directory not found at ${artifactsDir}.`);
     }
 
-    const prefix = `stable-macos-${process.arch}-`;
     const entries = await readdir(artifactsDir, { withFileTypes: true });
-    const matches = entries.filter((entry) => entry.isFile() && entry.name.startsWith(prefix) && entry.name.endsWith(extension)).map((entry) => join(artifactsDir, entry.name));
+    const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+    const matches = files.filter((name) => name.endsWith(extension));
 
-    if (matches.length !== 1) {
-        throw new Error(`Expected exactly one ${extension} artifact in ${artifactsDir}, found ${matches.length}.`);
+    if (matches.length === 0) {
+        throw new Error(`No ${extension} artifact found in ${artifactsDir}. Available files: ${files.join(', ') || '(empty)'}`);
     }
 
-    return matches[0];
+    if (matches.length > 1) {
+        throw new Error(`Multiple ${extension} artifacts found in ${artifactsDir}: ${matches.join(', ')}`);
+    }
+
+    return join(artifactsDir, matches[0]);
 }
 
 async function verifySignedMacApp(appPath: string, env: NodeJS.ProcessEnv) {
@@ -140,7 +148,7 @@ async function verifySignedMacApp(appPath: string, env: NodeJS.ProcessEnv) {
 }
 
 async function verifyDmgDistributionArtifact(dmgPath: string, env: NodeJS.ProcessEnv) {
-    const mountDir = await mkdtemp(join(tmpdir(), 'danevan-dmg-check-'));
+    const mountDir = await mkdtemp(join(tmpdir(), `${appName}-dmg-check-`));
 
     try {
         console.log(`Mounting ${dmgPath} for distribution verification.`);
@@ -195,7 +203,7 @@ async function ensureMacIconset() {
         throw new Error(`Missing icon source at ${iconSvgPath}.`);
     }
 
-    const tempDir = await mkdtemp(join(tmpdir(), 'danevan-icon-'));
+    const tempDir = await mkdtemp(join(tmpdir(), `${appName}-icon-`));
     const tempIconsetDir = join(tempDir, 'icon.iconset');
     const previewPath = join(tempDir, 'icon.png');
 
@@ -219,7 +227,7 @@ async function ensureMacIconset() {
             await runCommand('/usr/bin/sips', ['-z', String(size), String(size), previewPath, '--out', join(tempIconsetDir, fileName)]);
         }
 
-        await cp(previewPath, join(tempIconsetDir, 'icon_512x512@2x.png'));
+        await copyFile(previewPath, join(tempIconsetDir, 'icon_512x512@2x.png'));
 
         if (await pathExists(iconsetDir)) {
             await rm(iconsetDir, { recursive: true, force: true });
@@ -234,33 +242,38 @@ async function ensureMacIconset() {
     return iconsetDir;
 }
 
-function prepareElectrobunEnv(shouldSign: boolean, shouldNotarize: boolean) {
+function prepareElectronEnv(shouldSign: boolean, shouldNotarize: boolean) {
     const env = combineEnv();
-    const developerId = cleanValue(env.ELECTROBUN_DEVELOPER_ID);
-    const teamId = env.ELECTROBUN_TEAMID || '';
-    const appleId = env.ELECTROBUN_APPLEID || '';
-    const appleIdPass = env.ELECTROBUN_APPLEIDPASS || '';
+    const developerId = cleanValue(env.ELECTRON_DEVELOPER_ID || env.CSC_LINK || '');
+    const teamId = env.ELECTRON_TEAMID || env.APPLE_TEAM_ID || '';
+    const appleId = env.ELECTRON_APPLEID || env.APPLE_ID || '';
+    const appleIdPass = env.ELECTRON_APPLEIDPASS || env.APPLE_APP_SPECIFIC_PASSWORD || '';
 
-    env.ELECTROBUN_MAC_ICONS = iconsetDir;
-    env.ELECTROBUN_CREATE_DMG = 'true';
-    env.ELECTROBUN_CODESIGN = shouldSign ? 'true' : 'false';
-    env.ELECTROBUN_NOTARIZE = shouldNotarize ? 'true' : 'false';
+    // For electron-builder
+    env.CSC_LINK = env.CSC_LINK || (shouldSign && developerId ? developerId : '');
+    env.APPLE_ID = appleId;
+    env.APPLE_APP_SPECIFIC_PASSWORD = appleIdPass;
+    env.APPLE_TEAM_ID = teamId;
 
     if (!shouldSign) {
-        delete env.ELECTROBUN_DEVELOPER_ID;
-        delete env.ELECTROBUN_TEAMID;
-        delete env.ELECTROBUN_APPLEID;
-        delete env.ELECTROBUN_APPLEIDPASS;
+        delete env.ELECTRON_DEVELOPER_ID;
+        delete env.ELECTRON_TEAMID;
+        delete env.ELECTRON_APPLEID;
+        delete env.ELECTRON_APPLEIDPASS;
+        delete env.ELECTRON_MAC_ICONS;
+        delete env.ELECTRON_CREATE_DMG;
+        delete env.ELECTRON_CODESIGN;
+        delete env.ELECTRON_NOTARIZE;
+        delete env.CSC_LINK;
+        delete env.CSC_KEY_PASSWORD;
+        delete env.APPLE_ID;
+        delete env.APPLE_APP_SPECIFIC_PASSWORD;
+        delete env.APPLE_TEAM_ID;
         return env;
     }
 
     if (!developerId) {
-        throw new Error('Signing requires ELECTROBUN_DEVELOPER_ID in the environment or .env file.');
-    }
-
-    env.ELECTROBUN_DEVELOPER_ID = developerId;
-    if (teamId) {
-        env.ELECTROBUN_TEAMID = teamId;
+        throw new Error('Signing requires ELECTRON_DEVELOPER_ID or CSC_LINK in the environment or .env file.');
     }
 
     if (!shouldNotarize) {
@@ -268,12 +281,8 @@ function prepareElectrobunEnv(shouldSign: boolean, shouldNotarize: boolean) {
     }
 
     if (!appleId || !appleIdPass || !teamId) {
-        throw new Error('Notarization requires ELECTROBUN_APPLEID, ELECTROBUN_APPLEIDPASS, and ELECTROBUN_TEAMID.');
+        throw new Error('Notarization requires APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID.');
     }
-
-    env.ELECTROBUN_APPLEID = appleId;
-    env.ELECTROBUN_APPLEIDPASS = appleIdPass;
-    env.ELECTROBUN_TEAMID = teamId;
 
     return env;
 }
@@ -284,17 +293,21 @@ async function main() {
     const shouldInstall = !process.argv.includes('--no-install');
 
     await ensureMacIconset();
-    const env = prepareElectrobunEnv(shouldSign, shouldNotarize);
+    const env = prepareElectronEnv(shouldSign, shouldNotarize);
 
     if (shouldNotarize) {
-        console.log('Building a signed and notarized macOS release with Electrobun.');
+        console.log('Building a signed and notarized macOS release.');
     } else if (shouldSign) {
-        console.log('Building a signed macOS release with Electrobun.');
+        console.log('Building a signed macOS release.');
     } else {
-        console.log('Building an unsigned macOS release with Electrobun.');
+        console.log('Building an unsigned macOS release.');
     }
 
-    await runCommand('bun', ['run', 'build:stable'], env);
+    const electronBuilder = join(projectRoot, 'node_modules', '.bin', 'electron-builder');
+    const buildEnv = { ...env, PATH: `${dirname(process.execPath)}:${env.PATH ?? ''}` };
+
+    await runCommand('vite', ['build'], buildEnv);
+    await runCommand(electronBuilder, ['build', '--config', 'electron-builder.yml', '--arm64'], buildEnv);
 
     const builtAppPath = await findAppBundle(buildTargetDir);
     const dmgPath = await findArtifact('.dmg');

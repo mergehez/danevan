@@ -1,5 +1,5 @@
-import type { ConnectionRow, ServerRow } from '@utils/appClient';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ConnectionRow, ServerRow } from '../../../shared/types';
 
 type InMemoryServer = {
     id: number;
@@ -34,7 +34,7 @@ let nextConnectionId = 1;
 let servers: InMemoryServer[] = [];
 let connections: InMemoryConnection[] = [];
 
-vi.mock('@backend/db-app', () => ({
+vi.mock('../../../backend/db-app', () => ({
     useAppDb: () => ({
         configureDatabase: () => undefined,
         getServer(id: number) {
@@ -194,7 +194,7 @@ vi.mock('@backend/db-app', () => ({
     }),
 }));
 
-const { useAppDb } = await import('@backend/db-app');
+const { useAppDb } = await import('../../../backend/db-app');
 const appDb = useAppDb();
 
 describe('appDb', () => {

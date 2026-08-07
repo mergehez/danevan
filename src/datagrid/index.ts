@@ -1,7 +1,7 @@
-export * from '@datagrid/dataGrid';
-export { default as DataGrid } from '@datagrid/DataGrid.vue';
-export * from '@datagrid/dataGridAppearance';
-export * from '@datagrid/useDataGrid';
-export * from '@datagrid/useDataGridTypes';
-export * from '@datagrid/useDataGridView';
-export * from '@datagrid/useEditableDataGrid';
+export * from './dataGrid';
+export { default as DataGrid } from './DataGrid.vue';
+export * from './dataGridAppearance';
+export * from './useDataGrid';
+export * from './useDataGridTypes';
+export * from './useDataGridView';
+export * from './useEditableDataGrid';

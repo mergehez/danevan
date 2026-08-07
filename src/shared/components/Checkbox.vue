@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { uniqueId } from '@utils/utils';
 import { computed, ref } from 'vue';
+import { uniqueId } from '../utils/utils';
 
 const modelValue = defineModel<boolean>('modelValue', { required: true });
 const focusTargetRef = ref<HTMLElement | null>(null);

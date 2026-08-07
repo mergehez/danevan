@@ -1,3 +1,4 @@
+import { computed, onBeforeUnmount, reactive, ref, toRef, watch, type CSSProperties, type ComputedRef } from 'vue';
 import {
     DATA_GRID_CELL_HORIZONTAL_PADDING,
     DATA_GRID_COLUMN_MAX_WIDTH,
@@ -10,15 +11,14 @@ import {
     DATA_GRID_ROW_HEIGHT,
     DATA_GRID_ROW_NUMBER_MIN_WIDTH,
     DATA_GRID_TEXT_HORIZONTAL_INSET,
-} from '@datagrid/dataGrid';
-import { getDataGridCanvasFont, getDataGridFontFamilyCss, getDataGridThemeCssVariables } from '@datagrid/dataGridAppearance';
-import type { TDataGridState } from '@datagrid/useDataGrid';
-import { useDataGridCanvasPointerHandlers } from '@datagrid/useDataGridCanvasPointerHandlers';
-import { useDataGridCanvasRuntime } from '@datagrid/useDataGridCanvasRuntime';
-import { useDataGridCanvasViewport } from '@datagrid/useDataGridCanvasViewport';
-import type { DataGridNormalizedCellRange } from '@datagrid/useDataGridHelperTypes';
-import { useDataGridToolbarMenu } from '@datagrid/useDataGridToolbarMenu';
-import { computed, onBeforeUnmount, reactive, ref, toRef, watch, type CSSProperties, type ComputedRef } from 'vue';
+} from './dataGrid';
+import { getDataGridCanvasFont, getDataGridFontFamilyCss, getDataGridThemeCssVariables } from './dataGridAppearance';
+import type { TDataGridState } from './useDataGrid';
+import { useDataGridCanvasPointerHandlers } from './useDataGridCanvasPointerHandlers';
+import { useDataGridCanvasRuntime } from './useDataGridCanvasRuntime';
+import { useDataGridCanvasViewport } from './useDataGridCanvasViewport';
+import type { DataGridNormalizedCellRange } from './useDataGridHelperTypes';
+import { useDataGridToolbarMenu } from './useDataGridToolbarMenu';
 
 type DataGridCheckboxActions = {
     addRow?: () => void | Promise<void>;

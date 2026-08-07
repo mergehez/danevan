@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
 import { nextTick, ref, watch } from 'vue';
+import Button from './Button.vue';
+import CenteredModal from './CenteredModal.vue';
 
 const open = defineModel<boolean>('open', { required: true });
 const value = defineModel<string>('value', { required: true });

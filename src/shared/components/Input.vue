@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string | number">
-import { getFinalInputClass } from '@ui/useFormComponents';
+import { getFinalInputClass } from './useFormComponents';
 
 const modelValue = defineModel<T | undefined | null>('modelValue', { required: true });
 

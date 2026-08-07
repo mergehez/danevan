@@ -1,6 +1,9 @@
-import { BunTypeOrmSqliteDriver } from '@backend/bunTypeOrmSqliteDriver.ts';
-import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from '@backend/db-tools.ts';
-import { mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata, mapTypeOrmTableMetadata } from '@backend/typeOrmMappers.ts';
+import { BunTypeOrmSqliteDriver } from './bunTypeOrmSqliteDriver.ts';
+import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
+import { mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata, mapTypeOrmTableMetadata } from './typeOrmMappers.ts';
+import Database from 'better-sqlite3';
+import 'reflect-metadata';
+import { DataSource, type QueryRunner } from 'typeorm';
 import type {
     ApplyTableChangesResult,
     QueryExecutionResult,
@@ -13,10 +16,7 @@ import type {
     TestConnectionParams,
     TestConnectionResult,
     UpdateColumnParams,
-} from '@utils/appClient';
-import Database from 'better-sqlite3';
-import 'reflect-metadata';
-import { DataSource, type QueryRunner } from 'typeorm';
+} from '../shared/types';
 
 export type ModifySchemaColumn = {
     originalName?: string;

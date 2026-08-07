@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import AppConfirmationModal from '@ui/AppConfirmationModal.vue';
-import { confirmation } from '@utils/useConfirmation';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
+import AppConfirmationModal from '../../../shared/components/AppConfirmationModal.vue';
+import { confirmation } from '../../../shared/utils/useConfirmation.ts';
 
 function findButtonByText(wrapper: ReturnType<typeof mount>, label: string) {
     const button = wrapper.findAll('button').find((entry) => entry.text().trim() === label);

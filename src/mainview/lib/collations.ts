@@ -1,4 +1,4 @@
-import type { DbType } from '@utils/appClient';
+import type { DbType } from '../../shared/types';
 
 function normalizeOptionalText(value: string | null | undefined) {
     const normalizedValue = value?.trim();

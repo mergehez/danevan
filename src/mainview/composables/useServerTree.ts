@@ -1,6 +1,6 @@
-import type { ConnectionRecord, ServerRecord, TableSummary } from '@utils/appClient';
-import { formatNumber } from '@utils/utils';
 import { computed, nextTick, reactive, ref, watch } from 'vue';
+import type { ConnectionRecord, ServerRecord, TableSummary } from '../../shared/types';
+import { formatNumber } from '../../shared/utils/utils';
 import { type TableDetailsState, useConnections } from './useConnections';
 import { type PersistedTreeState, useDbCaches } from './useDbCaches';
 import { useQuery } from './useQuery';

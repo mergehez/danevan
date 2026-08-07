@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import Alert from '@ui/Alert.vue';
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
-import type { ServerRecord } from '@utils/appClient';
 import { computed, reactive, watch } from 'vue';
+import Alert from '../../shared/components/Alert.vue';
+import Button from '../../shared/components/Button.vue';
+import CenteredModal from '../../shared/components/CenteredModal.vue';
+import type { ServerRecord } from '../../shared/types';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
 

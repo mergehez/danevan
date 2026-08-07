@@ -1,20 +1,20 @@
 <script setup lang="ts">
-import { getDbCollationOptions } from '@lib/collations';
-import { getDbColumnDataTypeOptions } from '@lib/dbColumnDataType';
-import { getDbDefaultExpressionOptions } from '@lib/dbDefaultExpression';
-import { FileTreeItem, useFileTree } from '@shared/utils/useFileTree';
-import Alert from '@ui/Alert.vue';
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
-import Checkbox from '@ui/Checkbox.vue';
-import FileTree from '@ui/FileTree.vue';
-import IconButton from '@ui/IconButton.vue';
-import Input from '@ui/Input.vue';
-import ListBox from '@ui/ListBox.vue';
-import Select from '@ui/Select.vue';
-import Splitter from '@ui/Splitter.vue';
-import SplitterVertical from '@ui/SplitterVertical.vue';
 import { computed, ref, watch } from 'vue';
+import Alert from '../../shared/components/Alert.vue';
+import Button from '../../shared/components/Button.vue';
+import CenteredModal from '../../shared/components/CenteredModal.vue';
+import Checkbox from '../../shared/components/Checkbox.vue';
+import FileTree from '../../shared/components/FileTree.vue';
+import IconButton from '../../shared/components/IconButton.vue';
+import Input from '../../shared/components/Input.vue';
+import ListBox from '../../shared/components/ListBox.vue';
+import Select from '../../shared/components/Select.vue';
+import Splitter from '../../shared/components/Splitter.vue';
+import SplitterVertical from '../../shared/components/SplitterVertical.vue';
+import { type FileTreeItem, useFileTree } from '../../shared/utils/useFileTree';
+import { getDbCollationOptions } from '../lib/collations';
+import { getDbColumnDataTypeOptions } from '../lib/dbColumnDataType';
+import { getDbDefaultExpressionOptions } from '../lib/dbDefaultExpression';
 import { useModifyTable } from '../composables/useModifyTable';
 import SqlEditor from './SqlEditor.vue';
 

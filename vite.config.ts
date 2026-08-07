@@ -4,13 +4,20 @@ import vue from '@vitejs/plugin-vue';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
-import electronApiMethods from './vite-export-api-methods.ts';
+import electronApiMethods from './src/electronUtils/vite-plugin';
 
 export default defineConfig({
     plugins: [
         vue(),
         tailwindcss(),
-        electronApiMethods,
+        electronApiMethods({
+            app: 'src/backend/app.ts',
+            main: 'src/electron/main.ts',
+            preload: 'src/electron/preload.ts',
+            devServer: 'src/backend/devServer.ts',
+            apiMethods: 'src/shared/apiMethods.ts',
+            // externalize: ['node-pty'],
+        }),
         // Resolve monaco-editor deep imports that Rolldown can't resolve
         // due to the package's restrictive exports map.
         {
@@ -35,16 +42,6 @@ export default defineConfig({
     },
     resolve: {
         tsconfigPaths: true,
-        alias: {
-            '@directives': resolve(__dirname, './src/directives'),
-            '@shared': resolve(__dirname, './src/shared'),
-            '@ui': resolve(__dirname, './src/shared/components'),
-            '@utils': resolve(__dirname, './src/shared/utils'),
-            '@datagrid': resolve(__dirname, './src/datagrid'),
-            '@backend': resolve(__dirname, './src/backend'),
-            '@electron': resolve(__dirname, './src/electron'),
-            '@lib': resolve(__dirname, './src/mainview/lib'),
-        },
     },
     build: {
         outDir: '../../dist',

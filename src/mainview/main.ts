@@ -1,32 +1,42 @@
-import '@directives/directive-styles.css';
-import { vContextMenu } from '@directives/VContextMenu';
-import { vError } from '@directives/VError';
-import { vLoading } from '@directives/VLoading';
-import { vTooltip } from '@directives/VTooltip';
-import { installRendererDiagnostics } from '@lib/installRendererDiagnostics';
 import { createApp } from 'vue';
+import '../directives/directive-styles.css';
+import { vContextMenu } from '../directives/VContextMenu';
+import { vError } from '../directives/VError';
+import { vLoading } from '../directives/VLoading';
+import { vTooltip } from '../directives/VTooltip';
+import App from './App.vue';
+import { initTasks } from './composables/useTasks';
 import './css/app.css';
 import './css/scrollbar.css';
-import App from './App.vue';
-import { initTasks } from './composables/useTasks.ts';
-
-installRendererDiagnostics();
 
 const isDev2 = import.meta.env.VITE_DEV2 === 'true';
+let mountedApp: ReturnType<typeof createApp> | undefined;
 
 if (isDev2) {
-    const { installDev2AppClientBridge } = await import('@lib/appClientDev2');
-    installDev2AppClientBridge();
+    const { installDev2AppClientBridge: installDev2GitClientBridge } = await import('./appClientBrowser.ts');
+    installDev2GitClientBridge();
 }
 
-const app = createApp(App);
+void Promise.resolve().then(() => {
+    mountedApp?.unmount();
 
-app.directive('loading', vLoading);
-app.directive('tooltip', vTooltip);
-app.directive('context-menu', vContextMenu);
-app.directive('menu', vContextMenu);
-app.directive('error', vError);
+    const app = createApp(App);
 
-initTasks();
+    app.directive('loading', vLoading);
+    app.directive('tooltip', vTooltip);
+    app.directive('menu', vContextMenu);
+    app.directive('error', vError);
 
-app.mount('#app');
+    initTasks();
+
+    app.mount('#app');
+    mountedApp = app;
+});
+
+if (import.meta.hot) {
+    import.meta.hot.accept();
+    import.meta.hot.dispose(() => {
+        mountedApp?.unmount();
+        mountedApp = undefined;
+    });
+}

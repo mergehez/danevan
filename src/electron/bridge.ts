@@ -1,1 +1,1 @@
-export type { AppRequestApi } from './main.ts';
+export type { AppClientRequestApi as AppRequestApi } from './main.ts';

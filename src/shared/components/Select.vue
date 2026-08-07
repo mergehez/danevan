@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { getFinalInputClass, getInputSizedClasses } from '@ui/useFormComponents';
-import { uniqueId } from '@utils/utils';
 import { computed } from 'vue';
+import { uniqueId } from '../utils/utils';
+import { getFinalInputClass, getInputSizedClasses } from './useFormComponents';
 
 const modelValue = defineModel<string | number | undefined | null>('modelValue', { required: true });
 const props = defineProps<{

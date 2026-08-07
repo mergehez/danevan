@@ -1,10 +1,10 @@
-import { executeTextCommand } from '@backend/bunSubprocess.ts';
-import { dbTools } from '@backend/db-tools.ts';
-import type { DbType, SqlDiagnosticMarker, SqlDiagnosticsResult } from '@utils/appClient';
+import { executeTextCommand } from './bunSubprocess.ts';
+import { dbTools } from './db-tools.ts';
 import { execSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import type { DbType, SqlDiagnosticMarker, SqlDiagnosticsResult } from '../shared/types';
 
 type SqlFluffRuntime = {
     command: string;

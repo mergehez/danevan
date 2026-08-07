@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { serializeSqlEditorTableDropPayload, SQL_EDITOR_TABLE_DRAG_MIME } from '@lib/sqlEditorDnd';
-import { ServerRecord } from '@utils/appClient';
-import { withMinLifetime } from '@utils/useMinLifetime';
-import { formatNumber } from '@utils/utils';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import type { ServerRecord } from '../../shared/types';
+import { withMinLifetime } from '../../shared/utils/useMinLifetime';
+import { formatNumber } from '../../shared/utils/utils';
 import { useConnections } from '../composables/useConnections';
 import { copyTableAsDdl } from '../composables/useCopyTableDdl';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useModifyTable } from '../composables/useModifyTable';
 import { useNavState } from '../composables/useNavState';
-import { DetailCollectionKind, DetailCollectionTreeItem, DetailLeafTreeItem, TableTreeItem, useServerTree } from '../composables/useServerTree';
+import type { DetailCollectionKind, DetailCollectionTreeItem, DetailLeafTreeItem, TableTreeItem } from '../composables/useServerTree';
+import { useServerTree } from '../composables/useServerTree';
+import { serializeSqlEditorTableDropPayload, SQL_EDITOR_TABLE_DRAG_MIME } from '../lib/sqlEditorDnd';
 import FileTreeButton from './FileTreeButton.vue';
 import TreeCollection from './TreeCollection.vue';
 

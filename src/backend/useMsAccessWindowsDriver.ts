@@ -1,3 +1,6 @@
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import type {
     ApplyTableChangesResult,
     QueryExecutionResult,
@@ -11,10 +14,7 @@ import type {
     TestConnectionParams,
     TestConnectionResult,
     UpdateColumnParams,
-} from '@shared/utils/appClient.ts';
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+} from '../shared/types.ts';
 import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
 import type { MsAccessConnectionRecord, MsAccessServerRecord } from './useMsAccessDriver.ts';
 import type { ModifySchemaPlan } from './useSqliteDriver.ts';

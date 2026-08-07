@@ -1,6 +1,6 @@
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { type ContextMenuPlacement, useContextMenu } from '@directives/useContextMenu';
 import type { Directive, DirectiveBinding } from 'vue';
+import type { ContextMenuEntry } from './contextMenuTypes';
+import { type ContextMenuPlacement, useContextMenu } from './useContextMenu';
 
 export interface ContextMenuDirectiveModifiers {
     right?: boolean | undefined;

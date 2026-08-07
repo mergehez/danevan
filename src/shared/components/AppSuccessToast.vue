@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { useOverlaysState } from '@directives/useOverlaysState';
-import Alert from '@ui/Alert.vue';
-import IconButton from '@ui/IconButton.vue';
-import { toast } from '@utils/useToast';
 import { ref, watch } from 'vue';
+import { useOverlaysState } from '../../directives/useOverlaysState';
+import { toast } from '../utils/useToast';
+import Alert from './Alert.vue';
+import IconButton from './IconButton.vue';
 
 const overlayState = useOverlaysState();
 const toastZIndex = ref(90);

@@ -1,8 +1,8 @@
 <script setup lang="ts" generic="T extends Pick<FileTreeItem, 'id' | 'rightText' | 'subtitle'> & { title?: string; name?: string }, TChild extends { id: string | number } = any">
-import { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { FileTreeItem } from '@shared/utils/useFileTree';
 import { twMerge } from 'tailwind-merge';
 import { computed } from 'vue';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import type { FileTreeItem } from '../../shared/utils/useFileTree';
 import { useServerTree } from '../composables/useServerTree';
 
 const props = withDefaults(

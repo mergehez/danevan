@@ -1,8 +1,4 @@
 // import type { MonacoEditor } from '@guolao/vue-monaco-editor';
-import { getDbDefaultExpressionFunctionNames } from '@lib/dbDefaultExpression';
-import { fileIconAndLanguageByPath } from '@lib/utils';
-import type { DbType } from '@utils/appClient';
-import { quoteSqlIdentifier, unquoteSqlIdentifier } from '@utils/sqlIdentifiers';
 import { AttrName, type EntityContext } from 'dt-sql-parser/dist/parser/common/entityCollector';
 import { EntityContextType, type CaretPosition, type Suggestions } from 'dt-sql-parser/dist/parser/common/types';
 import { MySQL } from 'dt-sql-parser/dist/parser/mysql';
@@ -13,6 +9,10 @@ import { conf as mysqlConf, language as mysqlLanguage } from 'monaco-sql-languag
 import { conf as pgsqlConf, language as pgsqlLanguage } from 'monaco-sql-languages/esm/languages/pgsql/pgsql';
 import type { CompletionSnippetOption } from 'monaco-sql-languages/esm/monaco.contribution';
 import { mysqlSnippets, pgsqlSnippets } from 'monaco-sql-languages/esm/snippets';
+import type { DbType } from '../../shared/types';
+import { quoteSqlIdentifier, unquoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
+import { getDbDefaultExpressionFunctionNames } from './dbDefaultExpression';
+import { fileIconAndLanguageByPath } from './utils';
 
 let monacoConfigured = false;
 let monacoEnvironmentConfigured = false;

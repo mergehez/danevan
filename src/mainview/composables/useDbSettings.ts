@@ -1,5 +1,5 @@
-import type { CollectionFilterState, EditorSettings, SettingsPanel } from '@utils/appClient';
 import { computed, reactive, ref } from 'vue';
+import type { CollectionFilterState, EditorSettings, SettingsPanel } from '../../shared/types';
 import { tasks } from './useTasks';
 
 // function normalizeLabel(path: string, label?: string) {

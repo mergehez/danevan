@@ -1,6 +1,6 @@
-import { confirmAction } from '@lib/utils';
-import { dbTypes, type CreateServerParams, type DbType, type ServerSchemaRecord, type UpdateServerParams } from '@utils/appClient';
 import { reactive } from 'vue';
+import { dbTypes, type CreateServerParams, type DbType, type ServerSchemaRecord, type UpdateServerParams } from '../../shared/types';
+import { confirmAction } from '../lib/utils';
 import { _dbCoreState } from './dbCoreState';
 import { useDbCaches } from './useDbCaches';
 import { tasks } from './useTasks';

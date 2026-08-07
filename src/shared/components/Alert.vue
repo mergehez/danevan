@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { twMerge } from 'tailwind-merge';
 import { computed, ref } from 'vue';
-import Button from '@ui/Button.vue';
-import Icon from '@ui/Icon.vue';
+import Button from './Button.vue';
+import Icon from './Icon.vue';
 
 export type TAlertSeverity = 'primary' | 'secondary' | 'light' | 'success' | 'info' | 'warning' | 'danger';
 

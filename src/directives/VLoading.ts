@@ -1,6 +1,6 @@
-import { isButtonLoadingIndicatorSilenced } from '@directives/loadingIndicatorState';
-import { useOverlaysState } from '@directives/useOverlaysState';
 import type { Directive, DirectiveBinding } from 'vue';
+import { isButtonLoadingIndicatorSilenced } from './loadingIndicatorState';
+import { useOverlaysState } from './useOverlaysState';
 
 export interface LoadingDirectiveModifiers {
     sm?: boolean | undefined;

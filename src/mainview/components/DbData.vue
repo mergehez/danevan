@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { DataGrid, useEditableDataGridState, type EditableDataGridState } from '@datagrid';
-import Button from '@ui/Button.vue';
-import CenteredModal from '@ui/CenteredModal.vue';
-import Checkbox from '@ui/Checkbox.vue';
-import IconButton from '@ui/IconButton.vue';
-import Popover from '@ui/Popover.vue';
-import type { SqlValue } from '@utils/appClient';
-import { formatValue } from '@utils/valueFormatting';
 import { computed, effectScope, onBeforeUnmount, ref, watch, type EffectScope } from 'vue';
+import { DataGrid, useEditableDataGridState, type EditableDataGridState } from '../../datagrid';
+import Button from '../../shared/components/Button.vue';
+import CenteredModal from '../../shared/components/CenteredModal.vue';
+import Checkbox from '../../shared/components/Checkbox.vue';
+import IconButton from '../../shared/components/IconButton.vue';
+import Popover from '../../shared/components/Popover.vue';
+import type { SqlValue } from '../../shared/types';
+import { formatValue } from '../../shared/utils/valueFormatting';
 import { useConnections } from '../composables/useConnections';
 import { useDbDataGrid } from '../composables/useDbDataGrid';
 import { useDbSettings } from '../composables/useDbSettings';

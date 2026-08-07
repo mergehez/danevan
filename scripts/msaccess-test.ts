@@ -1,9 +1,9 @@
-import { useAppDb } from '@backend/db-app';
-import { dbTools } from '@backend/db-tools';
 import assert from 'node:assert/strict';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { useAppDb } from '../src/backend/db-app';
+import { dbTools } from '../src/backend/db-tools';
 
 function quoteAccessIdentifier(identifier: string) {
     return `[${identifier.replaceAll(']', ']]')}]`;

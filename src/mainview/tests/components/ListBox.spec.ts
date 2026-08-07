@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import ListBox from '@ui/ListBox.vue';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref } from 'vue';
+import ListBox from '../../../shared/components/ListBox.vue';
 
 const items = [
     { label: 'Alpha', value: 'alpha' },

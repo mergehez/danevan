@@ -1,10 +1,10 @@
-import type { DataGridInternalState, DataGridTransposedState } from '@datagrid/useDataGrid';
-import type { DataGridNormalizedCellRange, DataGridSelectionBounds } from '@datagrid/useDataGridHelperTypes';
-import type { DataGridCellValue, GridCellRange } from '@datagrid/useDataGridTypes';
-import { writeClipboardText } from '@utils/clipboard';
-import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
-import { formatValue } from '@utils/valueFormatting';
 import type { ComputedRef } from 'vue';
+import { writeClipboardText } from '../shared/utils/clipboard';
+import { quoteSqlIdentifier } from '../shared/utils/sqlIdentifiers';
+import { formatValue } from '../shared/utils/valueFormatting';
+import type { DataGridInternalState, DataGridTransposedState } from './useDataGrid';
+import type { DataGridNormalizedCellRange, DataGridSelectionBounds } from './useDataGridHelperTypes';
+import type { DataGridCellValue, GridCellRange } from './useDataGridTypes';
 
 export interface DataGridClipboardArgs {
     internalState: DataGridInternalState;

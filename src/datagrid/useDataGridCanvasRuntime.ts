@@ -7,8 +7,8 @@ import {
     DATA_GRID_ROW_HEIGHT,
     DATA_GRID_TEXT_BASELINE_OFFSET,
     DATA_GRID_TEXT_HORIZONTAL_INSET,
-} from '@datagrid/dataGrid';
-import type { DataGridRuntimeArgs } from '@datagrid/useDataGridView';
+} from './dataGrid';
+import type { DataGridRuntimeArgs } from './useDataGridView';
 
 export type DataGridTextRun = {
     text: string;

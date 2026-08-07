@@ -1,6 +1,6 @@
-import type { ConnectionSchemaCache, ServerSchemaRecord, TableInfo, TableSummary } from '@utils/appClient';
-import { resetCacheState, useCache } from '@utils/useCache';
 import { reactive, ref, watch } from 'vue';
+import type { ConnectionSchemaCache, ServerSchemaRecord, TableInfo, TableSummary } from '../../shared/types';
+import { resetCacheState, useCache } from '../../shared/utils/useCache';
 import { _dbCoreState } from './dbCoreState';
 
 // ---------------------------------------------------------------------------

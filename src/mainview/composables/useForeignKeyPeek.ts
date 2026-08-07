@@ -1,9 +1,9 @@
-import type { MaybeReactiveValue } from '@datagrid/index';
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import type { DbType, PeekFkUsageRelation, PeekFkUsageSummary, QueryExecutionResult, SqlValue, TableInfo } from '@utils/appClient';
-import { quoteSqlIdentifier } from '@utils/sqlIdentifiers';
-import { formatValue } from '@utils/valueFormatting';
 import { computed, onBeforeUnmount, reactive, ref, unref, watch } from 'vue';
+import type { MaybeReactiveValue } from '../../datagrid';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import type { DbType, PeekFkUsageRelation, PeekFkUsageSummary, QueryExecutionResult, SqlValue, TableInfo } from '../../shared/types';
+import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
+import { formatValue } from '../../shared/utils/valueFormatting';
 import { tasks } from './useTasks';
 
 type PeekAnchor = Pick<MouseEvent, 'clientX' | 'clientY'>;

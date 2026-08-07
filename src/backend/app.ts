@@ -1,8 +1,3 @@
-import { deleteServerPassword, storeServerPassword } from '@backend/auth.ts';
-import { useAppDb } from '@backend/db-app.ts';
-import { dbTools, type SortOrder } from '@backend/db-tools.ts';
-import { formatSql as formatSqlResult, getSqlDiagnostics as getSqlDiagnosticsResult } from '@backend/sqlDiagnostics.ts';
-import { inspectMsAccessRuntime } from '@backend/useMsAccessDriver.ts';
 import type {
     ApplyTableChangesParams as AppApplyTableChangesParams,
     AppBootstrapApi,
@@ -41,7 +36,12 @@ import type {
     UpdateColumnParams,
     UpdateScriptParams,
     UpdateServerParams,
-} from '@utils/appClient';
+} from '../shared/types';
+import { deleteServerPassword, storeServerPassword } from './auth.ts';
+import { useAppDb } from './db-app.ts';
+import { dbTools, type SortOrder } from './db-tools.ts';
+import { formatSql as formatSqlResult, getSqlDiagnostics as getSqlDiagnosticsResult } from './sqlDiagnostics.ts';
+import { inspectMsAccessRuntime } from './useMsAccessDriver.ts';
 
 const appDb = useAppDb();
 

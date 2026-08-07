@@ -1,5 +1,5 @@
-import type { AppBootstrapApi, ConnectionRecord, ScriptRecord, ServerRecord } from '@utils/appClient';
 import { reactive } from 'vue';
+import type { AppBootstrapApi, ConnectionRecord, ScriptRecord, ServerRecord } from '../../shared/types';
 
 export const _dbCoreState = reactive({
     stateCounter: 0,

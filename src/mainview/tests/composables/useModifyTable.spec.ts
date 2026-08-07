@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveForeignKeyDraftName } from '@composables/useModifyTable';
+import { resolveForeignKeyDraftName } from '../../composables/useModifyTable';
 
 describe('resolveForeignKeyDraftName', () => {
     it('prefers the matching foreign index name when mysql foreign key rows are unnamed', () => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useCache } from '@utils/useCache';
 import { twMerge } from 'tailwind-merge';
 import { computed, onUnmounted, ref } from 'vue';
+import { useCache } from '../utils/useCache';
 
 const props = withDefaults(
     defineProps<{

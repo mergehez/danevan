@@ -1,6 +1,6 @@
-import { executeTextCommand } from '@backend/bunSubprocess.ts';
-import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from '@backend/db-tools.ts';
-import { MS_ACCESS_BRIDGE_SOURCE } from '@backend/msAccessBridgeSource.ts';
+import { executeTextCommand } from './bunSubprocess.ts';
+import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
+import { MS_ACCESS_BRIDGE_SOURCE } from './msAccessBridgeSource.ts';
 import {
     getMsAccessRuntimeJarName,
     getMsAccessRuntimeJarUrl,
@@ -12,8 +12,12 @@ import {
     MS_ACCESS_RUNTIME_LIB_FOLDER_NAME,
     MS_ACCESS_RUNTIME_SUPPORTED_JRE_PLATFORMS,
     msAccessRuntimeArtifacts,
-} from '@backend/msAccessRuntimeManifest.ts';
-import type { ModifySchemaColumn, ModifySchemaKey, ModifySchemaPlan } from '@backend/useSqliteDriver.ts';
+} from './msAccessRuntimeManifest.ts';
+import type { ModifySchemaColumn, ModifySchemaKey, ModifySchemaPlan } from './useSqliteDriver.ts';
+import { spawn, type ChildProcess } from 'child_process';
+import { existsSync } from 'fs';
+import { mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { basename, dirname, join, resolve } from 'path';
 import type {
     ApplyTableChangesResult,
     MsAccessRuntimeStatus,
@@ -26,11 +30,7 @@ import type {
     TestConnectionParams,
     TestConnectionResult,
     UpdateColumnParams,
-} from '@utils/appClient';
-import { spawn, type ChildProcess } from 'child_process';
-import { existsSync } from 'fs';
-import { mkdir, readFile, rm, writeFile } from 'fs/promises';
-import { basename, dirname, join, resolve } from 'path';
+} from '../shared/types';
 
 export type MsAccessConnectionRecord = {
     id: number;

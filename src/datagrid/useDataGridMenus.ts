@@ -1,11 +1,11 @@
-import { type DataGridInternalState, type DataGridTransposedState, getCellKey } from '@datagrid/useDataGrid';
-import { createDataGridClipboard } from '@datagrid/useDataGridClipboard';
-import { formatDefaultEditingValue } from '@datagrid/useDataGridCoreUtils';
-import type { DataGridUpdateLayoutState } from '@datagrid/useDataGridHelperTypes';
-import { createDataGridNavigation } from '@datagrid/useDataGridNavigation';
-import type { DataGridCellValue, DataGridPendingChange, UseDataGridFinalOptions } from '@datagrid/useDataGridTypes';
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { writeClipboardText } from '@utils/clipboard';
+import type { ContextMenuEntry } from '../directives/contextMenuTypes';
+import { writeClipboardText } from '../shared/utils/clipboard';
+import { type DataGridInternalState, type DataGridTransposedState, getCellKey } from './useDataGrid';
+import { createDataGridClipboard } from './useDataGridClipboard';
+import { formatDefaultEditingValue } from './useDataGridCoreUtils';
+import type { DataGridUpdateLayoutState } from './useDataGridHelperTypes';
+import { createDataGridNavigation } from './useDataGridNavigation';
+import type { DataGridCellValue, DataGridPendingChange, UseDataGridFinalOptions } from './useDataGridTypes';
 
 export interface DataGridMenusArgs {
     options: UseDataGridFinalOptions;

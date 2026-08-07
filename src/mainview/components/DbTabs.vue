@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { ContextMenuEntry } from '@directives/contextMenuTypes';
-import { useContextMenu } from '@directives/useContextMenu';
-import DragTabs from '@ui/DragTabs.vue';
-import Icon from '@ui/Icon.vue';
-import IconButton from '@ui/IconButton.vue';
 import { computed } from 'vue';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
+import { useContextMenu } from '../../directives/useContextMenu';
+import DragTabs from '../../shared/components/DragTabs.vue';
+import Icon from '../../shared/components/Icon.vue';
+import IconButton from '../../shared/components/IconButton.vue';
 import { useConnections } from '../composables/useConnections';
 import { useNavState } from '../composables/useNavState';
 import { useServerTree } from '../composables/useServerTree';

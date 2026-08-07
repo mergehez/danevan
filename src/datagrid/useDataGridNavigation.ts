@@ -1,9 +1,9 @@
-import { DATA_GRID_COLUMN_MAX_WIDTH, DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from '@datagrid/dataGrid';
-import type { DataGridInternalState, DataGridTransposedState } from '@datagrid/useDataGrid';
-import type { DataGridHistoryOptions, DataGridNormalizedCellRange, DataGridSearchMatch, DataGridUpdateLayoutState } from '@datagrid/useDataGridHelperTypes';
-import type { DataGridCellChange, DataGridCellFocusOptions, DataGridRowSelectionOptions, GridCellRange, UseDataGridFinalOptions } from '@datagrid/useDataGridTypes';
-import { useKeyboardNavigation, type KeyboardNavigationPosition } from '@utils/useKeyboardNavigation';
 import { nextTick, type ComputedRef } from 'vue';
+import { useKeyboardNavigation, type KeyboardNavigationPosition } from '../shared/utils/useKeyboardNavigation';
+import { DATA_GRID_COLUMN_MAX_WIDTH, DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from './dataGrid';
+import type { DataGridInternalState, DataGridTransposedState } from './useDataGrid';
+import type { DataGridHistoryOptions, DataGridNormalizedCellRange, DataGridSearchMatch, DataGridUpdateLayoutState } from './useDataGridHelperTypes';
+import type { DataGridCellChange, DataGridCellFocusOptions, DataGridRowSelectionOptions, GridCellRange, UseDataGridFinalOptions } from './useDataGridTypes';
 
 export interface DataGridNavigationArgs {
     options: UseDataGridFinalOptions;

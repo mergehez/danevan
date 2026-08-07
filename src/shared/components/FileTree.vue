@@ -1,10 +1,10 @@
 <script setup lang="ts" generic="TData, TRoot = {}">
-import { useFileTree } from '@shared/utils/useFileTree';
-import Button from '@ui/Button.vue';
-import Icon from '@ui/Icon.vue';
-import IconButton from '@ui/IconButton.vue';
 import { twMerge } from 'tailwind-merge';
 import { computed } from 'vue';
+import { useFileTree } from '../../shared/utils/useFileTree';
+import Button from './Button.vue';
+import Icon from './Icon.vue';
+import IconButton from './IconButton.vue';
 
 const p = defineProps<{
     state: ReturnType<typeof useFileTree<TData, TRoot>>;

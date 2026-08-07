@@ -1,9 +1,9 @@
 <script setup lang="ts" generic="TValue extends string | number, T extends SelectOption<TValue>">
-import { useOverlaysState } from '@directives/useOverlaysState';
-import Input from '@ui/Input.vue';
-import { uniqueId } from '@utils/utils';
 import { twMerge } from 'tailwind-merge';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useOverlaysState } from '../../directives/useOverlaysState';
+import { uniqueId } from '../utils/utils';
+import Input from './Input.vue';
 
 export type SelectOption<TValue = string | number> = {
     label: string;
