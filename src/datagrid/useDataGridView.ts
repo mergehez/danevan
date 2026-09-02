@@ -564,6 +564,19 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         }
     );
 
+    // Sorting reorders the rows; always jump back to the top of the new order
+    // (horizontal scroll is intentionally left untouched).
+    watch(
+        () => [state.sortState?.columnName, state.sortState?.direction],
+        () => {
+            if (_state.viewportElement) {
+                _state.viewportElement.scrollTop = 0;
+            }
+
+            runtime.scheduleDraw();
+        }
+    );
+
     watch(
         () => state.rows,
         () => runtime.scheduleDraw(),

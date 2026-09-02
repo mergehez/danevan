@@ -504,8 +504,15 @@ const createNavState = () => {
         }
     }
 
+    // IMPORTANT: the source must be a primitive string, NOT an array. Vue's
+    // watch compares arrays by reference, so an array source would re-fire on
+    // EVERY setTabs (e.g. the 150ms draft sync replacing the active tab's
+    // draftSql) even when the tab hashes are unchanged. That re-ran activateTab
+    // on every keystroke, calling scripts.selectScript and clobbering
+    // query.queryText with a stale draftSql (which made MonacoEditor jump the
+    // cursor back to the start of the text).
     watch(
-        () => [settings.activeTabHash, settings.tabs.map((tab) => tab.hash).join('|')],
+        () => `${settings.activeTabHash}|${settings.tabs.map((tab) => tab.hash).join('|')}`,
         () => {
             flushPendingDraftSync();
             ensureActiveTabExists();
@@ -520,7 +527,7 @@ const createNavState = () => {
     );
 
     watch(
-        () => [hasHydratedBootstrap.value, conns.connections.map((connection) => connection.id).join('|'), scripts.scripts.map((script) => script.id).join('|')],
+        () => `${hasHydratedBootstrap.value}|${conns.connections.map((connection) => connection.id).join('|')}|${scripts.scripts.map((script) => script.id).join('|')}`,
         () => {
             sanitizeTabs();
         },

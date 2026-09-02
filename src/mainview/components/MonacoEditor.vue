@@ -311,6 +311,10 @@ function syncExternalModelValue() {
 
     const nextValue = modelValue.value ?? '';
 
+    // A no-op guard against the draft-sync round-trip: typing -> modelValue ->
+    // parent -> tab.draftSql reassigned -> modelValue reassigned the same
+    // content. If the model already holds identical text, skip setValue so the
+    // cursor never jumps to (1,1).
     if (modelRef.value.getValue() === nextValue) {
         return;
     }

@@ -318,7 +318,7 @@ describe('dbTools', () => {
         testHarness.driverToolsByType.sqlserver.getTableData.mockResolvedValue(tableData);
 
         await expect(dbTools.getTableData(10, { tableName: ' dbo.Users ', limit: 5000, offset: -10 })).resolves.toEqual(tableData);
-        expect(testHarness.driverToolsByType.sqlserver.getTableData).toHaveBeenCalledWith(10, 'dbo.Users', 1000, 0);
+        expect(testHarness.driverToolsByType.sqlserver.getTableData).toHaveBeenCalledWith(10, 'dbo.Users', 1000, 0, undefined, undefined);
     });
 
     it('trims SQL before runQuery and rejects empty statements', async () => {

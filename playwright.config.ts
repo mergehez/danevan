@@ -4,7 +4,7 @@ const BACKEND_PORT = parseInt(process.env.API_PORT || '3264', 10);
 const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '3263', 10);
 
 export default defineConfig({
-    testDir: './tests/e2e',
+    testDir: './src/mainview/tests/e2e',
     fullyParallel: false,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 0,

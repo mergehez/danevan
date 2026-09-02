@@ -1,11 +1,13 @@
+import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+    plugins: [vue()],
     test: {
-        environment: 'node',
+        environment: 'jsdom',
         globals: true,
-        include: ['**/*.spec.ts'],
-        exclude: ['**/e2e/**', '**/playwright/**'],
-        setupFiles: ['./tests/setup.ts'],
+        include: ['src/**/*.spec.ts'],
+        exclude: ['**/e2e/**', '**/playwright/**', '**/node_modules/**'],
+        setupFiles: ['./src/mainview/tests/setup.ts'],
     },
 });

@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
-import CenteredModal from '../../shared/components/CenteredModal.vue';
+import CenteredModal from '../../../shared/components/CenteredModal.vue';
 
 const iconButtonStub = defineComponent({
     name: 'IconButton',
@@ -148,7 +148,7 @@ describe('CenteredModal', () => {
     });
 
     it('restores a persisted size for a specific usage key', async () => {
-        window.localStorage.setItem('centered-modal:test', JSON.stringify({ width: 540, height: 260 }));
+        window.localStorage.setItem('centered-modal:test', JSON.stringify({ width: 540 }));
 
         const wrapper = mount(
             defineComponent({
@@ -186,8 +186,8 @@ describe('CenteredModal', () => {
 
         const surface = wrapper.get('[data-testid="centered-modal-surface"]');
 
+        // The modal persists/restores only its width; height follows the surface content.
         expect((surface.element as HTMLElement).style.width).toBe('540px');
-        expect((surface.element as HTMLElement).style.height).toBe('260px');
         wrapper.unmount();
     });
 });

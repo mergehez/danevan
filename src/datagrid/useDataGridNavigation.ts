@@ -655,7 +655,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         }
     }
 
-    function resetViewState(resetOptions?: { clearColumnList?: boolean; clearHistory?: boolean }) {
+    function resetViewState(resetOptions?: { clearColumnList?: boolean; clearHistory?: boolean; preserveActiveCell?: boolean }) {
         internalState.editingCell.rowIndex = -1;
         internalState.editingCell.columnIndex = -1;
         internalState.editingCell.draftValue = '';
@@ -672,6 +672,10 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
             args.clearPendingChanges();
             args.clearSavedChanges();
             internalState.isSavingChanges = false;
+        }
+
+        if (resetOptions?.preserveActiveCell) {
+            return;
         }
 
         if (trState.rows.length && trState.orderedColumns.length) {

@@ -695,17 +695,24 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
 
     watch(
         () => [options.connectionId(), tableName.value, sourceTableData.value.rowCount, sourceTableData.value.offset, sourceTableData.value.limit, tableInfo.value?.name],
-        () => {
+        (current, previous) => {
             if (!gridState) {
                 return;
             }
+
+            const [connectionId, currentTableName] = current;
+            const [previousConnectionId, previousTableName] = previous ?? [];
+            // Only reset the active cell (which scrolls the grid back to the top-left)
+            // when a different table/connection is loaded. Reloads of the same table
+            // (sorting, paging, refresh) must keep the active cell / scroll position.
+            const tableChanged = connectionId !== previousConnectionId || currentTableName !== previousTableName;
 
             disableForeignKeyChecks.value = false;
             foreignKeyViolations.value = [];
             isForeignKeyViolationsOpen.value = false;
             pendingInsertedRows.value = [];
             pendingDeletedBaseRowIndexes.value = [];
-            gridState.resetViewState({ clearColumnList: true, clearHistory: true });
+            gridState.resetViewState({ clearColumnList: true, clearHistory: true, preserveActiveCell: !tableChanged });
             fkPeek.closeFkPeekPopover();
         },
         { immediate: true }

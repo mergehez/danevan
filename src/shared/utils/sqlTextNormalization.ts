@@ -2,7 +2,7 @@ const SQL_UNICODE_SPACE_PATTERN = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\
 const SQL_ZERO_WIDTH_PATTERN = /(?:\u{200B}|\u{200C}|\u{200D}|\u{2060})/gu;
 
 export function normalizeSqlInputWhitespace(sql: string) {
-    return sql.replace(SQL_UNICODE_SPACE_PATTERN, ' ').replace(SQL_ZERO_WIDTH_PATTERN, '');
+    return sql.replace(SQL_UNICODE_SPACE_PATTERN, ' ').replace(SQL_ZERO_WIDTH_PATTERN, '').replace(/\s+/g, ' ').trim();
 }
 
 export function hasSuspiciousSqlWhitespace(sql: string) {
