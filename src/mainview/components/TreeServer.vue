@@ -13,6 +13,7 @@ import { useServers } from '../composables/useServers';
 import type { ConnectionTreeItem, PersistedTreeState, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
 import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
+import DbMysqldumpExportModal from './DbMysqldumpExportModal.vue';
 import DbServerFormModal from './DbServerFormModal.vue';
 import DbServerSchemasModal from './DbServerSchemasModal.vue';
 import FileTreeButton from './FileTreeButton.vue';
@@ -318,6 +319,17 @@ function connectionMenuitems(connection: ConnectionTreeItem): ContextMenuEntry[]
         },
     ];
 
+    if (servers.servers.find((server) => server.id === connection.server_id)?.driver === 'mysql') {
+        items.push({
+            id: `connection-export-mysqldump:${connection.id}`,
+            label: 'Export using mysqldump...',
+            iconClass: 'icon-[mdi--database-export-outline]',
+            action: async () => {
+                connections.openMysqldumpExport(connection.id);
+            },
+        });
+    }
+
     if (servers.servers.find((server) => server.id === connection.server_id)?.driver === 'msaccess') {
         items.push({
             id: `connection-disconnect:${connection.id}`,
@@ -475,4 +487,9 @@ function getHeaderActions(server: ServerRecord) {
 
     <DbServerSchemasModal v-model:open="servers.schemaSelectionModal.visible" />
     <DbServerFormModal :open="servers.updateForm.visible" :server-id="servers.updateForm.serverId" :on-close="servers.closeUpdateForm" />
+    <DbMysqldumpExportModal
+        :open="connections.mysqldumpExportModal.visible"
+        :connection-id="connections.mysqldumpExportModal.connectionId"
+        :on-close="connections.closeMysqldumpExport"
+    />
 </template>

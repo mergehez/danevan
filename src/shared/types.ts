@@ -473,6 +473,39 @@ export type ConnectionRow = {
     last_used_at: string | undefined;
 };
 
+export type MysqldumpExportOptions = {
+    addDropTable: boolean;
+    disableKeys: boolean;
+    addLocks: boolean;
+    addDropTrigger: boolean;
+    exportSchemaOnly: boolean;
+    completeInsert: boolean;
+    includeTableOptions: boolean;
+    includeRoutines: boolean;
+    lockTables: boolean;
+    insertDelayed: boolean;
+};
+
+export type MysqldumpExportParams = {
+    connectionId: number;
+    executable: string;
+    outputPath: string;
+    databases: string;
+    tables?: string;
+    options: MysqldumpExportOptions;
+};
+
+export type MysqldumpExportResult = {
+    outputPath: string;
+};
+
+export type MysqldumpExportDefaults = {
+    executable: string | undefined;
+    defaultOutputPath: string;
+    database: string;
+    dataSource: string;
+};
+
 export type ScriptRow = {
     id: number;
     connection_id: number;

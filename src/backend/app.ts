@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, readdirSync } from 'fs';
+import { homedir } from 'os';
+import { dirname, join } from 'path';
 import type {
     ApplyTableChangesParams as AppApplyTableChangesParams,
     AppBootstrapApi,
@@ -18,6 +21,9 @@ import type {
     GridFormatterState,
     ModifyTableParams,
     MsAccessRuntimeStatus,
+    MysqldumpExportDefaults,
+    MysqldumpExportParams,
+    MysqldumpExportResult,
     NavigationView,
     PeekFkUsageRelation,
     PeekFkUsageRowsParams,
@@ -37,7 +43,8 @@ import type {
     UpdateScriptParams,
     UpdateServerParams,
 } from '../shared/types';
-import { deleteServerPassword, storeServerPassword } from './auth.ts';
+import { deleteServerPassword, readServerPassword, storeServerPassword } from './auth.ts';
+import { executeCommandToFile, executeTextCommand } from './bunSubprocess.ts';
 import { useAppDb } from './db-app.ts';
 import { dbTools, type SortOrder } from './db-tools.ts';
 import { formatSql as formatSqlResult, getSqlDiagnostics as getSqlDiagnosticsResult } from './sqlDiagnostics.ts';
@@ -239,6 +246,113 @@ function normalizeTestConnectionPayload(params: AppTestConnectionParams) {
         username: params.username?.trim(),
         password: params.password,
     } satisfies AppTestConnectionParams;
+}
+
+const mysqldumpCandidatePaths = [
+    '/usr/local/mysql/bin/mysqldump',
+    '/usr/local/bin/mysqldump',
+    '/usr/bin/mysqldump',
+    '/opt/homebrew/bin/mysqldump',
+    '/opt/local/bin/mysqldump',
+    '/usr/local/mariadb/bin/mysqldump',
+    join(homedir(), 'bin/mysqldump'),
+];
+
+async function findMysqldumpPath(): Promise<string | undefined> {
+    const candidates: string[] = [];
+
+    // Add whatever `command -v mysqldump` resolves to, then the common install dirs.
+    try {
+        const [stdout] = await executeTextCommand({ command: 'sh', args: ['-c', 'command -v mysqldump'] });
+        const resolved = stdout.trim();
+
+        if (resolved) {
+            candidates.push(resolved);
+        }
+    } catch {
+        // PATH lookup failed; fall through to scanning common install directories.
+    }
+
+    candidates.push(...mysqldumpCandidatePaths);
+
+    if (existsSync('/usr/local')) {
+        try {
+            for (const entry of readdirSync('/usr/local')) {
+                if (entry.startsWith('mysql')) {
+                    candidates.push(join('/usr/local', entry, 'bin', 'mysqldump'));
+                }
+            }
+        } catch {
+            // ignore directory scan errors.
+        }
+    }
+
+    // A candidate on PATH can be a broken Finder alias or a non-executable file, so
+    // only accept a path that actually runs (e.g. `mysqldump --version`).
+    for (const candidate of new Set(candidates)) {
+        if (!existsSync(candidate)) {
+            continue;
+        }
+
+        try {
+            await executeTextCommand({ command: candidate, args: ['--version'] });
+            return candidate;
+        } catch {
+            // Not runnable as a real binary; keep probing the next candidate.
+        }
+    }
+
+    return undefined;
+}
+
+function formatMysqldumpTimestamp(date = new Date()) {
+    const pad = (value: number) => String(value).padStart(2, '0');
+
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function substituteMysqldumpOutputPath(template: string, values: { timestamp: string; database: string; dataSource: string }) {
+    return template.replaceAll('{timestamp}', values.timestamp).replaceAll('{database}', values.database).replaceAll('{data_source}', values.dataSource);
+}
+
+function buildMysqldumpOptionsFlags(options: MysqldumpExportParams['options']) {
+    const flags: string[] = [];
+
+    if (options.addDropTable) flags.push('--add-drop-table');
+    if (options.disableKeys) flags.push('--disable-keys');
+    if (options.addLocks) flags.push('--add-locks');
+    if (options.addDropTrigger) flags.push('--add-drop-trigger');
+    if (options.exportSchemaOnly) flags.push('--no-data');
+    if (options.completeInsert) flags.push('--complete-insert');
+    if (!options.includeTableOptions) flags.push('--no-table-options');
+    if (options.includeRoutines) flags.push('--routines');
+    if (options.lockTables) flags.push('--lock-tables');
+
+    return flags;
+}
+
+function buildMysqldumpArgs(params: MysqldumpExportParams, credentials: { host: string; port?: number; username?: string }) {
+    const args = buildMysqldumpOptionsFlags(params.options);
+    const databases = params.databases.trim().split(/\s+/).filter(Boolean);
+    const tables = params.tables?.trim().split(/\s+/).filter(Boolean) ?? [];
+
+    args.push(`--host=${credentials.host}`);
+
+    if (credentials.port !== undefined) {
+        args.push(`--port=${credentials.port}`);
+    }
+
+    if (credentials.username) {
+        args.push(`--user=${credentials.username}`);
+    }
+
+    if (databases.length > 1) {
+        args.push('--databases');
+    }
+
+    args.push(...databases, ...tables);
+
+    return args;
 }
 
 const defaultEditorSettings: EditorSettings = {
@@ -858,6 +972,94 @@ export const app = {
     },
     getMsAccessRuntimeStatus: async (): Promise<MsAccessRuntimeStatus> => {
         return inspectMsAccessRuntime(appDb.getUserDataDir());
+    },
+    getMysqldumpExportDefaults: async (ps: { connectionId: number }): Promise<MysqldumpExportDefaults> => {
+        const connection = appDb.getConnection(ps.connectionId);
+
+        if (!connection) {
+            throw new Error('The selected connection could not be found.');
+        }
+
+        const server = appDb.getServer(connection.server_id);
+
+        if (!server) {
+            throw new Error('The server for the selected connection could not be found.');
+        }
+
+        const database = connection.database_name || connection.name;
+        const dataSource = connection.name || server.name;
+
+        return {
+            executable: await findMysqldumpPath(),
+            defaultOutputPath: join(homedir(), 'mysqldump', '{timestamp}-{database}-{data_source}-dump.sql'),
+            database,
+            dataSource,
+        };
+    },
+    exportWithMysqldump: async (ps: MysqldumpExportParams): Promise<MysqldumpExportResult> => {
+        if (getConnectionDriverOrThrow(ps.connectionId) !== 'mysql') {
+            throw new Error('Export with mysqldump is only supported for MySQL connections.');
+        }
+
+        const executable = ps.executable.trim();
+
+        if (!executable) {
+            throw new Error('The mysqldump executable path is required.');
+        }
+
+        if (!existsSync(executable)) {
+            throw new Error(`The mysqldump executable was not found at: ${executable}`);
+        }
+
+        const connection = appDb.getConnection(ps.connectionId)!;
+        const server = appDb.getServer(connection.server_id)!;
+        const host = connection.host?.trim() || server.host?.trim();
+
+        if (!host) {
+            throw new Error('The selected connection is missing its host.');
+        }
+
+        const databases = ps.databases.trim().split(/\s+/).filter(Boolean);
+        const database = databases[0] || connection.database_name || '';
+
+        if (!database) {
+            throw new Error('A database name is required to run the export.');
+        }
+
+        const outputPath = substituteMysqldumpOutputPath(ps.outputPath.trim(), {
+            timestamp: formatMysqldumpTimestamp(),
+            database,
+            dataSource: connection.name || server.name,
+        });
+
+        mkdirSync(dirname(outputPath), { recursive: true });
+
+        let password = '';
+
+        try {
+            password = (await readServerPassword(connection.server_id)) ?? '';
+        } catch {
+            // Keychain is unavailable on non-macOS; proceed without a stored password.
+        }
+
+        const args = buildMysqldumpArgs(ps, {
+            host,
+            port: connection.port ?? server.port,
+            username: server.username?.trim(),
+        });
+
+        const [stderr, exitCode] = await executeCommandToFile({
+            command: executable,
+            args,
+            outputPath,
+            env: password ? { ...process.env, MYSQL_PWD: password } : process.env,
+        });
+
+        if (exitCode !== 0) {
+            throw new Error(stderr.trim() || `mysqldump exited with code ${exitCode}.`);
+        }
+
+        return { outputPath };
     },
     createScript: async (ps: CreateScriptParams) => {
         ensureConnectionExists(ps.connectionId);

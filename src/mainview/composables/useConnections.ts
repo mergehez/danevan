@@ -1,9 +1,9 @@
 import { reactive, watch } from 'vue';
 import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
-import { confirmAction } from '../lib/utils';
 import { _dbCoreState } from '../composables/dbCoreState';
 import { useDbCaches } from '../composables/useDbCaches';
 import { tasks } from '../composables/useTasks';
+import { confirmAction } from '../lib/utils';
 
 export type ConnectionTablesState = {
     loaded: boolean;
@@ -25,6 +25,10 @@ export function _useConnections() {
     const state = reactive({
         connectionTablesById,
         tableDetailsByConnectionId,
+        mysqldumpExportModal: {
+            visible: false,
+            connectionId: -1,
+        },
         get connections() {
             return [..._dbCoreState.connections].sort((left, right) => Number(left.sequence) - Number(right.sequence) || left.name.localeCompare(right.name));
         },
@@ -206,6 +210,14 @@ export function _useConnections() {
         },
         async selectConnection(connectionId: number | undefined) {
             _dbCoreState.applyBootstrap(await tasks.selectConnection.run({ connectionId }));
+        },
+        openMysqldumpExport(connectionId: number) {
+            state.mysqldumpExportModal.connectionId = connectionId;
+            state.mysqldumpExportModal.visible = true;
+        },
+        closeMysqldumpExport() {
+            state.mysqldumpExportModal.visible = false;
+            state.mysqldumpExportModal.connectionId = -1;
         },
         async createConnection(connection: CreateConnectionParams) {
             _dbCoreState.applyBootstrap(await tasks.createConnection.run(connection));

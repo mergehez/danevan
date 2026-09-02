@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ServerRecord } from '../../shared/types';
+import type { ServerRecord } from '../../shared/types';
 import { useConnections } from '../composables/useConnections';
-import { getTableTreeForCollection, TableCollectionTreeItem, useServerTree } from '../composables/useServerTree';
+import { getTableTreeForCollection, type TableCollectionTreeItem, useServerTree } from '../composables/useServerTree';
 import TreeCollection from './TreeCollection.vue';
 import TreeTableRow from './TreeTableRow.vue';
 
