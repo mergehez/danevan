@@ -102,12 +102,6 @@ const fkPeekViews = useForeignKeyPeekViews({
         return server?.driver || 'sqlite';
     },
 });
-const sqlDialect = computed(() => {
-    const connection = connections.connections.find((entry) => entry.id === connections.selectedConnectionId);
-    const server = servers.servers.find((entry) => entry.id === connection?.server_id);
-    return server?.driver || 'sqlite';
-});
-
 const dataGridState = useDbDataGrid({
     connectionId: () => connections.selectedConnectionId!,
     emptyText: () => `Select a table to preview${isUnlimitedDataLimit.value ? '' : ` up to ${settings.state.queryRowLimit} rows`}.`,

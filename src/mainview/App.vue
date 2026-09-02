@@ -26,7 +26,7 @@ initializeDbStates();
 const settings = useDbSettings();
 const servers = useServers();
 const connections = useConnections();
-const query = useQuery();
+useQuery();
 const contextMenu = useContextMenu();
 const navState = useNavState();
 const overlayState = useOverlaysState();
