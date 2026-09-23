@@ -1,5 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useDataGrid, type DataGridCellValue, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
+import { getDataGridLayoutStorageKey } from '../../datagrid/dataGridLayoutStorage';
 import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import type { ApplyTableChangesParams, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
@@ -186,7 +187,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                 return undefined;
             }
 
-            return `data-grid-layout:${connectionId}:${currentTableName}`;
+            return getDataGridLayoutStorageKey(connectionId, currentTableName);
         }),
         editable: true,
         tableData: overlayTableData,

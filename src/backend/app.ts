@@ -848,6 +848,41 @@ export const app = {
         appDb.setSetting('selectedConnectionId', connectionId);
         return buildBootstrap();
     },
+    createDatabase: async (ps: { serverId: number; databaseName: string; collation?: string }) => {
+        ensureServerExists(ps.serverId);
+
+        const server = appDb.getServer(ps.serverId);
+
+        if (!server) {
+            throw new Error('The selected server could not be found.');
+        }
+
+        if (server.kind !== 'server') {
+            throw new Error('Creating databases is only supported for server-based entries.');
+        }
+
+        const databaseName = ps.databaseName.trim();
+
+        if (!databaseName) {
+            throw new Error('Database name is required.');
+        }
+
+        await dbTools.createDatabase(ps.serverId, databaseName, ps.collation?.trim() || undefined);
+
+        const connectionId = appDb.createConnection({
+            serverId: ps.serverId,
+            name: databaseName,
+            host: server.host,
+            port: server.port,
+            databaseName,
+            readonly: false,
+        });
+
+        await refreshServerSchemasForConnection(ps.serverId, connectionId);
+
+        appDb.setSetting('selectedConnectionId', connectionId);
+        return buildBootstrap();
+    },
     setVisibleServerSchemas: async (ps: { serverId: number; schemaNames: string[] }) => {
         ensureServerExists(ps.serverId);
 

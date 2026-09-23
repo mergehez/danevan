@@ -1,7 +1,9 @@
 import { reactive, ref } from 'vue';
 import type { AppRequestApi } from '../../electron/bridge.ts';
 import { apiMethods } from '../../shared/utils/apiMethods';
+import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { appClientRpc } from '../appClient.ts';
+import { useSqlHistory } from './useSqlHistory';
 
 const runningOperations = reactive({} as Record<string, number | undefined>); // key => timestamp
 const errors = reactive({} as Record<string, string | undefined>);
@@ -51,8 +53,75 @@ export function useAsyncTask2<TMethod extends AppRequestApi[keyof AppRequestApi]
 }
 
 function getTasks() {
+    const history = useSqlHistory();
+
+    function wrapRunQuery(task: ReturnType<typeof useAsyncTask2<AppRequestApi['runQuery']>>) {
+        const originalRun = task.run;
+        task.run = async (ps: Parameters<AppRequestApi['runQuery']>[0], identifier?: string) => {
+            const startedAt = performance.now();
+            try {
+                const result = await originalRun(ps, identifier);
+                history.record({
+                    source: 'query',
+                    sql: ps.sql,
+                    connectionId: ps.connectionId,
+                    status: 'success',
+                    durationMs: Math.round(performance.now() - startedAt),
+                });
+                return result;
+            } catch (error) {
+                history.record({
+                    source: 'query',
+                    sql: ps.sql,
+                    connectionId: ps.connectionId,
+                    status: 'error',
+                    errorMessage: error instanceof Error ? error.message : String(error),
+                    durationMs: Math.round(performance.now() - startedAt),
+                });
+                throw error;
+            }
+        };
+    }
+
+    function wrapDropTable(task: ReturnType<typeof useAsyncTask2<AppRequestApi['dropTable']>>) {
+        const originalRun = task.run;
+        task.run = async (ps: Parameters<AppRequestApi['dropTable']>[0], identifier?: string) => {
+            const startedAt = performance.now();
+            const sql = `DROP TABLE ${quoteSqlIdentifier(ps.tableName, 'mysql')}`;
+            try {
+                const result = await originalRun(ps, identifier);
+                history.record({
+                    source: 'drop-table',
+                    sql,
+                    connectionId: ps.connectionId,
+                    status: 'success',
+                    durationMs: Math.round(performance.now() - startedAt),
+                });
+                return result;
+            } catch (error) {
+                history.record({
+                    source: 'drop-table',
+                    sql,
+                    connectionId: ps.connectionId,
+                    status: 'error',
+                    errorMessage: error instanceof Error ? error.message : String(error),
+                    durationMs: Math.round(performance.now() - startedAt),
+                });
+                throw error;
+            }
+        };
+    }
+
     return apiMethods.reduce((acc, methodName) => {
-        acc[methodName as keyof AppRequestApi] = useAsyncTask2(methodName, (api) => api[methodName as keyof AppRequestApi]);
+        const task = useAsyncTask2(methodName, (api) => api[methodName as keyof AppRequestApi]);
+
+        if (methodName === 'runQuery') {
+            wrapRunQuery(task as unknown as ReturnType<typeof useAsyncTask2<AppRequestApi['runQuery']>>);
+        } else if (methodName === 'dropTable') {
+            wrapDropTable(task as unknown as ReturnType<typeof useAsyncTask2<AppRequestApi['dropTable']>>);
+        }
+
+        acc[methodName as keyof AppRequestApi] = task;
         return acc;
     }, {} as any) as {
         [K in keyof AppRequestApi]: ReturnType<typeof useAsyncTask2<AppRequestApi[K]>>;

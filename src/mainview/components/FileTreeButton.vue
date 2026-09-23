@@ -9,6 +9,7 @@ const props = withDefaults(
     defineProps<{
         item: T;
         dataTestid?: string;
+        dataCollectionKind?: string;
         dataSidebarSelfToggle?: boolean | 'true';
         dataNodeId: string;
         dataParentId?: string;
@@ -131,6 +132,7 @@ const children = computed(() => {
         v-if="!skipTitle"
         data-sidebar-row="true"
         :data-test-id="dataTestid"
+        :data-collection-kind="dataCollectionKind"
         :data-sidebar-self-toggle="dataSidebarSelfToggle ? 'true' : undefined"
         :data-node-id="dataNodeId"
         :data-parent-id="dataParentId"

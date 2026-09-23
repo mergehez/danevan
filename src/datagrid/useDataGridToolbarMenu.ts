@@ -69,6 +69,16 @@ export function useDataGridToolbarMenu(state: TDataGridState) {
                 action: async () => state.copyAllCellsAsJson?.(),
             },
             {
+                id: 'toolbar-copy-all-as-text',
+                label: 'As Text',
+                action: async () => state.copyAllCellsAsText?.(),
+            },
+            {
+                id: 'toolbar-copy-all-as-table',
+                label: 'As Table',
+                action: async () => state.copyAllCellsAsTable?.(),
+            },
+            {
                 id: 'toolbar-copy-all-as-sql',
                 label: 'As SQL Literal',
                 action: async () => state.copyAllCellsAsSql?.(),

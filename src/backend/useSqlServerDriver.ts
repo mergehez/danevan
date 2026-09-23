@@ -282,6 +282,11 @@ export function useSqlServerSchemaHelper(deps: { normalizeOptionalText: SqlServe
         getTableColumns,
         getTableNames,
         queryRowCount,
+        buildCreateDatabaseStatement(databaseName: string, collation?: string): string {
+            const quotedName = quoteSqlServerIdentifier(databaseName);
+            const collationClause = collation ? ` COLLATE ${collation}` : '';
+            return `CREATE DATABASE ${quotedName}${collationClause}`;
+        },
         buildModifyTableStatements(_client: RemoteDriverClient, _tableName: string, _currentInfo: TableInfo, _nextPlan: ModifySchemaPlan): string[] {
             throw new Error('Function not implemented.');
         },

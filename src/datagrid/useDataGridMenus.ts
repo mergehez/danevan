@@ -188,6 +188,15 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
                               } satisfies ContextMenuEntry,
                           ]
                         : []),
+                    ...(canCopyAsCsv
+                        ? [
+                              {
+                                  id: 'copy-as-table',
+                                  label: 'As Table',
+                                  action: async () => clipboard.copySelection(rowIndex, columnIndex, undefined, true),
+                              } satisfies ContextMenuEntry,
+                          ]
+                        : []),
                     ...(canGenerateSqlStatements
                         ? [
                               {

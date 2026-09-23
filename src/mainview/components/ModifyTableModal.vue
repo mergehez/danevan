@@ -12,10 +12,10 @@ import Select from '../../shared/components/Select.vue';
 import Splitter from '../../shared/components/Splitter.vue';
 import SplitterVertical from '../../shared/components/SplitterVertical.vue';
 import { type FileTreeItem, useFileTree } from '../../shared/utils/useFileTree';
+import { useModifyTable } from '../composables/useModifyTable';
 import { getDbCollationOptions } from '../lib/collations';
 import { getDbColumnDataTypeOptions } from '../lib/dbColumnDataType';
 import { getDbDefaultExpressionOptions } from '../lib/dbDefaultExpression';
-import { useModifyTable } from '../composables/useModifyTable';
 import SqlEditor from './SqlEditor.vue';
 
 const modifyTable = useModifyTable();
@@ -422,14 +422,6 @@ function onModalOpenChange(nextOpen: boolean) {
         modifyTable.closeModal();
     }
 }
-
-function getSectionSuffix(kind: SidebarNode['groupKind']) {
-    if (kind === 'columns') return 'COL';
-    if (kind === 'keys') return 'KEY';
-    if (kind === 'foreign-keys') return 'FK';
-    if (kind === 'indexes') return 'IDX';
-    return '';
-}
 </script>
 
 <template>
@@ -453,9 +445,17 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                 <template #left>
                     <div class="flex h-full min-h-0 flex-col">
                         <div class="flex items-center gap-px border-b border-x4 pl-0.5 pr-2 py-1">
-                            <IconButton severity="raised" :disabled="!canAddEntity" :v-tooltip="addTooltip" @click="modifyTable.addSelectedEntity" icon="icon-[mdi--plus]" />
                             <IconButton
                                 severity="raised"
+                                data-testid="modify-add"
+                                :disabled="!canAddEntity"
+                                :v-tooltip="addTooltip"
+                                @click="modifyTable.addSelectedEntity"
+                                icon="icon-[mdi--plus]"
+                            />
+                            <IconButton
+                                severity="raised"
+                                data-testid="modify-delete"
                                 :disabled="!modifyTable.canDeleteSelection"
                                 :v-tooltip.xs.nowrap="deleteTooltip"
                                 @click="modifyTable.deleteSelectedEntity"
@@ -463,6 +463,7 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                             />
                             <IconButton
                                 severity="raised"
+                                data-testid="modify-duplicate"
                                 :disabled="!modifyTable.canDuplicateSelection"
                                 :v-tooltip.xs.nowrap="duplicateTooltip"
                                 @click="modifyTable.duplicateSelectedEntity"
@@ -470,6 +471,7 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                             />
                             <IconButton
                                 severity="raised"
+                                data-testid="modify-move-up"
                                 :disabled="!modifyTable.canMoveSelectionUp"
                                 :v-tooltip.xs.nowrap="moveUpTooltip"
                                 @click="modifyTable.moveSelectedEntityUp"
@@ -477,6 +479,7 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                             />
                             <IconButton
                                 severity="raised"
+                                data-testid="modify-move-down"
                                 :disabled="!modifyTable.canMoveSelectionDown"
                                 :v-tooltip.xs.nowrap="moveDownTooltip"
                                 @click="modifyTable.moveSelectedEntityDown"
@@ -489,6 +492,10 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                                 <template #default="{ item, isGroup, isCollapsed, selected, rowPaddingStyle, onClick, onKeydown }">
                                     <button
                                         type="button"
+                                        data-testid="modify-nav-item"
+                                        :data-nav-kind="item.kind"
+                                        :data-nav-title="item.title"
+                                        :data-group-kind="item.groupKind"
                                         class="flex h-5.5 w-full items-center gap-1 px-1 text-left text-xs transition focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-x6"
                                         :class="[
                                             selected ? 'bg-x4' : 'hover:bg-x3',
@@ -511,9 +518,6 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                                         <span v-else class="block w-1 shrink-0" />
                                         <!-- <span class="icon shrink-0 text-sm opacity-70" :class="getSidebarIcon(item, isGroup)" /> -->
                                         <span class="min-w-0 truncate" :class="item.status === 'deleted' ? 'line-through opacity-40' : ''">{{ item.title }}</span>
-                                        <span v-if="item.kind === 'group' && getSectionSuffix(item.groupKind)" class="shrink-0 text-2xs uppercase tracking-[0.18em] opacity-20">
-                                            {{ getSectionSuffix(item.groupKind) }}
-                                        </span>
                                         <span v-if="item.rightText" class="ml-auto min-w-0 truncate text-right text-2xs opacity-35">{{ item.rightText }}</span>
                                     </button>
                                 </template>
@@ -609,7 +613,7 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                                     <div v-else-if="selectedColumn">
                                         <div :class="formGridClass">
                                             <div :class="getLabelClass(isColumnFieldDirty('name'))">Name</div>
-                                            <Input v-model="selectedColumn.name" small :disabled="selectedColumn.status === 'deleted'" />
+                                            <Input v-model="selectedColumn.name" data-testid="modify-column-name" small :disabled="selectedColumn.status === 'deleted'" />
 
                                             <div :class="getLabelClass(isColumnFieldDirty('comment'))">Comment</div>
                                             <Input v-model="selectedColumn.comment" small :disabled="selectedColumn.status === 'deleted' || !modifyTable.canEditComment" />
@@ -618,6 +622,7 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                                             <ListBox
                                                 small
                                                 free-edit
+                                                data-testid="modify-column-type"
                                                 :selection="selectedColumn.type"
                                                 :onSelect="(value, query) => (selectedColumn!.type = value?.value ?? query)"
                                                 :items="getDbColumnDataTypeOptions(modifyTable.driver, selectedColumn?.type)"
@@ -974,7 +979,7 @@ function getSectionSuffix(kind: SidebarNode['groupKind']) {
                     small
                 />
                 <Button type="button" severity="secondary" smaller @click="modifyTable.closeModal">Cancel</Button>
-                <Button type="button" severity="primary" smaller :disabled="!modifyTable.canApply" @click="modifyTable.applyChanges">
+                <Button type="button" severity="primary" smaller data-testid="modify-apply" :disabled="!modifyTable.canApply" @click="modifyTable.applyChanges">
                     {{ modifyTable.applying ? 'Applying...' : 'OK' }}
                 </Button>
             </div>

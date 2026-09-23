@@ -13,6 +13,7 @@ import { useServers } from '../composables/useServers';
 import type { ConnectionTreeItem, PersistedTreeState, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
 import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
+import DbCreateDatabaseModal from './DbCreateDatabaseModal.vue';
 import DbMysqldumpExportModal from './DbMysqldumpExportModal.vue';
 import DbServerFormModal from './DbServerFormModal.vue';
 import DbServerSchemasModal from './DbServerSchemasModal.vue';
@@ -366,9 +367,9 @@ function getHeaderActions(server: ServerRecord) {
     const actions: FileTreeAction[] = [];
     if (server.kind !== 'file') {
         actions.push({
-            title: 'Add connection',
-            icon: 'icon-[mdi--plus]',
-            onClick: () => servers.openAddForm(server.driver, server.id),
+            title: 'Create database',
+            icon: 'icon-[mdi--database-plus-outline]',
+            onClick: () => servers.openCreateDatabase(server.id),
         });
     }
     actions.push(
@@ -487,6 +488,7 @@ function getHeaderActions(server: ServerRecord) {
 
     <DbServerSchemasModal v-model:open="servers.schemaSelectionModal.visible" />
     <DbServerFormModal :open="servers.updateForm.visible" :server-id="servers.updateForm.serverId" :on-close="servers.closeUpdateForm" />
+    <DbCreateDatabaseModal :open="servers.createDatabaseModal.visible" :server-id="servers.createDatabaseModal.serverId" :on-close="servers.closeCreateDatabase" />
     <DbMysqldumpExportModal
         :open="connections.mysqldumpExportModal.visible"
         :connection-id="connections.mysqldumpExportModal.connectionId"

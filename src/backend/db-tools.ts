@@ -1,4 +1,3 @@
-import { normalizeSqlInputWhitespace } from '../shared/utils/sqlTextNormalization';
 import type {
     ApplyTableChangesParams,
     ApplyTableChangesResult,
@@ -21,6 +20,7 @@ import type {
     TestConnectionResult,
     UpdateColumnParams,
 } from '../shared/types';
+import { normalizeSqlInputWhitespace } from '../shared/utils/sqlTextNormalization';
 import { readServerPassword as readServerPasswordFromKeychain } from './auth.ts';
 import { useAppDb } from './db-app.ts';
 import { useMsAccessDriverTools } from './useMsAccessDriver.ts';
@@ -63,6 +63,7 @@ export type DriverTools = {
     getTableInfoFresh: (connectionId: number, tableName: string) => Promise<TableInfo>;
     getTableDdl: (connectionId: number, tableName: string) => Promise<string>;
     listServerSchemas: (serverId: number, connectionId?: number) => Promise<ServerSchemaRecord[]>;
+    createDatabase?: (serverId: number, databaseName: string, collation?: string) => Promise<void>;
     disconnectConnection?: (connectionId: number) => Promise<void>;
     getTableData: (connectionId: number, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean) => Promise<TableData>;
     runQuery: (connectionId: number, sql: string, params?: SqlValue[]) => Promise<QueryExecutionResult>;
@@ -740,6 +741,25 @@ export const dbTools = {
         const schemas = await getDriverTools(server.driver, server.kind).listServerSchemas(serverId, connectionId);
         appDb.updateServerSchemaMetadata(serverId, { schemaCount: schemas.length });
         return schemas;
+    },
+    async createDatabase(serverId: number, databaseName: string, collation?: string): Promise<void> {
+        const server = appDb.getServer(serverId);
+
+        if (!server) {
+            throw new Error('The selected server could not be found.');
+        }
+
+        if (server.kind !== 'server') {
+            throw new Error('Creating databases is only supported for server-based entries.');
+        }
+
+        const driverTools = getDriverTools(server.driver, server.kind);
+
+        if (!driverTools.createDatabase) {
+            throw new Error(`Creating databases is not supported for ${server.driver} servers.`);
+        }
+
+        await driverTools.createDatabase(serverId, databaseName, collation);
     },
     async refreshConnectionSchema(connectionId: number): Promise<ConnectionSchemaCache> {
         const tables = await this.getTablesFresh(connectionId);

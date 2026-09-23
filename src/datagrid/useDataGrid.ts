@@ -761,6 +761,8 @@ export function useDataGrid(_options: UseDataGridOptions) {
         copyAllCellsAsJson: clipboard.copyAllCellsAsJson,
         copyAllCellsAsCsv: clipboard.copyAllCellsAsCsv,
         copyAllCellsAsSql: clipboard.copyAllCellsAsSql,
+        copyAllCellsAsText: clipboard.copyAllCellsAsText,
+        copyAllCellsAsTable: clipboard.copyAllCellsAsTable,
         copyAllCellsAsSqlInsert: clipboard.copyAllCellsAsSqlInsert,
         copyAllCellsAsSqlSelect: clipboard.copyAllCellsAsSqlSelect,
         copyTableAsDdl: options.copyTableAsDdl,

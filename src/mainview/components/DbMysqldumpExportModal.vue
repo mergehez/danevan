@@ -200,8 +200,8 @@ async function openInVsCode() {
                 <div>{{ status.message }}</div>
 
                 <div v-if="status.success" class="w-full flex items-center gap-2">
-                    <Button type="button" severity="success" smaller @click="openFolder">Open the folder</Button>
-                    <Button type="button" severity="success" smaller @click="openInVsCode">Open in VS Code</Button>
+                    <Button type="button" severity="secondary" smaller @click="openFolder">Open the folder</Button>
+                    <Button type="button" severity="secondary" smaller @click="openInVsCode">Open in VS Code</Button>
                 </div>
             </Alert>
 

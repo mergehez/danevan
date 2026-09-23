@@ -18,6 +18,7 @@ import { useScriptsDb } from '../composables/useScriptsDb';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
 import DbConnectionForm from './DbConnectionForm.vue';
+import SqlHistoryModal from './SqlHistoryModal.vue';
 import TreeServer from './TreeServer.vue';
 
 const settings = useDbSettings();
@@ -28,6 +29,7 @@ const query = useQuery();
 const scripts = useScriptsDb();
 const navState = useNavState();
 const debugResetKey = ref(0);
+const sqlHistoryModalOpen = ref(false);
 const scriptsTreeRef = ref<HTMLElement>();
 
 type ScriptTreeItem = ScriptRecord & {
@@ -509,6 +511,7 @@ watch(
             <h2 class="text-sm font-semibold tracking-[0.02em] text-reverse">Connections</h2>
             <div class="flex items-center gap-1">
                 <IconButton icon="icon-[mdi--database-plus-outline]" v-tooltip.xs.nowrap="'Add source'" smaller @click="servers.openAddForm()" />
+                <IconButton icon="icon-[mdi--history]" v-tooltip.xs.nowrap="'History'" smaller @click="sqlHistoryModalOpen = true" />
                 <IconButton icon="icon-[mdi--dots-vertical]" v-tooltip.xs.nowrap="'Open settings'" smaller v-menu.button="getMenuItems" />
             </div>
         </div>
@@ -542,4 +545,6 @@ watch(
             </SplitterVertical>
         </div>
     </aside>
+
+    <SqlHistoryModal v-model:open="sqlHistoryModalOpen" />
 </template>

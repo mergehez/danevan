@@ -551,6 +551,9 @@ export function usePostgresSchemaHelper(deps: PostgresSchemaHelperDeps) {
         getTableColumns,
         getTableNames,
         queryRowCount: mysqlSchemaHelper.queryRowCount,
+        buildCreateDatabaseStatement(databaseName: string, _collation?: string): string {
+            return `CREATE DATABASE ${deps.quoteIdentifier(databaseName)}`;
+        },
     } satisfies RemoteDriverHelper;
 }
 

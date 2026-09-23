@@ -195,6 +195,15 @@ function onGridSortChange(_columnName: string) {
     }
 }
 
+function reloadGrid() {
+    const connId = connections.selectedConnectionId;
+    const tableName = query.selectedTableName;
+
+    if (connId && tableName) {
+        void query.loadSelectedTable(connId, tableName, { offset: 0, orderBy: orderBy.value });
+    }
+}
+
 const peekGridScopes = new Map<string, EffectScope>();
 const peekGridStates = new Map<string, EditableDataGridState>();
 
@@ -361,13 +370,7 @@ onBeforeUnmount(() => {
                             :on-select-page-size="selectPageSize"
                             :disabled="query.isCustomQueryMode"
                             :on-add-row="dataGridState.openAddRowDialog"
-                            :on-reload="
-                                () => {
-                                    const c = connections.selectedConnectionId;
-                                    const t = query.selectedTableName;
-                                    if (c && t) query.loadSelectedTable(c, t, { offset: 0 });
-                                }
-                            "
+                            :on-reload="reloadGrid"
                             @toggle-column="toggleColumnVisibility"
                         />
                     </template>

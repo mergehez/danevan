@@ -13,6 +13,7 @@ import { useNavState } from '../composables/useNavState';
 import { useQuery } from '../composables/useQuery';
 import { useScriptsDb } from '../composables/useScriptsDb';
 import { useServers } from '../composables/useServers';
+import type { SqlHistoryEntry } from '../composables/useSqlHistory';
 import DbGridToolbar from './DbGridToolbar.vue';
 import DbSaveBar from './DbSaveBar.vue';
 import SqlEditor from './SqlEditor.vue';
@@ -45,8 +46,25 @@ const activeSavedScript = computed(() => {
     return scripts.scripts.find((script) => script.id === currentTab.targetId);
 });
 const isSaveModalOpen = ref(false);
-const resultPanelTab = ref<'result' | 'problems'>('problems');
+const resultPanelTab = ref<'result' | 'problems' | 'history'>('problems');
 const scriptProblems = ref<SqlDiagnosticMarker[]>([]);
+
+function formatHistoryTime(timestamp: number) {
+    return new Date(timestamp).toLocaleTimeString();
+}
+
+function getHistoryConnectionLabel(entry: SqlHistoryEntry) {
+    if (entry.connectionLabel) {
+        return entry.connectionLabel;
+    }
+
+    if (typeof entry.connectionId === 'number') {
+        const connection = connections.connections.find((item) => item.id === entry.connectionId);
+        return connection?.database_name || connection?.name || '';
+    }
+
+    return '';
+}
 const problemSourcesToIgnore = [
     'sqlfluff:AM04', // Query produces an unknown number of result columns
     'sqlfluff:LT01', // Unnecessary trailing whitespace
@@ -95,6 +113,15 @@ const canSubmitSave = computed(() => !!saveForm.name.trim() && typeof editorConn
 const isBusy = computed(() => query.isRunningQuery);
 const problemCount = computed(() => scriptProblemsFiltered.value.length);
 const hasProblems = computed(() => problemCount.value > 0);
+const activeScriptHistory = computed(() => {
+    const tabHash = activeScriptTab.value?.hash;
+
+    if (!tabHash) {
+        return [];
+    }
+
+    return navState.getScriptTabRuntimeState(tabHash).scriptHistory;
+});
 
 const getEmptyTableData = (): TableData => ({
     columns: [],
@@ -146,9 +173,19 @@ const resultDbGridState = useDbDataGrid({
     emptyText: () => 'Query returned no rows.',
 });
 
+function appendActiveScriptHistory(entry: Omit<SqlHistoryEntry, 'id' | 'timestamp'>) {
+    const tabHash = activeScriptTab.value?.hash;
+
+    if (!tabHash) {
+        return;
+    }
+
+    navState.addScriptHistoryEntry(tabHash, entry);
+}
+
 function reloadQueryResult() {
     if (query.queryText.trim()) {
-        void query.runQuery();
+        void query.runQuery(appendActiveScriptHistory);
     }
 }
 
@@ -349,7 +386,7 @@ async function handleEditorTableDrop(payload: { connectionId: number; tableName:
 async function runSelectedScript() {
     await settings.setActiveView('scripts');
     resultPanelTab.value = 'result';
-    await query.runQuery();
+    await query.runQuery(appendActiveScriptHistory);
 }
 
 function handleSqlDiagnosticsChanged(result: SqlDiagnosticsResult) {
@@ -458,6 +495,14 @@ function getProblemSeverityClasses(severity: SqlDiagnosticMarker['severity']) {
                         Problems
                         <span v-if="hasProblems" class="ml-1 opacity-70">{{ problemCount }}</span>
                     </button>
+                    <button
+                        type="button"
+                        class="px-2 py-1 text-xs border"
+                        :class="resultPanelTab === 'history' ? ' border-x5 bg-x1 text-white' : 'border-transparent opacity-65 hover:opacity-100'"
+                        @click="resultPanelTab = 'history'"
+                    >
+                        History
+                    </button>
                 </div>
                 <div v-if="isBusy" class="pointer-events-auto absolute inset-0 z-10 flex items-center justify-center bg-x2/65 backdrop-blur-[1px]">
                     <div class="border border-x4 bg-x1 px-2 py-2 text-xs text-reverse">Running query...</div>
@@ -487,6 +532,22 @@ function getProblemSeverityClasses(severity: SqlDiagnosticMarker['severity']) {
                     Mutation completed. Last insert row id: {{ query.queryResult.lastInsertRowid }}
                 </div>
                 <div v-else-if="resultPanelTab === 'result'" class="px-2 py-3 text-xs opacity-60">Run the selected script to preview its result here.</div>
+                <div v-else-if="resultPanelTab === 'history'" class="min-h-0 flex-1 overflow-y-auto px-2 py-1 text-xs">
+                    <div v-if="!activeScriptHistory.length" class="px-2 py-3 text-xs opacity-60">No queries have been executed in this script yet.</div>
+                    <div v-for="entry in activeScriptHistory" :key="entry.id" class="border-b border-x4 py-1.5">
+                        <div class="flex items-center gap-2">
+                            <span class="shrink-0 opacity-60">{{ formatHistoryTime(entry.timestamp) }}</span>
+                            <span class="shrink-0 px-1 border" :class="entry.status === 'error' ? 'border-red-400 text-red-300' : 'border-x6 text-green-400'">
+                                {{ entry.status }}
+                            </span>
+                            <span class="shrink-0 px-1 border border-x6 opacity-70">{{ entry.source }}</span>
+                            <span v-if="getHistoryConnectionLabel(entry)" class="truncate opacity-70">{{ getHistoryConnectionLabel(entry) }}</span>
+                            <span v-if="typeof entry.durationMs === 'number'" class="ml-auto shrink-0 opacity-50">{{ entry.durationMs }}ms</span>
+                        </div>
+                        <pre class="whitespace-pre-wrap wrap-break-word pt-1 leading-5 text-white/85">{{ entry.sql }}</pre>
+                        <div v-if="entry.errorMessage" class="pt-0.5 text-red-300">{{ entry.errorMessage }}</div>
+                    </div>
+                </div>
                 <div v-else-if="hasProblems" class="min-h-0 flex-1 overflow-y-auto px-2 py-1 text-xs grid grid-cols-[auto_1fr] items-center place-content-start">
                     <template v-for="(problem, index) in scriptProblemsFiltered" :key="`${problem.source || 'sql'}-${problem.startLineNumber}-${problem.startColumn}-${index}`">
                         <!-- class="flex items-center px-2 py-0.5 leading-5 text-xs border-b" -->

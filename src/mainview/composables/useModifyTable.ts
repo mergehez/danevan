@@ -7,6 +7,7 @@ import { confirmAction } from '../lib/utils';
 import { useConnections } from './useConnections';
 import { useQuery } from './useQuery';
 import { useServers } from './useServers';
+import { useSqlHistory } from './useSqlHistory';
 import { tasks } from './useTasks';
 
 type ModifyTableColumnStatus = 'existing' | 'new' | 'deleted';
@@ -177,6 +178,16 @@ function cloneColumns(columns: TableColumnInfo[]) {
 
 function getActiveColumns(columns: ModifyTableColumnDraft[]) {
     return columns.filter((column) => column.status !== 'deleted');
+}
+
+// Returns the nearest column that already exists in the table (has an
+// originalName) before the given index in the provided order. Used to detect
+// column reordering.
+function getPreviousExistingColumn(columns: ModifyTableColumnDraft[], fromIndex: number): ModifyTableColumnDraft | undefined {
+    return [...columns]
+        .slice(0, fromIndex)
+        .reverse()
+        .find((entry) => entry.originalName);
 }
 
 function createOriginalColumnsByName(columns: ModifyTableColumnDraft[]) {
@@ -1463,6 +1474,14 @@ function hasColumnSchemaChanges(state: ModifyTablePreviewState) {
         return true;
     }
 
+    // A pure reorder of existing columns (with no metadata change) still counts
+    // as a schema change. Compare the order of the existing columns.
+    const originalOrder = state.originalColumns.map((column) => column.originalName ?? column.name);
+    const activeOrder = activeColumns.map((column) => column.originalName ?? column.name);
+    if (!originalOrder.every((name, index) => name === activeOrder[index])) {
+        return true;
+    }
+
     return activeColumns.some((column) => {
         const originalColumn = column.originalName ? originalColumnsByName.get(column.originalName) : undefined;
 
@@ -1749,8 +1768,16 @@ function buildPreviewStatements(state: ModifyTablePreviewState) {
                 normalizeOptionalText(column.collation) !== normalizeOptionalText(originalColumn.collation) ||
                 normalizeOptionalText(column.onUpdate) !== normalizeOptionalText(originalColumn.onUpdate);
 
-            if (changed) {
-                statements.push(`ALTER TABLE ${quotedTableName} CHANGE COLUMN ${quoteSqlIdentifier(originalColumn.name, 'mysql')} ${buildMySqlColumnDefinition(column)};`);
+            const originalIndex = state.originalColumns.findIndex((entry) => (entry.originalName ?? entry.name) === column.originalName);
+            const previousExisting = getPreviousExistingColumn(activeColumns, index);
+            const currentPrevious = originalIndex > 0 ? getPreviousExistingColumn(state.originalColumns, originalIndex) : undefined;
+            const positionChanged = previousExisting?.originalName !== currentPrevious?.originalName;
+
+            if (changed || positionChanged) {
+                const placementClause = previousExisting ? ` AFTER ${quoteSqlIdentifier(previousExisting.name, 'mysql')}` : ' FIRST';
+                statements.push(
+                    `ALTER TABLE ${quotedTableName} CHANGE COLUMN ${quoteSqlIdentifier(originalColumn.name, 'mysql')} ${buildMySqlColumnDefinition(column)}${placementClause};`
+                );
             }
         });
 
@@ -2107,6 +2134,7 @@ export function _useModifyTable() {
     const connections = useConnections();
     const servers = useServers();
     const query = useQuery();
+    const history = useSqlHistory();
     const undoStack: ModifyTableHistorySnapshot[] = [];
     const redoStack: ModifyTableHistorySnapshot[] = [];
     let currentHistorySnapshot: ModifyTableHistorySnapshot | undefined;
@@ -3057,6 +3085,8 @@ export function _useModifyTable() {
             state.applying = true;
             state.errorMessage = '';
             const nextTableName = state.table.name.trim() || state.tableName;
+            let modifyAttempted = false;
+            let modifySucceeded = false;
 
             try {
                 if (state.isCreateMode) {
@@ -3086,6 +3116,9 @@ export function _useModifyTable() {
 
                 const currentTableName = state.tableName;
                 const finalTableName = nextTableName ?? currentTableName;
+
+                const modifySql = state.previewStatements.join(';\n') || `Modify table ${currentTableName}`;
+                modifyAttempted = true;
 
                 await tasks.modifyTable.run(
                     {
@@ -3155,6 +3188,15 @@ export function _useModifyTable() {
                     `modify-table:${state.connectionId}:${currentTableName}`
                 );
 
+                modifySucceeded = true;
+                history.record({
+                    source: 'modify-table',
+                    sql: modifySql,
+                    connectionId: state.connectionId,
+                    dialect: state.driver,
+                    status: 'success',
+                });
+
                 await connections.ensureConnectionTables(state.connectionId, true);
                 await connections.ensureTableDetails(state.connectionId, finalTableName, true);
 
@@ -3166,6 +3208,17 @@ export function _useModifyTable() {
                 state.closeModal();
             } catch (error) {
                 state.errorMessage = error instanceof Error ? error.message : String(error);
+
+                if (modifyAttempted && !modifySucceeded) {
+                    history.record({
+                        source: 'modify-table',
+                        sql: state.previewStatements.join(';\n') || `Modify table ${state.tableName}`,
+                        connectionId: state.connectionId,
+                        dialect: state.driver,
+                        status: 'error',
+                        errorMessage: state.errorMessage,
+                    });
+                }
             } finally {
                 state.applying = false;
             }

@@ -20,6 +20,8 @@ const props = defineProps<{
 <template>
     <FileTreeButton
         :item="collection"
+        data-testid="modify-collection"
+        :data-collection-kind="(collection as { kind?: string }).kind"
         :data-node-id="state.getCollectionNodeId(server.id, collection.id)"
         :data-parent-id="parentId"
         data-sidebar-self-toggle="true"

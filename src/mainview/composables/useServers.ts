@@ -44,10 +44,22 @@ export function _useServers() {
             anchorTop: 0,
             anchorWidth: 0,
         },
+        createDatabaseModal: {
+            visible: false,
+            serverId: -1,
+        },
         openAddForm(driver?: DbType, serverId?: number) {
             state.addForm.driver = driver ?? dbTypes[0];
             state.addForm.serverId = serverId ?? -1;
             state.addForm.visible = true;
+        },
+        openCreateDatabase(serverId: number) {
+            state.createDatabaseModal.serverId = serverId;
+            state.createDatabaseModal.visible = true;
+        },
+        closeCreateDatabase() {
+            state.createDatabaseModal.visible = false;
+            state.createDatabaseModal.serverId = -1;
         },
         openUpdateForm(serverId: number) {
             state.updateForm.serverId = serverId;

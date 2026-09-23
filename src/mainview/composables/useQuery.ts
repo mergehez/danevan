@@ -1,7 +1,10 @@
-import { reactive, ref } from 'vue';
+import { reactive, ref, watch } from 'vue';
+import { readPersistedGridSort } from '../../datagrid/dataGridLayoutStorage';
 import type { QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateColumnParams } from '../../shared/types';
+import { splitSqlStatements } from '../../shared/utils/sqlStatements';
 import { useConnections } from './useConnections';
 import { useDbSettings } from './useDbSettings';
+import type { SqlHistoryEntry } from './useSqlHistory';
 import { tasks } from './useTasks';
 
 type SortOrder = {
@@ -29,6 +32,7 @@ export function _useQuery() {
 
     const tables = ref([] as TableSummary[]);
     const selectedTableName = ref(undefined as string | undefined);
+    const loadedConnectionId = ref(undefined as number | undefined);
     const tableInfo = ref(undefined as TableInfo | undefined);
     const tableData = ref(getEmptyTableData());
     const queryText = ref('');
@@ -41,9 +45,36 @@ export function _useQuery() {
     /** SQL returned by the backend for the current grid view. */
     const gridQueryText = ref('');
 
+    // Per-table cache of the custom query text + custom-query mode, so a user's
+    // custom query is restored when they return to a table.
+    const customQueryCache: Record<string, { text: string; isCustomQueryMode: boolean }> = {};
+    const suppressCustomQuerySync = ref(false);
+
+    watch(
+        [customQueryText, isCustomQueryMode],
+        ([text, mode]) => {
+            if (suppressCustomQuerySync.value) {
+                return;
+            }
+
+            const connId = connections.selectedConnectionId;
+            const tableName = selectedTableName.value;
+
+            if (!connId || !tableName) {
+                return;
+            }
+
+            customQueryCache[`${connId}:${tableName}`] = { text, isCustomQueryMode: mode };
+        },
+        { flush: 'sync' }
+    );
+
     async function loadSelectedTable(connectionId: number, tableName: string, options?: LoadSelectedTableOptions) {
+        suppressCustomQuerySync.value = true;
         isCustomQueryMode.value = false;
+        loadedConnectionId.value = connectionId;
         const offset = Math.max(0, Math.round(options?.offset ?? tableData.value.offset ?? 0));
+        const orderBy = options?.orderBy ?? readPersistedGridSort(connectionId, tableName);
         const startedAt = performance.now();
         let infoDurationMs = 0;
         let dataDurationMs = 0;
@@ -69,7 +100,7 @@ export function _useQuery() {
                     tableName,
                     limit: settings.state.queryRowLimit,
                     offset,
-                    orderBy: options?.orderBy,
+                    orderBy,
                     returnQuery: true,
                 });
                 dataDurationMs = Math.round(performance.now() - operationStartedAt);
@@ -79,23 +110,81 @@ export function _useQuery() {
             const [tableInfo2, tableData2] = await Promise.all([tableInfoPromise, tableDataPromise]);
 
             gridQueryText.value = tableData2.sql ?? '';
-            customQueryText.value = gridQueryText.value;
+            const customQueryKey = `${connectionId}:${tableName}`;
+            const cachedCustomQuery = customQueryCache[customQueryKey];
+            customQueryText.value = cachedCustomQuery?.text ?? gridQueryText.value;
+            isCustomQueryMode.value = cachedCustomQuery?.isCustomQueryMode ?? false;
             tableInfo.value = tableInfo2;
             tableData.value = tableData2;
             console.log(
                 `[perf][ui] loadSelectedTable ${Math.round(performance.now() - startedAt)}ms ${JSON.stringify({ connectionId, tableName, getTableInfo: infoDurationMs, getTableData: dataDurationMs })}`
             );
         } catch {
+            customQueryText.value = '';
+            isCustomQueryMode.value = false;
             tableInfo.value = undefined;
             tableData.value = getEmptyTableData();
         } finally {
             isLoadingSelectedTable.value = false;
+            suppressCustomQuerySync.value = false;
         }
+    }
+
+    /** Splits a SQL script into statements and runs them in order. Returns the
+     *  last row-returning result (so the grid shows data), falling back to the
+     *  last result when there are no row-returning statements. */
+    async function runSqlBatch(
+        connectionId: number,
+        sql: string,
+        onStatement?: (entry: Omit<SqlHistoryEntry, 'id' | 'timestamp'>) => void
+    ): Promise<QueryExecutionResult | undefined> {
+        const statements = splitSqlStatements(sql);
+
+        if (!statements.length) {
+            return undefined;
+        }
+
+        let lastResult: QueryExecutionResult | undefined;
+        let lastRowResult: QueryExecutionResult | undefined;
+
+        for (const statement of statements) {
+            const startedAt = performance.now();
+
+            try {
+                const result = await tasks.runQuery.run({ connectionId, sql: statement });
+                lastResult = result;
+
+                if (result.kind === 'rows') {
+                    lastRowResult = result;
+                }
+
+                onStatement?.({
+                    source: 'script',
+                    sql: statement,
+                    connectionId,
+                    status: 'success',
+                    durationMs: Math.round(performance.now() - startedAt),
+                });
+            } catch (error) {
+                onStatement?.({
+                    source: 'script',
+                    sql: statement,
+                    connectionId,
+                    status: 'error',
+                    errorMessage: error instanceof Error ? error.message : String(error),
+                    durationMs: Math.round(performance.now() - startedAt),
+                });
+                throw error;
+            }
+        }
+
+        return lastRowResult ?? lastResult;
     }
 
     return reactive({
         tables: tables,
         selectedTableName: selectedTableName,
+        loadedConnectionId: loadedConnectionId,
         tableInfo: tableInfo,
         tableData: tableData,
         queryText: queryText,
@@ -151,7 +240,7 @@ export function _useQuery() {
             await this.loadSelectedTable(connectionId, tableName, { offset: 0 });
         },
         loadSelectedTable: loadSelectedTable,
-        async runQuery() {
+        async runQuery(onStatement?: (entry: Omit<SqlHistoryEntry, 'id' | 'timestamp'>) => void) {
             if (!connections.selectedConnectionId) {
                 return;
             }
@@ -159,10 +248,7 @@ export function _useQuery() {
             isRunningQuery.value = true;
 
             try {
-                queryResult.value = await tasks.runQuery.run({
-                    connectionId: connections.selectedConnectionId,
-                    sql: queryText.value,
-                });
+                queryResult.value = await runSqlBatch(connections.selectedConnectionId, queryText.value, onStatement);
             } catch {
                 queryResult.value = undefined;
                 isRunningQuery.value = false;
@@ -184,12 +270,9 @@ export function _useQuery() {
             isRunningQuery.value = true;
 
             try {
-                const result = await tasks.runQuery.run({
-                    connectionId: connections.selectedConnectionId,
-                    sql: customQueryText.value,
-                });
+                const result = await runSqlBatch(connections.selectedConnectionId, customQueryText.value);
 
-                if (result.kind === 'rows') {
+                if (result?.kind === 'rows') {
                     const isSameAsGrid = customQueryText.value.trim() === gridQueryText.value.trim();
                     tableData.value = {
                         columns: result.columns,
@@ -212,12 +295,20 @@ export function _useQuery() {
             }
         },
         clearCustomQuery() {
+            const connId = connections.selectedConnectionId;
+            const tableName = selectedTableName.value;
+
+            if (connId && tableName) {
+                delete customQueryCache[`${connId}:${tableName}`];
+            }
+
+            suppressCustomQuerySync.value = true;
             customQueryText.value = '';
             isCustomQueryMode.value = false;
+            suppressCustomQuerySync.value = false;
 
-            const connId = connections.selectedConnectionId;
-            if (connId && selectedTableName.value) {
-                void this.loadSelectedTable(connId, selectedTableName.value);
+            if (connId && tableName) {
+                void this.loadSelectedTable(connId, tableName);
             }
         },
         async applyCellUpdate(params: UpdateColumnParams) {

@@ -3,6 +3,7 @@ export const apiMethods = [
     'applyTableChanges',
     'createConnection',
     'createConnectionFromServerSchema',
+    'createDatabase',
     'createScript',
     'createServer',
     'deleteConnection',

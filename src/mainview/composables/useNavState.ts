@@ -8,6 +8,7 @@ import { useQuery } from './useQuery';
 import { useScriptsDb } from './useScriptsDb';
 import { useServers } from './useServers';
 import { type Tab, useSettings } from './useSettings';
+import { createSqlHistoryEntry, type SqlHistoryEntry } from './useSqlHistory';
 import { tasks } from './useTasks';
 
 export const CustomEndpointsTag = '_DokieCustoms' as const;
@@ -20,8 +21,9 @@ type DisplayTab = Tab & {
 
 type ScriptTabRuntimeState = {
     queryResult: QueryExecutionResult | undefined;
-    resultPanelTab: 'result' | 'problems';
+    resultPanelTab: 'result' | 'problems' | 'history';
     scriptProblems: SqlDiagnosticMarker[];
+    scriptHistory: SqlHistoryEntry[];
 };
 
 function normalizeStoredTab(tab: Tab): Tab {
@@ -223,6 +225,7 @@ const createNavState = () => {
                 queryResult: undefined,
                 resultPanelTab: 'problems' as const,
                 scriptProblems: [],
+                scriptHistory: [],
             } satisfies ScriptTabRuntimeState;
         }
 
@@ -231,6 +234,7 @@ const createNavState = () => {
                 queryResult: undefined,
                 resultPanelTab: 'problems' as const,
                 scriptProblems: [],
+                scriptHistory: [],
             }
         );
     }
@@ -242,6 +246,7 @@ const createNavState = () => {
             queryResult: nextState.queryResult !== undefined ? nextState.queryResult : currentState.queryResult,
             resultPanelTab: nextState.resultPanelTab ?? currentState.resultPanelTab,
             scriptProblems: nextState.scriptProblems ?? currentState.scriptProblems,
+            scriptHistory: nextState.scriptHistory ?? currentState.scriptHistory,
         } satisfies ScriptTabRuntimeState;
     }
 
@@ -260,8 +265,19 @@ const createNavState = () => {
             queryResult: currentState.queryResult,
             resultPanelTab: currentState.resultPanelTab,
             scriptProblems: [...currentState.scriptProblems],
+            scriptHistory: [...currentState.scriptHistory],
         } satisfies ScriptTabRuntimeState;
         delete scriptTabRuntimeStateByHash[fromHash];
+    }
+
+    function addScriptHistoryEntry(tabHash: string, entry: Omit<SqlHistoryEntry, 'id' | 'timestamp'>) {
+        const currentState = getScriptTabRuntimeState(tabHash);
+        const full = createSqlHistoryEntry(entry);
+        currentState.scriptHistory.unshift(full);
+
+        if (currentState.scriptHistory.length > 100) {
+            currentState.scriptHistory.splice(100);
+        }
     }
 
     async function hydrateTableTabConnections() {
@@ -453,7 +469,7 @@ const createNavState = () => {
                     return;
                 }
 
-                if (query.selectedTableName !== tableName) {
+                if (query.selectedTableName !== tableName || query.loadedConnectionId !== tab.connectionId) {
                     await query.selectTable(tab.connectionId, tableName);
                 }
 
@@ -601,6 +617,7 @@ const createNavState = () => {
         closedTabs: computed(() => closedTabsState),
         getScriptTabRuntimeState,
         setScriptTabRuntimeState,
+        addScriptHistoryEntry,
         onScriptTabsChange,
         onNonScriptTabsChange,
         selectTab: selectTab,

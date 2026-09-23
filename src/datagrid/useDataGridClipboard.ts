@@ -13,6 +13,19 @@ export interface DataGridClipboardArgs {
     normalizeSelectedCellRange: (range: GridCellRange | undefined) => DataGridNormalizedCellRange | undefined;
     sortedRowIndexes: ComputedRef<number[]>;
 }
+
+function formatDefaultTextCell(value: DataGridCellValue): string {
+    return value == null
+        ? 'NULL'
+        : typeof value === 'object'
+          ? JSON.stringify(value)
+          : typeof value === 'string'
+            ? value
+            : typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean'
+              ? value.toString()
+              : '';
+}
+
 export function createDataGridClipboard(args: DataGridClipboardArgs) {
     const { internalState, transposedState } = args;
     function getSelectionBounds(fallbackRowIndex?: number, fallbackColumnIndex?: number): DataGridSelectionBounds {
@@ -89,7 +102,8 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
     function buildSelectionText(
         formatter: (value: DataGridCellValue, rowIndex: number, columnName: string, selectionKind: 'rows' | 'column' | 'cells' | 'cell') => string,
         fallbackRowIndex?: number,
-        fallbackColumnIndex?: number
+        fallbackColumnIndex?: number,
+        padColumns = false
     ) {
         const selection = getSelectionBounds(fallbackRowIndex, fallbackColumnIndex);
 
@@ -110,35 +124,44 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
             return formatter(transposedState.getDisplayedCellValue(rowIndex, columnName), rowIndex, columnName, selectionKind);
         }
 
-        return selection.rowIndexes
-            .map((rowIndex: number) =>
-                selection.columnIndexes
-                    .map((columnIndex: number) => {
-                        const columnName = transposedState.getColumnName(columnIndex);
-                        return columnName ? formatter(transposedState.getDisplayedCellValue(rowIndex, columnName), rowIndex, columnName, selectionKind) : '';
-                    })
-                    .join('\t')
-            )
-            .join('\n');
+        return buildGridText(selection, formatter, padColumns, selectionKind);
     }
 
-    async function copySelection(fallbackRowIndex?: number, fallbackColumnIndex?: number, formatter?: (value: DataGridCellValue) => string) {
-        const text = buildSelectionText(
-            (value) =>
-                formatter
-                    ? formatter(value)
-                    : value == null
-                      ? 'NULL'
-                      : typeof value === 'object'
-                        ? JSON.stringify(value)
-                        : typeof value === 'string'
-                          ? value
-                          : typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean'
-                            ? value.toString()
-                            : '',
-            fallbackRowIndex,
-            fallbackColumnIndex
+    function buildGridText(
+        selection: DataGridSelectionBounds,
+        formatter: (value: DataGridCellValue, rowIndex: number, columnName: string, selectionKind: 'rows' | 'column' | 'cells' | 'cell') => string,
+        padColumns: boolean,
+        selectionKind: 'rows' | 'column' | 'cells' | 'cell'
+    ): string {
+        const rows = selection.rowIndexes.map((rowIndex: number) =>
+            selection.columnIndexes.map((columnIndex: number) => {
+                const columnName = transposedState.getColumnName(columnIndex);
+                return columnName ? formatter(transposedState.getDisplayedCellValue(rowIndex, columnName), rowIndex, columnName, selectionKind) : '';
+            })
         );
+
+        // In table mode (multi-column), pad each column to its widest cell and
+        // separate columns with extra spaces so it reads as an aligned grid
+        // anywhere a monospace font is used. The column-name header and the
+        // leading row-number column are always included.
+        if (padColumns && selection.columnIndexes.length > 1) {
+            const columnNames = selection.columnIndexes.map((columnIndex: number) => {
+                const name = transposedState.getColumnName(columnIndex);
+                return name ?? '';
+            });
+
+            const gridRows: string[][] = [['#', ...columnNames], ...rows.map((row, rowOffset: number) => [String(rowOffset + 1), ...row])];
+
+            const columnWidths = gridRows[0].map((_, columnIndex: number) => Math.max(...gridRows.map((row) => row[columnIndex].length)));
+
+            return gridRows.map((row) => row.map((cell, columnIndex: number) => cell.padEnd(columnWidths[columnIndex])).join('    ')).join('\n');
+        }
+
+        return rows.map((row) => row.join('\t')).join('\n');
+    }
+
+    async function copySelection(fallbackRowIndex?: number, fallbackColumnIndex?: number, formatter?: (value: DataGridCellValue) => string, padColumns = false) {
+        const text = buildSelectionText((value) => (formatter ? formatter(value) : formatDefaultTextCell(value)), fallbackRowIndex, fallbackColumnIndex, padColumns);
 
         if (!text) {
             return;
@@ -275,6 +298,38 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
                     .join('\t')
             )
             .join('\n');
+
+        if (!text) {
+            return;
+        }
+
+        await writeClipboardText(text);
+    }
+
+    async function copyAllCellsAsText() {
+        const selection = getAllCellsSelectionBounds();
+
+        if (!selection.rowIndexes.length || !selection.columnIndexes.length || selection.kind === 'none') {
+            return;
+        }
+
+        const text = buildGridText(selection, (value) => formatDefaultTextCell(value), false, 'cells');
+
+        if (!text) {
+            return;
+        }
+
+        await writeClipboardText(text);
+    }
+
+    async function copyAllCellsAsTable() {
+        const selection = getAllCellsSelectionBounds();
+
+        if (!selection.rowIndexes.length || !selection.columnIndexes.length || selection.kind === 'none') {
+            return;
+        }
+
+        const text = buildGridText(selection, (value) => formatDefaultTextCell(value), true, 'cells');
 
         if (!text) {
             return;
@@ -569,6 +624,8 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         copyAllCellsAsCsv,
         copySelectionAsSql,
         copyAllCellsAsSql,
+        copyAllCellsAsText,
+        copyAllCellsAsTable,
         copySelectionAsSqlInsert,
         copyAllCellsAsSqlInsert,
         copySelectionAsSqlSelect,

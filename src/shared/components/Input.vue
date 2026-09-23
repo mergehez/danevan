@@ -14,5 +14,5 @@ const props = defineProps<{
 </script>
 
 <template>
-    <input v-model="modelValue" :class="getFinalInputClass(props)" :disabled="props.disabled" :placeholder="props.placeholder" />
+    <input v-model="modelValue" v-bind="$attrs" :class="getFinalInputClass(props)" :disabled="props.disabled" :placeholder="props.placeholder" />
 </template>

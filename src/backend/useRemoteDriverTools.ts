@@ -36,6 +36,7 @@ export type RemoteDriverHelper = {
     getTableDdl?: (client: RemoteDriverClient, tableName: string) => Promise<string>;
     getTableNames: (client: RemoteDriverClient) => Promise<TableSummary[]>;
     getServerSchemas: (client: RemoteDriverClient) => Promise<ServerSchemaRecord[]>;
+    buildCreateDatabaseStatement: (databaseName: string, collation?: string) => string;
     buildReadTableStatement: (tableName: string, limit: number, offset: number, orderBy?: SortOrder) => RemoteStatement;
     buildWriteValueStatement: (tableName: string, targetColumn: string, value: SqlValue, matchColumn: string, matchValue: SqlValue) => RemoteStatement;
     buildModifyTableStatements: (client: RemoteDriverClient, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) => string[] | Promise<string[]>;
@@ -130,6 +131,24 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             }
 
             throw new Error('Create at least one connection for this server before refreshing databases.');
+        },
+        async createDatabase(serverId: number, databaseName: string, collation?: string): Promise<void> {
+            const resolvedConnectionId = deps.resolveServerConnectionId(serverId);
+            const statement = deps.helper.buildCreateDatabaseStatement(databaseName, collation);
+
+            if (typeof resolvedConnectionId === 'number') {
+                return deps.withRemoteClient(resolvedConnectionId, async (client) => {
+                    await client.execute({ sql: statement });
+                });
+            }
+
+            if (deps.withServerClient) {
+                return deps.withServerClient(serverId, async (client) => {
+                    await client.execute({ sql: statement });
+                });
+            }
+
+            throw new Error('Create at least one connection for this server before creating a database.');
         },
         getTableData: getTableData,
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {

@@ -1,9 +1,10 @@
-import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
-import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
-import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 import 'reflect-metadata';
 import { DataSource, TableForeignKey, type QueryRunner, type Table, type View } from 'typeorm';
 import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
+import { splitSqlStatements } from '../shared/utils/sqlStatements';
+import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
+import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type MySqlSchemaHelperDeps = {
     escapeSqlString: (value: string) => string;
@@ -240,14 +241,37 @@ async function getTableOrViewDdl(client: RemoteDriverClient, tableName: string) 
     throw new Error(`Table '${tableName}' was not found.`);
 }
 
+function normalizeMySqlReferentialAction(value: string | null | undefined): string | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    const normalized = value.trim().toLowerCase().replaceAll(' ', '_');
+
+    switch (normalized) {
+        case 'no_action':
+            return 'NO ACTION';
+        case 'restrict':
+            return 'RESTRICT';
+        case 'cascade':
+            return 'CASCADE';
+        case 'set_null':
+            return 'SET NULL';
+        case 'set_default':
+            return 'SET DEFAULT';
+        default:
+            return value;
+    }
+}
+
 function createTypeOrmForeignKey(foreignKey: ModifySchemaForeignKey) {
     return new TableForeignKey({
         name: foreignKey.name,
         columnNames: foreignKey.columns.map((column) => column.columnName),
         referencedTableName: foreignKey.targetTable,
         referencedColumnNames: foreignKey.columns.map((column) => column.targetName),
-        onDelete: foreignKey.onDelete ?? undefined,
-        onUpdate: foreignKey.onUpdate ?? undefined,
+        onDelete: normalizeMySqlReferentialAction(foreignKey.onDelete),
+        onUpdate: normalizeMySqlReferentialAction(foreignKey.onUpdate),
     });
 }
 
@@ -823,8 +847,21 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
                 column.collation !== deps.normalizeOptionalText(currentColumn.collation) ||
                 column.onUpdate !== deps.normalizeOptionalText(currentColumn.onUpdate);
 
-            if (metadataChanged) {
-                manualStatements.push(`ALTER TABLE ${quotedTableName} CHANGE COLUMN ${deps.quoteRemoteIdentifier('mysql', currentColumn.name)} ${definition};`);
+            // Detect whether an existing column was moved. Compare the nearest
+            // preceding *existing* column in the desired order against the
+            // nearest preceding column in the current order, ignoring newly
+            // added columns so insertions don't trigger false repositions.
+            const desiredPreviousExisting = [...nextColumns]
+                .slice(0, index)
+                .reverse()
+                .find((entry) => entry.originalName && currentColumnsByName.has(entry.originalName));
+            const currentIndexInCurrent = currentInfo.columns.findIndex((entry) => entry.name === currentColumn.name);
+            const currentPreviousName = currentIndexInCurrent > 0 ? currentInfo.columns[currentIndexInCurrent - 1]?.name : undefined;
+            const positionChanged = desiredPreviousExisting?.name !== currentPreviousName;
+
+            if (metadataChanged || positionChanged) {
+                const placementClause = desiredPreviousExisting ? ` AFTER ${deps.quoteRemoteIdentifier('mysql', desiredPreviousExisting.name)}` : ' FIRST';
+                manualStatements.push(`ALTER TABLE ${quotedTableName} CHANGE COLUMN ${deps.quoteRemoteIdentifier('mysql', currentColumn.name)} ${definition}${placementClause};`);
             }
         });
 
@@ -921,6 +958,11 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         getTableColumns: getTableColumns,
         getTableNames: getTableNames,
         queryRowCount: queryRowCount,
+        buildCreateDatabaseStatement(databaseName: string, collation?: string): string {
+            const quotedName = quoteMySqlIdentifier(databaseName);
+            const collationClause = collation ? ` COLLATE ${collation}` : '';
+            return `CREATE DATABASE ${quotedName}${collationClause}`;
+        },
     } satisfies RemoteDriverHelper & {
         buildDropColumnStatements: typeof buildDropColumnStatements;
         collectForeignKeyViolationMessages: typeof collectForeignKeyViolationMessages;
@@ -1074,19 +1116,33 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
         },
         async validateSql(connectionId: number, sql: string): Promise<void> {
             await withMySqlClient(connectionId, async (client) => {
+                const statements = splitSqlStatements(sql);
                 const queryRunner = getMySqlQueryRunnerClient(client).queryRunner;
                 const variableName = '@danevan_validation_sql';
                 const statementName = 'danevan_validate_stmt';
 
-                await queryRunner.query(`SET ${variableName} = ?`, [sql.trim().replace(/;+$/u, '')]);
+                for (const statement of statements) {
+                    await queryRunner.query(`SET ${variableName} = ?`, [statement.replace(/;+$/u, '')]);
 
-                try {
-                    await queryRunner.query(`PREPARE ${statementName} FROM ${variableName}`);
-                } finally {
                     try {
-                        await queryRunner.query(`DEALLOCATE PREPARE ${statementName}`);
-                    } catch {
-                        // Ignore cleanup errors when PREPARE itself fails.
+                        await queryRunner.query(`PREPARE ${statementName} FROM ${variableName}`);
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+
+                        // PREPARE cannot handle every statement type (e.g. DROP/
+                        // ALTER/CREATE TABLE) — don't treat "not supported" as a
+                        // syntax error.
+                        if (/not supported in the prepared statement protocol/i.test(message)) {
+                            continue;
+                        }
+
+                        throw error;
+                    } finally {
+                        try {
+                            await queryRunner.query(`DEALLOCATE PREPARE ${statementName}`);
+                        } catch {
+                            // Ignore cleanup errors when PREPARE itself fails.
+                        }
                     }
                 }
             });
