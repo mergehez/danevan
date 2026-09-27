@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref } from 'vue';
-import ListBox from '../../../shared/components/ListBox.vue';
+import ListBox from '../../../shared/components/ListBox.tsx';
 
 const items = [
     { label: 'Alpha', value: 'alpha' },

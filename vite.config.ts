@@ -1,5 +1,5 @@
 import tailwindcss from '@tailwindcss/vite';
-import vue from '@vitejs/plugin-vue';
+import vueTsx from '@vitejs/plugin-vue-jsx';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
@@ -7,7 +7,13 @@ import electronApiMethods from './src/electronUtils/vite-plugin';
 
 export default defineConfig({
     plugins: [
-        vue(),
+        // vue(),
+        vueTsx({
+            // Components are wrapped by our helper, which delegates to
+            // Vue's defineComponent. Tell the JSX plugin to treat those
+            // exported wrappers as HMR-capable Vue components.
+            defineComponentName: ['defineComponent', 'component', 'componentGeneric'],
+        }),
         tailwindcss(),
         electronApiMethods({
             app: 'src/backend/app.ts',

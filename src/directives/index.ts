@@ -1,5 +1,5 @@
-export { default as ContextMenu } from './ContextMenu.vue';
-export { default as ContextMenuPanel } from './ContextMenuPanel.vue';
+export { ContextMenu } from './ContextMenu.tsx';
+export { ContextMenuPanel } from './ContextMenuPanel.tsx';
 export * from './contextMenuTypes';
 export * from './loadingIndicatorState';
 export * from './useContextMenu';

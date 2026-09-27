@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
-import CenteredModal from '../../../shared/components/CenteredModal.vue';
+import CenteredModal from '../../../shared/components/CenteredModal.tsx';
 
 const iconButtonStub = defineComponent({
     name: 'IconButton',

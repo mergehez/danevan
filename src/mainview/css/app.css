@@ -1,6 +1,7 @@
 @import './tw.css';
 @import './buttons.css';
 @import './alerts.css';
+@import '../../shared/styles.css';
 
 :root {
     color-scheme: dark;

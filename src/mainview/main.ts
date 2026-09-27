@@ -4,7 +4,7 @@ import { vContextMenu } from '../directives/VContextMenu';
 import { vError } from '../directives/VError';
 import { vLoading } from '../directives/VLoading';
 import { vTooltip } from '../directives/VTooltip';
-import App from './App.vue';
+import App from './App.tsx';
 import { initTasks } from './composables/useTasks';
 import './css/app.css';
 import './css/scrollbar.css';

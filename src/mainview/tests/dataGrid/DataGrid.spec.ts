@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import DataGrid from '#datagrid/DataGrid.tsx';
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
-import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_ROW_HEIGHT, DataGrid, useDataGrid, useDataGridView, type DataGridRow, type TDataGridState } from '../../../datagrid';
+import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_ROW_HEIGHT, useDataGrid, useDataGridView, type DataGridRow, type TDataGridState } from '../../../datagrid';
 
 const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
 vi.stubGlobal('navigator', { clipboard: { writeText: writeClipboardText } });

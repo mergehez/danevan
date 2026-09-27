@@ -1,0 +1,23 @@
+.drag-tabs-move,
+.drag-tabs-enter-active,
+.drag-tabs-leave-active {
+    transition: all 0.2s ease;
+}
+
+.drag-tabs-enter-from,
+.drag-tabs-leave-to {
+    opacity: 0;
+    transform: translateX(30px);
+}
+
+.drag-tabs-leave-active {
+    position: absolute;
+}
+
+.drag-tabs-dragged {
+    opacity: 0.5;
+}
+
+.drag-tabs-over:not(.drag-tabs-dragged) {
+    box-shadow: inset 4px 0 0 0 #fa56ff;
+}
