@@ -19,6 +19,9 @@
         "moduleResolution": "bundler",
         "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
+        "jsx": "preserve",
+        "jsxFactory": "h", // if using Vue JSX
+        "jsxImportSource": "vue",
         "types": ["node", "vite/client", "vitest/config"]
     },
     "include": ["src", "env.d.ts", "vite.config.ts", "scripts"],
