@@ -1,9 +1,9 @@
-import { ref, watch, Transition } from 'vue';
+import { component, ensureAllTsxProps } from '#shared/utils/tsxHelpers.tsx';
+import { ref, Transition, watch } from 'vue';
 import { useOverlaysState } from '../../directives/useOverlaysState';
 import { toast } from '../utils/useToast';
 import { Alert } from './Alert.tsx';
 import { IconButton } from './IconButton.tsx';
-import { component, ensureAllTsxProps } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {};
 
@@ -39,7 +39,12 @@ export const AppSuccessToast = component(
                                 <span class="icon icon-[mdi--alert-circle] text-2xl text-yellow-500 shrink-0" />
                             ) : null}
                             <p class="flex-1">{toast.message}</p>
-                            <IconButton severity="raised" v-tooltip={'Dismiss notification'} icon="icon-[mdi--close] text-xl text-green-700" onClick={() => toast.dismissToast()} />
+                            <IconButton
+                                severity="raised"
+                                v-tooltip={{ value: 'Dismiss notification', xs: true, nowrap: true }}
+                                icon="icon-[mdi--close] text-xl text-green-700"
+                                onClick={() => toast.dismissToast()}
+                            />
                         </div>
                     </Alert>
                 ) : null}

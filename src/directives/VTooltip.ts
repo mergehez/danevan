@@ -1,5 +1,6 @@
 import { twMerge } from 'tailwind-merge';
 import type { Directive, DirectiveBinding } from 'vue';
+import { resolveDirectiveModifiers } from './directiveModifiers';
 import { useOverlaysState } from './useOverlaysState';
 
 export interface TooltipDirectiveModifiers {
@@ -46,12 +47,13 @@ type ComputedOptions = {
 const overlayState = useOverlaysState();
 
 function useOptions(binding: Bindings): ComputedOptions {
+    const modifiers = resolveDirectiveModifiers(binding);
     const customClass = typeof binding.value === 'object' ? binding.value.class : undefined;
     const textClass = typeof binding.value === 'object' ? binding.value.textClass : undefined;
-    const size = binding.modifiers?.xs ? 'xs' : binding.modifiers?.sm ? 'sm' : 'default';
-    const shouldNowrap = !!binding.modifiers?.nowrap;
-    const useHtml = !!binding.modifiers?.html;
-    const placement: Placement = binding.modifiers?.right ? 'right' : binding.modifiers?.left ? 'left' : binding.modifiers?.top ? 'top' : 'bottom';
+    const size = modifiers.xs ? 'xs' : modifiers.sm ? 'sm' : 'default';
+    const shouldNowrap = !!modifiers.nowrap;
+    const useHtml = !!modifiers.html;
+    const placement: Placement = modifiers.right ? 'right' : modifiers.left ? 'left' : modifiers.top ? 'top' : 'bottom';
 
     return {
         content: typeof binding.value === 'string' ? binding.value : binding.value?.value || '',
@@ -66,8 +68,8 @@ function useOptions(binding: Bindings): ComputedOptions {
         arrowClass:
             'tooltip-arrow ' +
             (placement === 'left' ? 'tooltip-arrow-left' : placement === 'right' ? 'tooltip-arrow-right' : placement === 'top' ? 'tooltip-arrow-top' : 'tooltip-arrow-bottom'),
-        always: typeof binding.value === 'object' ? !!binding.value.always : !!binding.modifiers?.always,
-        shouldDelay: !!binding.modifiers?.delay,
+        always: typeof binding.value === 'object' ? !!binding.value.always : !!modifiers.always,
+        shouldDelay: !!modifiers.delay,
         shouldNowrap,
         size,
         useHtml,

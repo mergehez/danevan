@@ -1,4 +1,5 @@
 import type { Directive, DirectiveBinding, ObjectDirective, VNode } from 'vue';
+import { resolveDirectiveModifiers } from './directiveModifiers';
 import { type TooltipDirectiveModifiers, type TooltipOptions, vTooltip } from './VTooltip';
 
 export interface ErrorDirectiveOptions extends Omit<TooltipOptions, 'value'> {
@@ -88,21 +89,15 @@ function resolveTooltipOptions(value?: string | ErrorDirectiveOptions) {
 }
 
 function resolveModifiers(modifiers?: TooltipDirectiveModifiers, value?: string | ErrorDirectiveOptions): Partial<Record<string, boolean>> {
+    const resolved = resolveDirectiveModifiers<TooltipDirectiveModifiers>({ modifiers, value });
     const useHtml = typeof value === 'object' ? !!value?.html : false;
+    const html = !!resolved.html || useHtml;
 
-    if (modifiers?.top || modifiers?.bottom || modifiers?.left || modifiers?.right) {
-        return {
-            ...modifiers,
-            html: !!modifiers?.html || useHtml,
-        };
+    if (resolved.top || resolved.bottom || resolved.left || resolved.right) {
+        return { ...resolved, html };
     }
-    modifiers ??= {};
 
-    return {
-        ...modifiers,
-        bottom: true,
-        html: !!modifiers?.html || useHtml,
-    };
+    return { ...resolved, bottom: true, html };
 }
 
 function toTooltipBinding(binding: ErrorBinding, value: TooltipOptions): TooltipBinding {

@@ -426,6 +426,14 @@ function handlerBody(exp: string | undefined, mods: any[]): EventHandler {
     return { body: t, modifiers: mods.map((m) => m.content), isReference };
 }
 
+// Modifier names become object keys in TSX (`v-tooltip.xs` -> `{ xs: true }`), so a name that is not a
+// usable identifier is dropped rather than emitted as a syntax error.
+function modifierNames(mods: any[] | undefined): string[] | undefined {
+    const names = (mods ?? []).map((modifier) => String(modifier.content)).filter((name) => /^[A-Za-z_$][\w$]*$/.test(name));
+
+    return names.length ? names : undefined;
+}
+
 function genForSource(forDir: any): { source: string; pattern: string; key: string; isArray: boolean } {
     const parsed = forDir.forParseResult;
     if (!parsed?.source?.content) return { source: '', pattern: '', key: '', isArray: true };
@@ -614,7 +622,17 @@ function genElement(node: any, props: Set<string>, refs: Set<string>, bindings: 
                     const hasInputHandler = (node.props ?? []).some(
                         (pp: any) => pp.type === 7 && pp.name === 'on' && (pp.arg?.content === 'input' || pp.arg?.content === 'change')
                     );
-                    attrs.push({ kind: 'model', name: arg, target: expression(val), arg: p.arg?.content, isNative, isRadio, radioValue, skipUpdateHandler: hasInputHandler });
+                    attrs.push({
+                        kind: 'model',
+                        name: arg,
+                        target: expression(val),
+                        arg: p.arg?.content,
+                        modifiers: modifierNames(p.modifiers),
+                        isNative,
+                        isRadio,
+                        radioValue,
+                        skipUpdateHandler: hasInputHandler,
+                    });
                     break;
                 }
                 case 'on': {
@@ -645,7 +663,12 @@ function genElement(node: any, props: Set<string>, refs: Set<string>, bindings: 
                     if (node.tag === 'template') attrs.push({ kind: 'slotAttr', name: p.arg?.content ?? '' });
                     break;
                 default:
-                    attrs.push({ kind: 'directive', name: p.name, value: p.exp?.content ? expression(p.exp.content) : undefined });
+                    attrs.push({
+                        kind: 'directive',
+                        name: p.name,
+                        value: p.exp?.content ? expression(p.exp.content) : undefined,
+                        modifiers: modifierNames(p.modifiers),
+                    });
                     break;
             }
         }

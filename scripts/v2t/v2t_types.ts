@@ -107,10 +107,20 @@ export type TAttr =
     | { kind: 'class'; value: ParsedExpression }
     | { kind: 'style'; value: ParsedExpression }
     | { kind: 'event'; name: string; handlers: EventHandler[] }
-    | { kind: 'model'; name: string; target: ParsedExpression; arg?: string; isNative: boolean; isRadio?: boolean; radioValue?: string; skipUpdateHandler?: boolean }
+    | {
+          kind: 'model';
+          name: string;
+          target: ParsedExpression;
+          arg?: string;
+          modifiers?: string[];
+          isNative: boolean;
+          isRadio?: boolean;
+          radioValue?: string;
+          skipUpdateHandler?: boolean;
+      }
     | { kind: 'spread'; value: ParsedExpression }
     | { kind: 'html'; value: ParsedExpression }
-    | { kind: 'directive'; name: string; value?: ParsedExpression }
+    | { kind: 'directive'; name: string; value?: ParsedExpression; modifiers?: string[] }
     | { kind: 'slotAttr'; name: string }
     | { kind: 'ref'; name: string };
 

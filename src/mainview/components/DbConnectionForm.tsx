@@ -1,3 +1,4 @@
+import { component, ensureAllTsxProps, looseToNumber, vModel } from '#shared/utils/tsxHelpers.tsx';
 import { computed, reactive, watch } from 'vue';
 import { Alert } from '../../shared/components/Alert.tsx';
 import { Button } from '../../shared/components/Button.tsx';
@@ -6,7 +7,6 @@ import { dbTypeLabels, dbTypes, type DbType, type MsAccessRuntimeStatus } from '
 import { useConnections } from '../composables/useConnections';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
-import { component, ensureAllTsxProps, vModel } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     foo?: never;
@@ -374,7 +374,7 @@ export const DbConnectionForm = component(
                                 />
                                 <input
                                     value={forms.connectionPort}
-                                    onInput={(e: any) => (forms.connectionPort = e.target.value)}
+                                    onInput={(e: any) => (forms.connectionPort = looseToNumber(e.target.value))}
                                     id="form-connectionPort"
                                     inputmode="numeric"
                                     min="1"

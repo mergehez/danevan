@@ -1,3 +1,4 @@
+import { component, ensureAllTsxProps, looseToNumber, prevented } from '#shared/utils/tsxHelpers.tsx';
 import { computed, reactive, watch } from 'vue';
 import { Alert } from '../../shared/components/Alert.tsx';
 import { Button } from '../../shared/components/Button.tsx';
@@ -5,7 +6,6 @@ import { CenteredModal } from '../../shared/components/CenteredModal.tsx';
 import type { ServerRecord } from '../../shared/types';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
-import { component, ensureAllTsxProps, prevented } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     open: boolean;
@@ -160,7 +160,7 @@ export const DbServerFormModal = component(
                                     <span class="text-2xs uppercase tracking-[0.18em] opacity-60">Port</span>
                                     <input
                                         value={form.port}
-                                        onInput={(e: any) => (form.port = e.target.value)}
+                                        onInput={(e: any) => (form.port = looseToNumber(e.target.value))}
                                         inputmode="numeric"
                                         min="1"
                                         max="65535"

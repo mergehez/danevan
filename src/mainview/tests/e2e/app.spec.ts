@@ -91,4 +91,20 @@ test.describe('Danevan App', () => {
             }
         }
     });
+
+    test('sidebar settings button keeps its menu and tooltip modifiers', async ({ page }) => {
+        // `v-menu.button` opens the menu on a plain click, `v-tooltip.xs.nowrap` styles the tooltip;
+        // both modifiers used to be dropped by the vue-to-tsx conversion.
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+        await page.waitForTimeout(3000);
+
+        const tooltip = page.locator('.tooltip', { hasText: 'Open settings' });
+        await expect(tooltip).toHaveClass(/tooltip-xs/);
+        await expect(tooltip).toHaveClass(/tooltip-nowrap/);
+
+        await page.getByTestId('sidebar-settings').click();
+
+        await expect(page.locator('.v-menu-item', { hasText: 'Clear metadata caches' })).toBeVisible();
+    });
 });

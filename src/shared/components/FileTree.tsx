@@ -85,7 +85,7 @@ export const FileTree = <TData, TRoot = {}>(p: Props<TData, TRoot>) => {
                             <div class="flex items-center uppercase gap-1 flex-1">
                                 <IconButton
                                     severity="raised"
-                                    v-tooltip={state.collapsed ? 'Expand group' : 'Collapse group'}
+                                    v-tooltip={{ value: state.collapsed ? 'Expand group' : 'Collapse group', xs: true, nowrap: true }}
                                     smaller={true}
                                     icon={state.collapsed ? 'icon-[mdi--plus]' : 'icon-[mdi--minus]'}
                                     onClick={prevented(state.onHeaderClick)}
@@ -116,7 +116,7 @@ export const FileTree = <TData, TRoot = {}>(p: Props<TData, TRoot>) => {
                                               severity={action.icon ? 'raised' : 'secondary'}
                                               disabled={action.disabled}
                                               smaller={true}
-                                              v-tooltip={action.icon ? action.title : undefined}
+                                              v-tooltip={{ value: action.icon ? action.title : undefined, xs: true, nowrap: true }}
                                               onClick={prevented(action.onClick)}
                                               class={['text-2xs', action.icon ? 'p-0.5' : 'px-1 py-0.5']}
                                               key={action.title}

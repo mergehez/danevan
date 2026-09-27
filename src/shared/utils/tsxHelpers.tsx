@@ -214,3 +214,11 @@ export function selfOnly<T extends Event>(cb: (e: T) => void) {
         }
     };
 }
+
+// `v-model.number` on a text field: an empty or non-numeric value stays empty instead of becoming NaN,
+// which is also what the `'' | number` form fields expect.
+export function looseToNumber(value: string): '' | number {
+    const parsed = parseFloat(value);
+
+    return Number.isNaN(parsed) ? '' : parsed;
+}

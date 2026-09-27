@@ -9,6 +9,15 @@ import { tsxHelpersImportSource } from './v2t_const.ts';
 import type { EventHandler, ParsedComponent, ParsedExpression, TAttr, TNode, TScopedSlot } from './v2t_types.ts';
 
 const expressionRoot = createRoot([]);
+
+// `v-model.trim` / `v-model.number` on a plain element are coercion on the way in. Emitting `value` +
+// `onInput` keeps that explicit and type-checked, unlike the untyped `v-model` JSX directives.
+function nativeModelValue(valueExpression: string, modifiers: string[]): string {
+    const trimmed = modifiers.includes('trim') ? `${valueExpression}.trim()` : valueExpression;
+
+    return modifiers.includes('number') ? `looseToNumber(${trimmed})` : trimmed;
+}
+
 function expr(p: ParsedComponent, value: ParsedExpression, narrowed: Set<string> = new Set(), applyNarrowing = false): string {
     const context = p.expressionContext;
     const bindingMetadata: Record<string, BindingTypes> = {};
@@ -247,8 +256,13 @@ function genAttrs(attrs: TAttr[], comp: ParsedComponent, narrowed: Set<string> =
                     if (!a.skipUpdateHandler) parts.push(`onChange={(e: any) => (${target} = (e.target as HTMLInputElement).value)}`);
                 } else if (a.isNative) {
                     const target = expr(comp, a.target);
+                    const modifiers = a.modifiers ?? [];
+
                     parts.push(`value={${target}}`);
-                    if (!a.skipUpdateHandler) parts.push(`onInput={(e: any) => (${target} = e.target.value)}`);
+
+                    if (!a.skipUpdateHandler) {
+                        parts.push(`onInput={(e: any) => (${target} = ${nativeModelValue('e.target.value', modifiers)})}`);
+                    }
                 } else {
                     const target = expr(comp, { source: stripTypeAssertion(a.target.source) });
                     const split = splitModelTarget(target);
@@ -269,6 +283,14 @@ function genAttrs(attrs: TAttr[], comp: ParsedComponent, narrowed: Set<string> =
                 parts.push(`innerHTML={${expr(comp, a.value, narrowed, applyNarrowing)}}`);
                 break;
             case 'directive':
+                // Modifiers have no dotted form in JSX, so they ride along in the value object
+                // (`v-tooltip.xs.nowrap="'Open'"` -> `v-tooltip={{value: 'Open', xs: true, nowrap: true}}`).
+                if (a.modifiers?.length) {
+                    const entries = a.value ? [`value: ${expr(comp, a.value)}`, ...a.modifiers.map((name) => `${name}: true`)] : a.modifiers.map((name) => `${name}: true`);
+                    parts.push(`v-${a.name}={{ ${entries.join(', ')} }}`);
+                    break;
+                }
+
                 parts.push(a.value ? `v-${a.name}={${expr(comp, a.value)}}` : `v-${a.name}`);
                 break;
             case 'slotAttr':
@@ -539,6 +561,7 @@ export function convertToTsx(p: ParsedComponent): string {
     if (jsx.includes('<Component ')) helperNames.add('Component');
     if (jsx.includes('prevented(')) helperNames.add('prevented');
     if (jsx.includes('selfOnly(')) helperNames.add('selfOnly');
+    if (jsx.includes('looseToNumber(')) helperNames.add('looseToNumber');
 
     if (helperNames.size) otherImports.push(`import { ${Array.from(helperNames).join(', ')} } from '${tsxHelpersImportSource}';`);
     if (jsx.includes('objEntries(')) otherImports.push(`import { objEntries } from '#shared/obj';`);

@@ -741,7 +741,7 @@ export const Popover = component(
                                                     severity={resolvedCloseSeverity.value}
                                                     smaller={resolvedCloseSmaller.value}
                                                     icon="icon-[mdi--close]"
-                                                    v-tooltip={resolvedCloseTooltip.value}
+                                                    v-tooltip={{ value: resolvedCloseTooltip.value, xs: true, nowrap: true }}
                                                     onClick={() => updateOpen(false)}
                                                 />
                                             ) : null}

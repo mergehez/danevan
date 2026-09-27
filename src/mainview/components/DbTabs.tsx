@@ -115,7 +115,7 @@ export const DbTabs = component(
                                     tab: ({ requiredClass, item: e, key }) => (
                                         <div
                                             key={key}
-                                            v-tooltip={e.tooltip}
+                                            v-tooltip={{ value: e.tooltip, xs: true, nowrap: true, delay: true }}
                                             draggable="true"
                                             id={e.hash}
                                             onClick={() => handleTabClick(e)}
@@ -139,7 +139,7 @@ export const DbTabs = component(
                             {i == 0 ? (
                                 <IconButton
                                     icon="icon-[mdi--plus]"
-                                    v-tooltip={'New scratch tab'}
+                                    v-tooltip={{ value: 'New scratch tab', xs: true, nowrap: true }}
                                     smaller={true}
                                     disabled={!connections.connections.length}
                                     onClick={() => navState.openScratchTab()}

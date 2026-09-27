@@ -1,7 +1,7 @@
-import { ref, computed, watch } from 'vue';
+import { component, ensureAllTsxProps, renderSlot, type SingleChildSlot } from '#shared/utils/tsxHelpers.tsx';
+import { computed, ref, watch } from 'vue';
 import type { TDataGridState } from '../../datagrid/useDataGrid';
 import { IconButton } from '../../shared/components/IconButton.tsx';
-import { component, ensureAllTsxProps, type SingleChildSlot, renderSlot } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     gridState: TDataGridState;
@@ -126,7 +126,7 @@ export const DbGridToolbar = component(
                             <div class="relative flex items-center text-2xs text-white">
                                 <IconButton
                                     icon="icon-[mdi--chevron-left]"
-                                    v-tooltip={'Previous page'}
+                                    v-tooltip={{ value: 'Previous page', xs: true, nowrap: true }}
                                     severity="secondary"
                                     disabled={!props.canGoToPreviousPage}
                                     onClick={() => props.onGoToPreviousPage?.()}
@@ -170,7 +170,7 @@ export const DbGridToolbar = component(
                                 </div>
                                 <IconButton
                                     icon="icon-[mdi--chevron-right]"
-                                    v-tooltip={'Next page'}
+                                    v-tooltip={{ value: 'Next page', xs: true, nowrap: true }}
                                     disabled={!props.canGoToNextPage}
                                     severity="secondary"
                                     onClick={() => props.onGoToNextPage?.()}
@@ -181,12 +181,20 @@ export const DbGridToolbar = component(
                             <div class="flex-1">{renderSlot(props.slots)}</div>
                         )}
                         {/* Add row button */}
-                        {props.onAddRow ? <IconButton icon="icon-[mdi--plus]" v-tooltip={'Add row'} smaller={true} severity="secondary" onClick={props.onAddRow!} /> : null}
+                        {props.onAddRow ? (
+                            <IconButton
+                                icon="icon-[mdi--plus]"
+                                v-tooltip={{ value: 'Add row', xs: true, nowrap: true }}
+                                smaller={true}
+                                severity="secondary"
+                                onClick={props.onAddRow!}
+                            />
+                        ) : null}
                         {/* Reload button */}
                         {props.onReload ? (
                             <IconButton
                                 icon={props.isLoading ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--reload]'}
-                                v-tooltip={'Reload'}
+                                v-tooltip={{ value: 'Reload', xs: true, nowrap: true }}
                                 smaller={true}
                                 disabled={props.isLoading}
                                 onClick={props.onReload!}

@@ -1,4 +1,5 @@
-import { ref, computed, watch, effectScope, onBeforeUnmount, type EffectScope, withKeys } from 'vue';
+import { component, ensureAllTsxProps, prevented, vModel } from '#shared/utils/tsxHelpers.tsx';
+import { computed, effectScope, onBeforeUnmount, ref, watch, withKeys, type EffectScope } from 'vue';
 import { useEditableDataGridState, type EditableDataGridState } from '../../datagrid';
 import { DataGrid } from '../../datagrid/DataGrid.tsx';
 import { Button } from '../../shared/components/Button.tsx';
@@ -17,7 +18,6 @@ import { useServers } from '../composables/useServers';
 import { DbGridToolbar } from './DbGridToolbar.tsx';
 import { DbSaveBar } from './DbSaveBar.tsx';
 import { MonacoEditor } from './MonacoEditor.tsx';
-import { component, ensureAllTsxProps, vModel, prevented } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {};
 
@@ -341,7 +341,7 @@ export const DbData = component(
                             {query.isCustomQueryMode ? (
                                 <IconButton
                                     icon="icon-[mdi--backup-restore]"
-                                    v-tooltip={'Reset to generated query'}
+                                    v-tooltip={{ value: 'Reset to generated query', xs: true, nowrap: true }}
                                     smaller={true}
                                     severity="secondary"
                                     onClick={() => query.clearCustomQuery()}
@@ -349,7 +349,7 @@ export const DbData = component(
                             ) : null}
                             <IconButton
                                 icon="icon-[mdi--play]"
-                                v-tooltip={'Run query'}
+                                v-tooltip={{ value: 'Run query', xs: true, nowrap: true }}
                                 smaller={true}
                                 severity="primary"
                                 disabled={!query.customQueryText.trim() || query.isRunningQuery}
@@ -545,7 +545,7 @@ export const DbData = component(
                                     {isFkPeekRowsView(view) ? (
                                         <IconButton
                                             icon="icon-[mdi--swap-horizontal-bold]"
-                                            v-tooltip={'Transpose grid'}
+                                            v-tooltip={{ value: 'Transpose grid', xs: true, nowrap: true }}
                                             smaller={true}
                                             onClick={prevented(() => fkPeekViews.togglePeekViewTranspose(view))}
                                             class={fkPeekViews.isPeekViewTransposed(view) ? 'bg-blue-500/15 text-blue-200' : ''}

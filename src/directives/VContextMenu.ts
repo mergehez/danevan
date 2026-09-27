@@ -1,5 +1,6 @@
 import type { Directive, DirectiveBinding } from 'vue';
 import type { ContextMenuEntry } from './contextMenuTypes';
+import { resolveDirectiveModifiers } from './directiveModifiers';
 import { type ContextMenuPlacement, useContextMenu } from './useContextMenu';
 
 export interface ContextMenuDirectiveModifiers {
@@ -54,23 +55,25 @@ export type ContextMenuHostElement = HTMLElement & {
 };
 
 function getPlacement(binding: Bindings): ContextMenuPlacement {
-    if (binding.modifiers?.left) {
-        return binding.modifiers.end ? 'left-start' : 'left-start';
+    const modifiers = resolveDirectiveModifiers<ContextMenuDirectiveModifiers>(binding);
+
+    if (modifiers.left) {
+        return modifiers.end ? 'left-start' : 'left-start';
     }
 
-    if (binding.modifiers?.right) {
+    if (modifiers.right) {
         return 'right-start';
     }
 
-    if (binding.modifiers?.top) {
-        return binding.modifiers.end ? 'top-end' : 'top-start';
+    if (modifiers.top) {
+        return modifiers.end ? 'top-end' : 'top-start';
     }
 
-    if (binding.modifiers?.bottom) {
-        return binding.modifiers.end ? 'bottom-end' : 'bottom-start';
+    if (modifiers.bottom) {
+        return modifiers.end ? 'bottom-end' : 'bottom-start';
     }
 
-    return binding.modifiers?.end ? 'bottom-end' : 'bottom-start';
+    return modifiers.end ? 'bottom-end' : 'bottom-start';
 }
 
 function getValueSource(binding: Bindings): ContextMenuDirectiveValue | undefined {
@@ -90,6 +93,7 @@ function resolveItems(source: ContextMenuDirectiveValue | undefined) {
 }
 
 function useOptions(binding: Bindings): ResolvedContextMenuOptions {
+    const modifiers = resolveDirectiveModifiers<ContextMenuDirectiveModifiers>(binding);
     const options = !Array.isArray(binding.value) && typeof binding.value === 'object' ? binding.value : undefined;
 
     return {
@@ -97,7 +101,7 @@ function useOptions(binding: Bindings): ResolvedContextMenuOptions {
         key: options?.key,
         disabled: !!options?.disabled,
         placement: options?.placement ?? getPlacement(binding),
-        autoFocus: options?.autoFocus ?? !!binding.modifiers?.autoFocus,
+        autoFocus: options?.autoFocus ?? !!modifiers.autoFocus,
     };
 }
 
@@ -150,7 +154,7 @@ export const vContextMenu: Directive<ContextMenuHostElement> = {
         };
 
         el.__contextMenuClickListener = (event: MouseEvent) => {
-            if (!el.__contextMenuBinding?.modifiers?.button) {
+            if (!resolveDirectiveModifiers<ContextMenuDirectiveModifiers>(el.__contextMenuBinding ?? {}).button) {
                 return;
             }
 

@@ -76,6 +76,39 @@ async function createUnreachableServerAndConnection(request: APIRequestContext) 
 }
 
 test.describe('Server connections', () => {
+    test('the server port input keeps a numeric model', async ({ page, request }) => {
+        // `v-model.number` on a plain input is converted to `value` + `onInput` with `looseToNumber`.
+        const failures: string[] = [];
+        page.on('pageerror', (error) => failures.push(error.message));
+
+        const { serverId } = await createMySqlServerAndConnection(request);
+
+        try {
+            await page.goto('/');
+            await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+            await page.waitForTimeout(3000);
+
+            await page.locator(`[data-node-id="server:${serverId}"]`).click({ button: 'right' });
+            await page.locator('.v-menu-item', { hasText: 'Update...' }).click();
+
+            const port = page.getByPlaceholder('Port');
+            await expect(port).toHaveValue(String(MYSQL.port));
+
+            // Typing must go through the coercion helper without throwing.
+            await port.fill('3399');
+            expect(failures).toEqual([]);
+
+            // The form only submits `port` when it is a number, so this fails if the input stores a string.
+            const updateRequest = page.waitForRequest((request) => request.url().endsWith('/api/updateServer'));
+            await page.getByRole('button', { name: 'Update' }).click();
+
+            const payload = JSON.parse((await updateRequest).postData() ?? '{}');
+            expect(payload.server.port).toBe(3399);
+        } finally {
+            await request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
+        }
+    });
+
     test('lists connections alphabetically instead of by insertion order', async ({ page }) => {
         const { serverId, connectionId } = await createMySqlServerAndConnection(page.request);
 

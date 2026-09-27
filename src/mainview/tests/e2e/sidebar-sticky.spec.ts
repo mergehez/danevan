@@ -1,6 +1,6 @@
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { rmSync } from 'fs';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 const API = 'http://127.0.0.1:3264/api';
 const ROW_HEIGHT = 24;

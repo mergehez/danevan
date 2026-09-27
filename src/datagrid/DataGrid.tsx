@@ -1,3 +1,4 @@
+import { component, ensureAllTsxProps, prevented } from '#shared/utils/tsxHelpers.tsx';
 import { withKeys } from 'vue';
 import { Button } from '../shared/components/Button.tsx';
 import { CenteredModal } from '../shared/components/CenteredModal.tsx';
@@ -5,7 +6,6 @@ import { IconButton } from '../shared/components/IconButton.tsx';
 import { DATA_GRID_HEADER_HEIGHT } from './dataGrid';
 import type { TDataGridState } from './useDataGrid';
 import { useDataGridView } from './useDataGridView';
-import { component, ensureAllTsxProps, prevented } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     state: TDataGridState;
@@ -116,14 +116,14 @@ export const DataGrid = component(
                                     </span>
                                     <IconButton
                                         icon="icon-[mdi--chevron-up]"
-                                        v-tooltip={'Previous match'}
+                                        v-tooltip={{ value: 'Previous match', xs: true, nowrap: true }}
                                         smaller={true}
                                         disabled={!props.state.searchMatchCount}
                                         onClick={prevented(() => props.state.goToPreviousSearchMatch())}
                                     />
                                     <IconButton
                                         icon="icon-[mdi--chevron-down]"
-                                        v-tooltip={'Next match'}
+                                        v-tooltip={{ value: 'Next match', xs: true, nowrap: true }}
                                         smaller={true}
                                         disabled={!props.state.searchMatchCount}
                                         onClick={prevented(() => props.state.goToNextSearchMatch())}
@@ -142,11 +142,16 @@ export const DataGrid = component(
                                 </>
                             ) : null}
                             {props.slots?.actions?.()}
-                            <IconButton icon="icon-[mdi--dots-horizontal]" v-tooltip={'Grid actions'} smaller={true} v-menu={vs.toolbarMenuItems} />
+                            <IconButton
+                                icon="icon-[mdi--dots-horizontal]"
+                                v-tooltip={{ value: 'Grid actions', xs: true, nowrap: true }}
+                                smaller={true}
+                                v-menu={{ value: vs.toolbarMenuItems, button: true }}
+                            />
                             {props.state.toggleTranspose ? (
                                 <IconButton
                                     icon="icon-[mdi--swap-horizontal-bold]"
-                                    v-tooltip={props.state.transposeTooltip || 'Transpose grid'}
+                                    v-tooltip={{ value: props.state.transposeTooltip || 'Transpose grid', xs: true, nowrap: true }}
                                     smaller={true}
                                     onClick={prevented(() => props.state.toggleTranspose!())}
                                     class={props.state.isTransposed ? 'bg-blue-500/15 text-blue-200' : ''}

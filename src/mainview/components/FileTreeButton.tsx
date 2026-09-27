@@ -1,9 +1,9 @@
-import { computed } from 'vue';
+import { componentGeneric, ensureAllTsxProps, prevented, tsxWithDefaults } from '#shared/utils/tsxHelpers.tsx';
 import { twMerge } from 'tailwind-merge';
+import { computed } from 'vue';
 import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import type { FileTreeItem } from '../../shared/utils/useFileTree';
 import { useServerTree } from '../composables/useServerTree';
-import { componentGeneric, ensureAllTsxProps, tsxWithDefaults, prevented } from '#shared/utils/tsxHelpers.tsx';
 
 type Props<T extends Pick<FileTreeItem, 'id' | 'rightText' | 'subtitle'> & { title?: string; name?: string }, TChild extends { id: string | number } = any> = {
     item: T;
@@ -163,7 +163,7 @@ export const FileTreeButton = componentGeneric(
                             props.selected ? 'bg-white/10' : ''
                         )}
                     >
-                        <span v-tooltip={props.tooltip} class="flex min-w-0 flex-1 py-1 items-center gap-0.5 text-left select-none">
+                        <span v-tooltip={{ value: props.tooltip, xs: true }} class="flex min-w-0 flex-1 py-1 items-center gap-0.5 text-left select-none">
                             <span
                                 data-sidebar-toggle-for={props.expandable ? props.dataNodeId : undefined}
                                 onClick={prevented((e) => onRowClick(e, props.expandable))}

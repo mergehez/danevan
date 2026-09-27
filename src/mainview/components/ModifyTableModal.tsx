@@ -590,7 +590,7 @@ export const ModifyTableModal = component(
                             severity="raised"
                             data-testid="modify-delete"
                             disabled={!modifyTable.canDeleteSelection}
-                            v-tooltip={deleteTooltip.value}
+                            v-tooltip={{ value: deleteTooltip.value, xs: true, nowrap: true }}
                             icon="icon-[mdi--minus]"
                             onClick={modifyTable.deleteSelectedEntity}
                         />
@@ -598,7 +598,7 @@ export const ModifyTableModal = component(
                             severity="raised"
                             data-testid="modify-duplicate"
                             disabled={!modifyTable.canDuplicateSelection}
-                            v-tooltip={duplicateTooltip.value}
+                            v-tooltip={{ value: duplicateTooltip.value, xs: true, nowrap: true }}
                             icon="icon-[mdi--content-copy]"
                             onClick={modifyTable.duplicateSelectedEntity}
                         />
@@ -606,7 +606,7 @@ export const ModifyTableModal = component(
                             severity="raised"
                             data-testid="modify-move-up"
                             disabled={!modifyTable.canMoveSelectionUp}
-                            v-tooltip={moveUpTooltip.value}
+                            v-tooltip={{ value: moveUpTooltip.value, xs: true, nowrap: true }}
                             icon="icon-[mdi--arrow-up]"
                             onClick={modifyTable.moveSelectedEntityUp}
                         />
@@ -614,7 +614,7 @@ export const ModifyTableModal = component(
                             severity="raised"
                             data-testid="modify-move-down"
                             disabled={!modifyTable.canMoveSelectionDown}
-                            v-tooltip={moveDownTooltip.value}
+                            v-tooltip={{ value: moveDownTooltip.value, xs: true, nowrap: true }}
                             icon="icon-[mdi--arrow-down]"
                             onClick={modifyTable.moveSelectedEntityDown}
                         />
@@ -682,28 +682,28 @@ export const ModifyTableModal = component(
                             <IconButton
                                 severity="raised"
                                 disabled={selIndex.status === 'deleted'}
-                                v-tooltip={'Add index column'}
+                                v-tooltip={{ value: 'Add index column', xs: true, nowrap: true }}
                                 icon="icon-[mdi--plus]"
                                 onClick={modifyTable.addSelectedIndexColumn}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selIndex.status === 'deleted' || !selectedIndexColumn.value}
-                                v-tooltip={'Remove index column'}
+                                v-tooltip={{ value: 'Remove index column', xs: true, nowrap: true }}
                                 icon="icon-[mdi--minus]"
                                 onClick={modifyTable.removeSelectedIndexColumn}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selIndex.columns.length < 2 || selIndex.status === 'deleted' || !selectedIndexColumn.value}
-                                v-tooltip={'Move index column up'}
+                                v-tooltip={{ value: 'Move index column up', xs: true, nowrap: true }}
                                 icon="icon-[mdi--arrow-up]"
                                 onClick={modifyTable.moveSelectedIndexColumnUp}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selIndex.columns.length < 2 || selIndex.status === 'deleted' || !selectedIndexColumn.value}
-                                v-tooltip={'Move index column down'}
+                                v-tooltip={{ value: 'Move index column down', xs: true, nowrap: true }}
                                 icon="icon-[mdi--arrow-down]"
                                 onClick={modifyTable.moveSelectedIndexColumnDown}
                             />
@@ -765,28 +765,28 @@ export const ModifyTableModal = component(
                             <IconButton
                                 severity="raised"
                                 disabled={selFk.status === 'deleted'}
-                                v-tooltip={'Add foreign key column'}
+                                v-tooltip={{ value: 'Add foreign key column', xs: true, nowrap: true }}
                                 icon="icon-[mdi--plus]"
                                 onClick={modifyTable.addSelectedForeignKeyColumn}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selFk.status === 'deleted' || !selectedForeignKeyColumn.value}
-                                v-tooltip={'Remove foreign key column'}
+                                v-tooltip={{ value: 'Remove foreign key column', xs: true, nowrap: true }}
                                 icon="icon-[mdi--minus]"
                                 onClick={modifyTable.removeSelectedForeignKeyColumn}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selFk.columns.length < 2 || selFk.status === 'deleted' || !selectedForeignKeyColumn.value}
-                                v-tooltip={'Move foreign key column up'}
+                                v-tooltip={{ value: 'Move foreign key column up', xs: true, nowrap: true }}
                                 icon="icon-[mdi--arrow-up]"
                                 onClick={modifyTable.moveSelectedForeignKeyColumnUp}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selFk.columns.length < 2 || selFk.status === 'deleted' || !selectedForeignKeyColumn.value}
-                                v-tooltip={'Move foreign key column down'}
+                                v-tooltip={{ value: 'Move foreign key column down', xs: true, nowrap: true }}
                                 icon="icon-[mdi--arrow-down]"
                                 onClick={modifyTable.moveSelectedForeignKeyColumnDown}
                             />
@@ -853,28 +853,28 @@ export const ModifyTableModal = component(
                             <IconButton
                                 severity="raised"
                                 disabled={selKey.status === 'deleted'}
-                                v-tooltip={'Add key column'}
+                                v-tooltip={{ value: 'Add key column', xs: true, nowrap: true }}
                                 icon="icon-[mdi--plus]"
                                 onClick={modifyTable.addSelectedKeyColumn}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selKey.status === 'deleted' || !selectedKeyColumn.value}
-                                v-tooltip={'Remove key column'}
+                                v-tooltip={{ value: 'Remove key column', xs: true, nowrap: true }}
                                 icon="icon-[mdi--minus]"
                                 onClick={modifyTable.removeSelectedKeyColumn}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selKey.columns.length < 2 || selKey.status === 'deleted' || !selectedKeyColumn.value}
-                                v-tooltip={'Move key column up'}
+                                v-tooltip={{ value: 'Move key column up', xs: true, nowrap: true }}
                                 icon="icon-[mdi--arrow-up]"
                                 onClick={modifyTable.moveSelectedKeyColumnUp}
                             />
                             <IconButton
                                 severity="raised"
                                 disabled={selKey.columns.length < 2 || selKey.status === 'deleted' || !selectedKeyColumn.value}
-                                v-tooltip={'Move key column down'}
+                                v-tooltip={{ value: 'Move key column down', xs: true, nowrap: true }}
                                 icon="icon-[mdi--arrow-down]"
                                 onClick={modifyTable.moveSelectedKeyColumnDown}
                             />
@@ -1013,10 +1013,10 @@ export const ModifyTableModal = component(
                         <div class={[formGridClass, 'border-b border-x4']}>
                             <div class="border-r border-x4 px-3 py-1.5 text-xs opacity-70">Grants</div>
                             <div class="flex items-center gap-px px-1.5 py-1">
-                                <IconButton severity="raised" disabled={true} v-tooltip={'Add grant'} icon="icon-[mdi--plus]" />
-                                <IconButton severity="raised" disabled={true} v-tooltip={'Remove grant'} icon="icon-[mdi--minus]" />
-                                <IconButton severity="raised" disabled={true} v-tooltip={'Move grant up'} icon="icon-[mdi--arrow-up]" />
-                                <IconButton severity="raised" disabled={true} v-tooltip={'Move grant down'} icon="icon-[mdi--arrow-down]" />
+                                <IconButton severity="raised" disabled={true} v-tooltip={{ value: 'Add grant', xs: true, nowrap: true }} icon="icon-[mdi--plus]" />
+                                <IconButton severity="raised" disabled={true} v-tooltip={{ value: 'Remove grant', xs: true, nowrap: true }} icon="icon-[mdi--minus]" />
+                                <IconButton severity="raised" disabled={true} v-tooltip={{ value: 'Move grant up', xs: true, nowrap: true }} icon="icon-[mdi--arrow-up]" />
+                                <IconButton severity="raised" disabled={true} v-tooltip={{ value: 'Move grant down', xs: true, nowrap: true }} icon="icon-[mdi--arrow-down]" />
                             </div>
                         </div>
                         <div class="flex min-h-10 max-h-46 items-center justify-center bg-x2 text-sm opacity-60">Nothing to show</div>

@@ -1,3 +1,4 @@
+import { component, ensureAllTsxProps } from '#shared/utils/tsxHelpers.tsx';
 import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import type { ServerRecord } from '../../shared/types';
 import { withMinLifetime } from '../../shared/utils/useMinLifetime';
@@ -12,7 +13,6 @@ import { useServerTree } from '../composables/useServerTree';
 import { serializeSqlEditorTableDropPayload, SQL_EDITOR_TABLE_DRAG_MIME } from '../lib/sqlEditorDnd';
 import { FileTreeButton } from './FileTreeButton.tsx';
 import { TreeCollection } from './TreeCollection.tsx';
-import { component, ensureAllTsxProps } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     server: ServerRecord;
@@ -341,7 +341,7 @@ export const TreeTableRow = component(
                                         g.kind === 'columns'
                                             ? () => (
                                                   <span
-                                                      v-tooltip={getColumnSortTooltip(g)}
+                                                      v-tooltip={{ value: getColumnSortTooltip(g), xs: true, nowrap: true }}
                                                       role="button"
                                                       tabindex="-1"
                                                       onClick={(e) => toggleColumnCollectionSort(g, e)}

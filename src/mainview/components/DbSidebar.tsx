@@ -1,4 +1,5 @@
-import { ref, computed, watch, nextTick } from 'vue';
+import { component, ensureAllTsxProps, vModel } from '#shared/utils/tsxHelpers.tsx';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import { useContextMenu } from '../../directives/useContextMenu';
 import FileTree from '../../shared/components/FileTree';
@@ -19,7 +20,6 @@ import { tasks } from '../composables/useTasks';
 import { DbConnectionForm } from './DbConnectionForm.tsx';
 import { SqlHistoryModal } from './SqlHistoryModal.tsx';
 import { TreeServer } from './TreeServer.tsx';
-import { component, ensureAllTsxProps, vModel } from '#shared/utils/tsxHelpers.tsx';
 
 type ScriptTreeItem = ScriptRecord & {
     title: string;
@@ -514,9 +514,25 @@ export const DbSidebar = component(
                     <div class="flex items-center justify-between px-2 pb-2">
                         <h2 class="text-sm font-semibold tracking-[0.02em] text-reverse">Connections</h2>
                         <div class="flex items-center gap-1">
-                            <IconButton icon="icon-[mdi--database-plus-outline]" v-tooltip={'Add source'} smaller={true} onClick={() => servers.openAddForm()} />
-                            <IconButton icon="icon-[mdi--history]" v-tooltip={'History'} smaller={true} onClick={() => (sqlHistoryModalOpen.value = true)} />
-                            <IconButton icon="icon-[mdi--dots-vertical]" v-tooltip={'Open settings'} smaller={true} v-menu={getMenuItems} />
+                            <IconButton
+                                icon="icon-[mdi--database-plus-outline]"
+                                v-tooltip={{ value: 'Add source', xs: true, nowrap: true }}
+                                smaller={true}
+                                onClick={() => servers.openAddForm()}
+                            />
+                            <IconButton
+                                icon="icon-[mdi--history]"
+                                v-tooltip={{ value: 'History', xs: true, nowrap: true }}
+                                smaller={true}
+                                onClick={() => (sqlHistoryModalOpen.value = true)}
+                            />
+                            <IconButton
+                                icon="icon-[mdi--dots-vertical]"
+                                data-testid="sidebar-settings"
+                                v-tooltip={{ value: 'Open settings', xs: true, nowrap: true }}
+                                smaller={true}
+                                v-menu={{ value: getMenuItems, button: true }}
+                            />
                         </div>
                     </div>
                     <div class="flex flex-1 flex-col gap-1 overflow-auto p-2">
