@@ -39,3 +39,6 @@
   and has no modifier support; fix that by hand.
 - `v-menu.button` in tsx is `v-menu={{ value: getMenuItems, button: true }}` — without the `button` key the
   menu only opens on right-click.
+- the registered directives are declared in `src/directives/appDirectives.ts` (names + binding types from each
+  directive file), so TSX checks `v-tooltip={{ value, xs: true }}`. A directive that is missing from that map
+  (or a binding whose type does not match) is a compile error; a typo in the directive _name_ is not.

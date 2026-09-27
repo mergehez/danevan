@@ -23,8 +23,11 @@ export interface TooltipOptions {
     always?: boolean | undefined;
 }
 
+// TSX has no dotted modifiers, so they arrive inside the value object: `v-tooltip={{ value, xs: true }}`.
+export type TooltipBindingValue = string | (TooltipOptions & TooltipDirectiveModifiers) | undefined;
+
 type Bindings = Omit<DirectiveBinding, 'modifiers' | 'value'> & {
-    value?: string | TooltipOptions | undefined;
+    value?: TooltipBindingValue;
     modifiers?: TooltipDirectiveModifiers | undefined;
 };
 
@@ -163,15 +166,15 @@ function clearTooltipShowTimeout(el: TooltipHostElement) {
     el.__tooltipShowTimeout = undefined;
 }
 
-export const vTooltip: Directive<TooltipHostElement> = {
+export const vTooltip: Directive<TooltipHostElement, TooltipBindingValue, keyof TooltipDirectiveModifiers> = {
     mounted(el, binding: Bindings) {
         if (!binding.value) return;
+        const opts = useOptions(binding);
+        if (!opts || !opts.content) return;
 
         const arrow = document.createElement('div');
         const text = document.createElement('div');
         const tooltip = document.createElement('div');
-
-        const opts = useOptions(binding);
 
         applyOptions({ tooltip, arrow, text }, opts);
 

@@ -1,12 +1,15 @@
 import type { Directive, DirectiveBinding, ObjectDirective, VNode } from 'vue';
 import { resolveDirectiveModifiers } from './directiveModifiers';
-import { type TooltipDirectiveModifiers, type TooltipOptions, vTooltip } from './VTooltip';
+import { type TooltipBindingValue, type TooltipDirectiveModifiers, type TooltipOptions, vTooltip } from './VTooltip';
 
 export interface ErrorDirectiveOptions extends Omit<TooltipOptions, 'value'> {
     value?: string | undefined;
     message?: string | undefined;
     html?: boolean | undefined;
 }
+
+// TSX has no dotted modifiers, so they arrive inside the value object: `v-error={{ message, xs: true }}`.
+export type ErrorBindingValue = string | (ErrorDirectiveOptions & TooltipDirectiveModifiers) | undefined;
 
 type TooltipTargetElement = HTMLElement & {
     __tooltip?: any;
@@ -18,12 +21,12 @@ type TooltipTargetElement = HTMLElement & {
 };
 
 type ErrorBinding = Omit<DirectiveBinding, 'modifiers' | 'value'> & {
-    value?: string | ErrorDirectiveOptions | undefined;
+    value?: ErrorBindingValue;
     modifiers?: TooltipDirectiveModifiers | undefined;
 };
 
 type TooltipBinding = Omit<DirectiveBinding, 'modifiers' | 'value'> & {
-    value: string | TooltipOptions | undefined;
+    value: TooltipBindingValue;
     modifiers: Partial<Record<string, boolean>>;
 };
 
@@ -116,7 +119,7 @@ function toCleanupBinding(binding: ErrorBinding): TooltipBinding {
     };
 }
 
-export const vError: Directive<TooltipTargetElement> = {
+export const vError: Directive<TooltipTargetElement, ErrorBindingValue, keyof TooltipDirectiveModifiers> = {
     mounted(el, binding: ErrorBinding, vnode, prevVnode) {
         const target = ensureDirectiveTarget(el, vnode);
         const options = resolveTooltipOptions(binding.value);

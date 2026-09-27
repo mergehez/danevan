@@ -33,8 +33,11 @@ export type OpenContextMenuOptions = {
     autoFocus?: boolean;
 };
 
+// TSX has no dotted modifiers, so they arrive inside the value object: `v-menu={{ value, button: true }}`.
+export type ContextMenuBindingValue = ContextMenuDirectiveValue | (ContextMenuOptions & ContextMenuDirectiveModifiers) | undefined;
+
 type Bindings = Omit<DirectiveBinding, 'modifiers' | 'value'> & {
-    value?: ContextMenuDirectiveValue | ContextMenuOptions | undefined;
+    value?: ContextMenuBindingValue;
     modifiers?: ContextMenuDirectiveModifiers | undefined;
 };
 
@@ -141,7 +144,7 @@ function openBoundContextMenu(el: ContextMenuHostElement, override?: OpenContext
     });
 }
 
-export const vContextMenu: Directive<ContextMenuHostElement> = {
+export const vContextMenu: Directive<ContextMenuHostElement, ContextMenuBindingValue, keyof ContextMenuDirectiveModifiers> = {
     mounted(el, binding: Bindings) {
         el.__contextMenuBinding = binding;
         el.openContextMenu = (options?: OpenContextMenuOptions) => {

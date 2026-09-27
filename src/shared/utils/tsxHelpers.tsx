@@ -7,11 +7,28 @@ type SetupContext<Expose = {}> = {
 };
 type Setup<TProps = any, TExpose = {}> = (props: TProps, context: SetupContext<TExpose>) => () => VNodeChild;
 
+// Components declare their models as `onChange` / `onOpenChange` callbacks; Vue's own `v-model`
+// hands the component `onUpdate:modelValue` / `onUpdate:open` instead. Since a declared prop never
+// reaches `attrs`, a read of the callback name falls back to the standard one when it is absent.
+function standardModelProp(property: string) {
+    return property === 'onChange' ? 'onUpdate:modelValue' : `onUpdate:${property.charAt(2).toLowerCase()}${property.slice(3, -'Change'.length)}`;
+}
+
+function isModelCallback(property: PropertyKey): property is string {
+    return typeof property === 'string' && property.startsWith('on') && property.endsWith('Change');
+}
+
 function withSlots<TProps extends Record<string, unknown>, TExpose = {}>(props: TProps, context: SetupContext<TExpose>): TProps {
     return new Proxy(props, {
         get(target, property, receiver) {
             if (property === 'tdClasses') {
                 console.log('withSlots: tdClasses', target, context);
+            }
+            if (isModelCallback(property)) {
+                const own = Reflect.get(target, property, receiver);
+                if (own !== undefined) return own;
+                const standard = context.attrs[standardModelProp(property)];
+                if (standard !== undefined) return standard;
             }
             if (property === 'slots') {
                 const slots = Reflect.get(target, property, receiver);
@@ -36,8 +53,10 @@ export function componentGeneric<Props extends Record<string, any>, TExpose exte
     options: { layout?: any; props: readonly string[]; name?: string }
 ) {
     const genericComponent = defineComponent(
-        (props: Props, { expose, slots }: SetupContext<TExpose>) => {
-            return setup(withSlots(props as Props, { attrs: {}, slots, expose }), {} as any);
+        (props: Props, { attrs, expose, slots }: SetupContext<TExpose>) => {
+            const context: SetupContext<TExpose> = { attrs, slots, expose };
+
+            return setup(withSlots(props as Props, context), context);
         },
         {
             name: options.name,

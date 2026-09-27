@@ -1,9 +1,6 @@
 import { createApp } from 'vue';
+import { installAppDirectives } from '../directives/appDirectives';
 import '../directives/directive-styles.css';
-import { vContextMenu } from '../directives/VContextMenu';
-import { vError } from '../directives/VError';
-import { vLoading } from '../directives/VLoading';
-import { vTooltip } from '../directives/VTooltip';
 import App from './App.tsx';
 import { initTasks } from './composables/useTasks';
 import './css/app.css';
@@ -22,10 +19,7 @@ void Promise.resolve().then(() => {
 
     const app = createApp(App);
 
-    app.directive('loading', vLoading);
-    app.directive('tooltip', vTooltip);
-    app.directive('menu', vContextMenu);
-    app.directive('error', vError);
+    installAppDirectives(app);
 
     initTasks();
 

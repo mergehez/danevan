@@ -1,4 +1,5 @@
 import type { Directive, DirectiveBinding } from 'vue';
+import { resolveDirectiveModifiers } from './directiveModifiers';
 import { isButtonLoadingIndicatorSilenced } from './loadingIndicatorState';
 import { useOverlaysState } from './useOverlaysState';
 
@@ -8,22 +9,27 @@ export interface LoadingDirectiveModifiers {
     lg?: boolean | undefined;
     xl?: boolean | undefined;
 }
+
+// TSX has no dotted modifiers, so they arrive inside the value object: `v-loading={{ value: true, lg: true }}`.
+export type LoadingBindingValue = boolean | (LoadingDirectiveModifiers & { value?: boolean }) | undefined;
+
 type Bindings = Omit<DirectiveBinding, 'modifiers' | 'value'> & {
-    value?: boolean | undefined;
+    value?: LoadingBindingValue;
     modifiers?: LoadingDirectiveModifiers | undefined;
 };
 export type VLoadingDirectiveBinding = Bindings;
 
 const overlayState = useOverlaysState();
 
-export const vLoading: Directive<HTMLElement & { __loader: any; __loaderZIndex: any }> = {
+export const vLoading: Directive<HTMLElement & { __loader: any; __loaderZIndex: any }, LoadingBindingValue, keyof LoadingDirectiveModifiers> = {
     mounted(el, binding: Bindings, _vnode) {
         const position = window.getComputedStyle(el).position;
         if (position === 'static' || position === '') {
             el.style.position = 'relative';
         }
 
-        const size = binding.modifiers?.sm ? 'v-loading-xs' : binding.modifiers?.lg ? 'v-loading-lg' : binding.modifiers?.xl ? 'v-loading-xl' : 'v-loading-md';
+        const modifiers = resolveDirectiveModifiers<LoadingDirectiveModifiers>(binding);
+        const size = modifiers.sm ? 'v-loading-xs' : modifiers.lg ? 'v-loading-lg' : modifiers.xl ? 'v-loading-xl' : 'v-loading-md';
 
         const loader = document.createElement('span');
         loader.className = `v-loading ${size}`;
@@ -61,7 +67,8 @@ function isButtonLikeElement(el: HTMLElement) {
 }
 
 function toggleLoading(el: any, binding: Bindings) {
-    const shouldShow = binding.value !== false && !(isButtonLikeElement(el) && isButtonLoadingIndicatorSilenced.value);
+    const value = typeof binding.value === 'object' ? binding.value?.value : binding.value;
+    const shouldShow = value !== false && !(isButtonLikeElement(el) && isButtonLoadingIndicatorSilenced.value);
     overlayState.toggleZIndex(shouldShow, el.__loaderZIndex);
 
     el.__loader.style.display = shouldShow ? 'flex' : 'none';

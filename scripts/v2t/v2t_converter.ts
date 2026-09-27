@@ -11,7 +11,7 @@ import type { EventHandler, ParsedComponent, ParsedExpression, TAttr, TNode, TSc
 const expressionRoot = createRoot([]);
 
 // `v-model.trim` / `v-model.number` on a plain element are coercion on the way in. Emitting `value` +
-// `onInput` keeps that explicit and type-checked, unlike the untyped `v-model` JSX directives.
+// `onInput` keeps that explicit and lets TS check the target, unlike the untyped `v-model` JSX form.
 function nativeModelValue(valueExpression: string, modifiers: string[]): string {
     const trimmed = modifiers.includes('trim') ? `${valueExpression}.trim()` : valueExpression;
 
