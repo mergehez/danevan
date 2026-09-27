@@ -1,6 +1,5 @@
 import { defineConfig } from '@playwright/test';
 
-const BACKEND_PORT = parseInt(process.env.API_PORT || '3264', 10);
 const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '3263', 10);
 
 export default defineConfig({
@@ -15,27 +14,15 @@ export default defineConfig({
         baseURL: `http://127.0.0.1:${FRONTEND_PORT}`,
         trace: 'on-first-retry',
     },
-    webServer: [
-        {
-            command: `bun run src/backend/devServer.ts`,
-            port: BACKEND_PORT,
-            reuseExistingServer: !process.env.CI,
-            cwd: process.cwd(),
-            timeout: 30_000,
-            stdout: 'pipe',
-            stderr: 'pipe',
-        },
-        {
-            command: `echo 'the dev server should already be running on port ${FRONTEND_PORT}'`,
-            port: FRONTEND_PORT,
-            reuseExistingServer: !process.env.CI,
-            cwd: process.cwd(),
-            timeout: 30_000,
-            stdout: 'pipe',
-            stderr: 'pipe',
-            env: {
-                VITE_DEV2: 'true',
-            },
-        },
-    ],
+    // The dev server hosts both: the renderer on FRONTEND_PORT and the backend
+    // API (apiMethods) on the API port, mounted by the vite plugin.
+    webServer: {
+        command: 'bun run dev',
+        port: FRONTEND_PORT,
+        reuseExistingServer: !process.env.CI,
+        cwd: process.cwd(),
+        timeout: 60_000,
+        stdout: 'pipe',
+        stderr: 'pipe',
+    },
 });

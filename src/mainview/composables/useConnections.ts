@@ -30,18 +30,13 @@ export function _useConnections() {
             connectionId: -1,
         },
         get connections() {
-            return [..._dbCoreState.connections].sort((left, right) => Number(left.sequence) - Number(right.sequence) || left.name.localeCompare(right.name));
+            return [..._dbCoreState.connections].sort((left, right) => left.name.localeCompare(right.name) || left.id - right.id);
         },
         get selectedConnectionId() {
             return _dbCoreState.selectedConnectionId;
         },
         get selectedConnection() {
             return _dbCoreState.connections.find((connection) => connection.id === _dbCoreState.selectedConnectionId);
-        },
-        get selectedServerConnections() {
-            return _dbCoreState.connections
-                .filter((connection) => connection.server_id === _dbCoreState.selectedServerId)
-                .sort((left, right) => Number(left.sequence) - Number(right.sequence) || left.name.localeCompare(right.name));
         },
         getCachedConnectionSchema(connectionId: number) {
             return dbCaches.getCachedConnectionSchema(connectionId);
@@ -231,21 +226,10 @@ export function _useConnections() {
         async updateConnection(connectionId: number, connection: UpdateConnectionParams) {
             _dbCoreState.applyBootstrap(await tasks.updateConnection.run({ connectionId, connection }));
         },
-        async deleteConnection(connectionId: number) {
-            const connection = _dbCoreState.connections.find((entry) => entry.id === connectionId);
-
-            if (
-                !(await confirmAction({
-                    title: 'Delete connection?',
-                    message: connection?.name ? `This will permanently remove ${connection.name}.` : 'This will permanently remove the selected connection.',
-                    detail: 'Saved scripts and cached metadata tied to this connection will also be removed.',
-                    confirmLabel: 'Delete',
-                }))
-            ) {
-                return;
-            }
-
-            _dbCoreState.applyBootstrap(await tasks.deleteConnection.run({ connectionId }));
+        // Hiding only takes the connection out of the sidebar; its scripts and
+        // settings stay in the app database, so there is nothing to confirm.
+        async hideConnection(connectionId: number) {
+            _dbCoreState.applyBootstrap(await tasks.hideConnection.run({ connectionId }));
         },
         async dropTable(connectionId: number, tableName: string) {
             const normalizedTableName = tableName.trim();

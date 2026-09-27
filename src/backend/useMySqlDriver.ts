@@ -610,14 +610,18 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         return statements;
     }
 
-    function buildDropColumnStatements(tableName: string, currentInfo: TableInfo, nextColumns: ModifySchemaColumn[]) {
-        const quotedTableName = deps.quoteRemoteIdentifier('mysql', tableName);
+    function getDroppedColumns(currentInfo: TableInfo, nextColumns: ModifySchemaColumn[]) {
         const nextColumnsByOriginalName = new Map(nextColumns.filter((column) => column.originalName).map((column) => [column.originalName!, column]));
-        const droppedColumns = currentInfo.columns.filter(
+
+        return currentInfo.columns.filter(
             (column) => !nextColumnsByOriginalName.has(column.name) && !nextColumns.some((entry) => !entry.originalName && entry.name === column.name)
         );
+    }
 
-        return droppedColumns.map((column) => `ALTER TABLE ${quotedTableName} DROP COLUMN ${deps.quoteRemoteIdentifier('mysql', column.name)};`);
+    function buildDropColumnStatements(tableName: string, currentInfo: TableInfo, nextColumns: ModifySchemaColumn[]) {
+        const quotedTableName = deps.quoteRemoteIdentifier('mysql', tableName);
+
+        return getDroppedColumns(currentInfo, nextColumns).map((column) => `ALTER TABLE ${quotedTableName} DROP COLUMN ${deps.quoteRemoteIdentifier('mysql', column.name)};`);
     }
 
     async function getTableMetadata(client: RemoteDriverClient, tableName: string): Promise<Partial<ModifySchemaTable>> {
@@ -800,6 +804,11 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
 
         manualStatements.push(...buildDropColumnStatements(tableName, currentInfo, nextColumns));
 
+        // Column order the emitted statements leave behind, kept in step with them so a
+        // column that moves twice in one batch is still detected and anchored correctly.
+        const droppedColumnNames = new Set(getDroppedColumns(currentInfo, nextColumns).map((column) => column.name));
+        const simulatedOrder = currentInfo.columns.filter((column) => !droppedColumnNames.has(column.name)).map((column) => column.name);
+
         nextColumns.forEach((column, index) => {
             const currentColumn = column.originalName ? currentColumnsByName.get(column.originalName) : undefined;
             const definitionParts = [deps.quoteRemoteIdentifier('mysql', column.name), column.type];
@@ -826,14 +835,12 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
 
             definitionParts.push(`COMMENT ${deps.escapeSqlString(column.comment ?? '')}`);
             const definition = definitionParts.join(' ');
+            const previousDesiredColumn = index > 0 ? nextColumns[index - 1] : undefined;
+            const placementClause = previousDesiredColumn ? ` AFTER ${deps.quoteRemoteIdentifier('mysql', previousDesiredColumn.name)}` : ' FIRST';
 
             if (!currentColumn) {
-                const previousColumn = [...nextColumns]
-                    .slice(0, index)
-                    .reverse()
-                    .find(() => true);
-                const placementClause = previousColumn ? ` AFTER ${deps.quoteRemoteIdentifier('mysql', previousColumn.name)}` : ' FIRST';
                 manualStatements.push(`ALTER TABLE ${quotedTableName} ADD COLUMN ${definition}${placementClause};`);
+                simulatedOrder.splice(index, 0, column.name);
                 return;
             }
 
@@ -847,21 +854,15 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
                 column.collation !== deps.normalizeOptionalText(currentColumn.collation) ||
                 column.onUpdate !== deps.normalizeOptionalText(currentColumn.onUpdate);
 
-            // Detect whether an existing column was moved. Compare the nearest
-            // preceding *existing* column in the desired order against the
-            // nearest preceding column in the current order, ignoring newly
-            // added columns so insertions don't trigger false repositions.
-            const desiredPreviousExisting = [...nextColumns]
-                .slice(0, index)
-                .reverse()
-                .find((entry) => entry.originalName && currentColumnsByName.has(entry.originalName));
-            const currentIndexInCurrent = currentInfo.columns.findIndex((entry) => entry.name === currentColumn.name);
-            const currentPreviousName = currentIndexInCurrent > 0 ? currentInfo.columns[currentIndexInCurrent - 1]?.name : undefined;
-            const positionChanged = desiredPreviousExisting?.name !== currentPreviousName;
+            const positionChanged = simulatedOrder[index] !== currentColumn.name;
 
             if (metadataChanged || positionChanged) {
-                const placementClause = desiredPreviousExisting ? ` AFTER ${deps.quoteRemoteIdentifier('mysql', desiredPreviousExisting.name)}` : ' FIRST';
                 manualStatements.push(`ALTER TABLE ${quotedTableName} CHANGE COLUMN ${deps.quoteRemoteIdentifier('mysql', currentColumn.name)} ${definition}${placementClause};`);
+            }
+
+            if (positionChanged) {
+                simulatedOrder.splice(simulatedOrder.indexOf(currentColumn.name), 1);
+                simulatedOrder.splice(index, 0, currentColumn.name);
             }
         });
 

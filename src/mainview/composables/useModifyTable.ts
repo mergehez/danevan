@@ -180,16 +180,6 @@ function getActiveColumns(columns: ModifyTableColumnDraft[]) {
     return columns.filter((column) => column.status !== 'deleted');
 }
 
-// Returns the nearest column that already exists in the table (has an
-// originalName) before the given index in the provided order. Used to detect
-// column reordering.
-function getPreviousExistingColumn(columns: ModifyTableColumnDraft[], fromIndex: number): ModifyTableColumnDraft | undefined {
-    return [...columns]
-        .slice(0, fromIndex)
-        .reverse()
-        .find((entry) => entry.originalName);
-}
-
 function createOriginalColumnsByName(columns: ModifyTableColumnDraft[]) {
     return new Map(columns.map((column) => [column.originalName ?? column.name, column]));
 }
@@ -1745,16 +1735,21 @@ function buildPreviewStatements(state: ModifyTablePreviewState) {
     });
 
     if (state.driver === 'mysql') {
+        // Column order the listed statements leave behind, kept in step with them so a
+        // column that moves twice in one batch is still detected and anchored correctly.
+        const droppedColumnNames = new Set(droppedColumns.map((column) => column.originalName ?? column.name));
+        const simulatedOrder = state.originalColumns
+            .filter((column) => !droppedColumnNames.has(column.originalName ?? column.name))
+            .map((column) => column.originalName ?? column.name);
+
         activeColumns.forEach((column, index) => {
             const originalColumn = column.originalName ? originalColumnsByName.get(column.originalName) : undefined;
+            const previousDesiredColumn = index > 0 ? activeColumns[index - 1] : undefined;
+            const placementClause = previousDesiredColumn ? ` AFTER ${quoteSqlIdentifier(previousDesiredColumn.name, 'mysql')}` : ' FIRST';
 
             if (!originalColumn) {
-                const previousColumn = [...activeColumns]
-                    .slice(0, index)
-                    .reverse()
-                    .find(() => true);
-                const placementClause = previousColumn ? ` AFTER ${quoteSqlIdentifier(previousColumn.name, 'mysql')}` : ' FIRST';
                 statements.push(`ALTER TABLE ${quotedTableName} ADD COLUMN ${buildMySqlColumnDefinition(column)}${placementClause};`);
+                simulatedOrder.splice(index, 0, column.name);
                 return;
             }
 
@@ -1768,16 +1763,17 @@ function buildPreviewStatements(state: ModifyTablePreviewState) {
                 normalizeOptionalText(column.collation) !== normalizeOptionalText(originalColumn.collation) ||
                 normalizeOptionalText(column.onUpdate) !== normalizeOptionalText(originalColumn.onUpdate);
 
-            const originalIndex = state.originalColumns.findIndex((entry) => (entry.originalName ?? entry.name) === column.originalName);
-            const previousExisting = getPreviousExistingColumn(activeColumns, index);
-            const currentPrevious = originalIndex > 0 ? getPreviousExistingColumn(state.originalColumns, originalIndex) : undefined;
-            const positionChanged = previousExisting?.originalName !== currentPrevious?.originalName;
+            const positionChanged = simulatedOrder[index] !== originalColumn.name;
 
             if (changed || positionChanged) {
-                const placementClause = previousExisting ? ` AFTER ${quoteSqlIdentifier(previousExisting.name, 'mysql')}` : ' FIRST';
                 statements.push(
                     `ALTER TABLE ${quotedTableName} CHANGE COLUMN ${quoteSqlIdentifier(originalColumn.name, 'mysql')} ${buildMySqlColumnDefinition(column)}${placementClause};`
                 );
+            }
+
+            if (positionChanged) {
+                simulatedOrder.splice(simulatedOrder.indexOf(originalColumn.name), 1);
+                simulatedOrder.splice(index, 0, originalColumn.name);
             }
         });
 

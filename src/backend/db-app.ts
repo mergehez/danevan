@@ -322,6 +322,7 @@ export function useAppDb() {
                     port INTEGER,
                     database_name TEXT,
                     readonly INTEGER NOT NULL DEFAULT 0,
+                    hidden INTEGER NOT NULL DEFAULT 0,
                     sequence INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -347,6 +348,13 @@ export function useAppDb() {
             normalizeServerSequences();
             normalizeConnectionSequences();
             normalizeScriptSequences();
+
+            // Databases written before "Hide database" have no `hidden` column.
+            const connectionColumns = db.prepare('PRAGMA table_info(connections)').all<{ name: string }>();
+
+            if (!connectionColumns.some((column) => column.name === 'hidden')) {
+                db.exec('ALTER TABLE connections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;');
+            }
         },
         getStoredServerCount(userDataDir: string) {
             const databasePath = join(userDataDir, DATABASE_FILE_NAME);
@@ -387,14 +395,17 @@ export function useAppDb() {
                 )
                 .all<ServerRow>();
         },
-        listConnections(serverId?: number) {
+        listConnections(serverId?: number, options: { includeHidden?: boolean } = {}) {
+            const columns = 'id, server_id, name, host, port, database_name, readonly, hidden, sequence, created_at, updated_at, last_used_at';
+            const hiddenFilter = options.includeHidden ? '' : ' AND hidden = 0';
+
             return typeof serverId === 'number'
                 ? db
                       .prepare(
                           `
-                              SELECT id, server_id, name, host, port, database_name, readonly, sequence, created_at, updated_at, last_used_at
+                              SELECT ${columns}
                               FROM connections
-                              WHERE server_id = ?
+                              WHERE server_id = ?${hiddenFilter}
                               ORDER BY sequence ASC, created_at ASC, id ASC
                           `
                       )
@@ -402,8 +413,9 @@ export function useAppDb() {
                 : db
                       .prepare(
                           `
-                              SELECT id, server_id, name, host, port, database_name, readonly, sequence, created_at, updated_at, last_used_at
+                              SELECT ${columns}
                               FROM connections
+                              ${options.includeHidden ? '' : 'WHERE hidden = 0'}
                               ORDER BY server_id ASC, sequence ASC, created_at ASC, id ASC
                           `
                       )
@@ -569,13 +581,8 @@ export function useAppDb() {
         touchConnectionLastUsed(id: number) {
             db.prepare('UPDATE connections SET last_used_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
         },
-        deleteConnection(id: number) {
-            const currentConnection = db.prepare('SELECT server_id FROM connections WHERE id = ?').get<{ server_id: number }>(id);
-            db.prepare('DELETE FROM connections WHERE id = ?').run(id);
-
-            if (currentConnection) {
-                normalizeConnectionSequences(currentConnection.server_id);
-            }
+        setConnectionHidden(id: number, hidden: boolean) {
+            db.prepare('UPDATE connections SET hidden = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(hidden ? 1 : 0, id);
         },
         createScript(params: CreateScriptParams) {
             const result = db

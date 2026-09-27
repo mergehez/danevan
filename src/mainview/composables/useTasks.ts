@@ -3,6 +3,7 @@ import type { AppRequestApi } from '../../electron/bridge.ts';
 import { apiMethods } from '../../shared/utils/apiMethods';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { appClientRpc } from '../appClient.ts';
+import { _dbCoreState } from './dbCoreState';
 import { useSqlHistory } from './useSqlHistory';
 
 const runningOperations = reactive({} as Record<string, number | undefined>); // key => timestamp
@@ -15,6 +16,54 @@ function updateLongRunningOperations() {
             return timestamp !== undefined;
         })
         .map(([key]) => key);
+}
+
+// Driver errors (`connect ECONNREFUSED 127.0.0.1:1`) don't say which server or connection
+// the request was aimed at; prefix it so the alert identifies the target.
+function describeRequestTarget(ps: unknown) {
+    if (!ps || typeof ps !== 'object') {
+        return undefined;
+    }
+
+    const params = ps as { connectionId?: unknown; serverId?: unknown };
+
+    if (typeof params.connectionId === 'number') {
+        const connection = _dbCoreState.connections.find((entry) => entry.id === params.connectionId);
+
+        if (connection) {
+            return formatRequestTarget(connection.name, connection.host, connection.port, connection.database_name);
+        }
+    }
+
+    if (typeof params.serverId === 'number') {
+        const server = _dbCoreState.servers.find((entry) => entry.id === params.serverId);
+
+        if (server) {
+            return formatRequestTarget(server.name, server.host, server.port, server.file_path);
+        }
+    }
+
+    return undefined;
+}
+
+function formatRequestTarget(name: string, host?: string, port?: number, location?: string) {
+    if (host) {
+        return `${name} (${host}${port ? `:${port}` : ''}${location ? `/${location}` : ''})`;
+    }
+
+    return location ? `${name} (${location})` : name;
+}
+
+function withRequestTarget(error: unknown, ps: unknown): Error {
+    const message = error instanceof Error ? error.message : String(error);
+    const target = describeRequestTarget(ps);
+    const failure = new Error(target ? `${target}: ${message}` : message, { cause: error });
+
+    if (error instanceof Error && error.stack) {
+        failure.stack = error.stack;
+    }
+
+    return failure;
 }
 
 export function useAsyncTask2<TMethod extends AppRequestApi[keyof AppRequestApi], TParams = Parameters<TMethod>[0], TResult = Awaited<ReturnType<TMethod>>>(
@@ -33,8 +82,9 @@ export function useAsyncTask2<TMethod extends AppRequestApi[keyof AppRequestApi]
 
             return await (method as any)(ps);
         } catch (error) {
-            errors[methodName] = error instanceof Error ? error.message : String(error);
-            throw error;
+            const failure = withRequestTarget(error, ps);
+            errors[methodName] = failure.message;
+            throw failure;
         } finally {
             runningOperations[finalKey] = undefined;
             updateLongRunningOperations();

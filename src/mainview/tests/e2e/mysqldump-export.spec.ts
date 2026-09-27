@@ -250,7 +250,7 @@ test.describe('Export using mysqldump', () => {
             await connectionRow.click({ button: 'right' });
 
             // The context menu should be open (it has the shared connection entries).
-            await expect(page.locator('.v-menu-item', { hasText: 'Select connection' })).toBeVisible();
+            await expect(page.locator('.v-menu-item', { hasText: 'Refresh metadata' })).toBeVisible();
 
             // The mysqldump export entry must not be present for a non-MySQL connection.
             await expect(page.locator('.v-menu-item', { hasText: 'Export using mysqldump...' })).toHaveCount(0);

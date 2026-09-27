@@ -23,6 +23,7 @@ type InMemoryConnection = {
     port: number | undefined;
     databaseName: string | undefined;
     readonly: number;
+    hidden: number;
     sequence: number;
     createdAt: string;
     updatedAt: string;
@@ -124,14 +125,17 @@ vi.mock('../../../backend/db-app', () => ({
                 port: conn.port,
                 database_name: conn.databaseName,
                 readonly: conn.readonly,
+                hidden: conn.hidden,
                 sequence: conn.sequence,
                 created_at: conn.createdAt,
                 updated_at: conn.updatedAt,
                 last_used_at: conn.lastUsedAt,
             } satisfies ConnectionRow;
         },
-        listConnections(serverId?: number) {
-            const filtered = typeof serverId === 'number' ? connections.filter((c) => c.serverId === serverId) : [...connections];
+        listConnections(serverId?: number, options: { includeHidden?: boolean } = {}) {
+            const filtered = (typeof serverId === 'number' ? connections.filter((c) => c.serverId === serverId) : [...connections]).filter(
+                (c) => options.includeHidden || c.hidden === 0
+            );
             return filtered
                 .sort((a, b) => a.sequence - b.sequence || a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
                 .map(
@@ -144,6 +148,7 @@ vi.mock('../../../backend/db-app', () => ({
                             port: conn.port,
                             database_name: conn.databaseName,
                             readonly: conn.readonly,
+                            hidden: conn.hidden,
                             sequence: conn.sequence,
                             created_at: conn.createdAt,
                             updated_at: conn.updatedAt,
@@ -163,6 +168,7 @@ vi.mock('../../../backend/db-app', () => ({
                 port: params.port,
                 databaseName: params.databaseName,
                 readonly: params.readonly ? 1 : 0,
+                hidden: 0,
                 sequence: serverConns.length + 1,
                 createdAt: now,
                 updatedAt: now,
@@ -181,8 +187,9 @@ vi.mock('../../../backend/db-app', () => ({
             conn.readonly = params.readonly ? 1 : 0;
             conn.updatedAt = new Date().toISOString();
         },
-        deleteConnection(id: number) {
-            connections = connections.filter((c) => c.id !== id);
+        setConnectionHidden(id: number, hidden: boolean) {
+            const conn = connections.find((c) => c.id === id);
+            if (conn) conn.hidden = hidden ? 1 : 0;
         },
         serverExists(id: number) {
             return servers.some((s) => s.id === id);
@@ -294,7 +301,7 @@ describe('appDb', () => {
         expect(connection.sequence).toBe(1);
     });
 
-    it('removes all connections from a server', () => {
+    it('hides connections without dropping their rows', () => {
         const serverId = appDb.createServer({
             name: 'Server To Clean',
             kind: 'server',
@@ -325,11 +332,19 @@ describe('appDb', () => {
         let connections = appDb.listConnections(serverId);
         expect(connections).toHaveLength(2);
 
-        appDb.deleteConnection(conn1Id);
-        appDb.deleteConnection(conn2Id);
+        appDb.setConnectionHidden(conn1Id, true);
+        appDb.setConnectionHidden(conn2Id, true);
 
         connections = appDb.listConnections(serverId);
         expect(connections).toHaveLength(0);
+
+        // Hidden rows survive, so scripts and settings stay reachable when re-shown.
+        expect(appDb.listConnections(serverId, { includeHidden: true })).toHaveLength(2);
+
+        appDb.setConnectionHidden(conn1Id, false);
+        connections = appDb.listConnections(serverId);
+        expect(connections).toHaveLength(1);
+        expect(connections[0]?.id).toBe(conn1Id);
     });
 
     it('adds a connection to a server that has no connections', () => {

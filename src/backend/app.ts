@@ -893,7 +893,7 @@ export const app = {
         }
 
         const schemaNames = normalizeSchemaNames(ps.schemaNames);
-        const existingConnections = appDb.listConnections(ps.serverId);
+        const existingConnections = appDb.listConnections(ps.serverId, { includeHidden: true });
         const existingConnectionsBySchema = new Map(
             existingConnections
                 .map((connection) => {
@@ -913,12 +913,19 @@ export const app = {
                 continue;
             }
 
-            appDb.deleteSetting(`connectionSchema:${connection.id}`);
-            appDb.deleteConnection(connection.id);
+            await dbTools.disconnectConnection(connection.id);
+            appDb.setConnectionHidden(connection.id, true);
         }
 
         for (const schemaName of schemaNames) {
-            if (existingConnectionsBySchema.has(schemaName)) {
+            const existingConnection = existingConnectionsBySchema.get(schemaName);
+
+            if (existingConnection) {
+                // Re-selecting a hidden schema brings the same row back, keeping its scripts.
+                if (existingConnection.hidden) {
+                    appDb.setConnectionHidden(existingConnection.id, false);
+                }
+
                 continue;
             }
 
@@ -930,14 +937,6 @@ export const app = {
                 databaseName: schemaName,
                 readonly: false,
             });
-        }
-
-        const nextConnections = appDb.listConnections(ps.serverId);
-        const connectionToRefresh = nextConnections[0];
-
-        if (connectionToRefresh) {
-            await refreshServerSchemasForConnection(ps.serverId, connectionToRefresh.id);
-            appDb.setSetting('selectedConnectionId', connectionToRefresh.id);
         }
 
         return buildBootstrap();
@@ -965,12 +964,14 @@ export const app = {
 
         return buildBootstrap();
     },
-    deleteConnection: async (ps: { connectionId: number }) => {
+    hideConnection: async (ps: { connectionId: number }) => {
         ensureConnectionExists(ps.connectionId);
         await dbTools.disconnectConnection(ps.connectionId);
         const connection = appDb.getConnection(ps.connectionId);
-        appDb.deleteSetting(`connectionSchema:${ps.connectionId}`);
-        appDb.deleteConnection(ps.connectionId);
+
+        // Everything else (scripts, schema filter, cached metadata) stays; only the
+        // row is hidden, so "Choose databases..." can bring the same connection back.
+        appDb.setConnectionHidden(ps.connectionId, true);
 
         if (connection) {
             const siblingConnection = appDb.listConnections(connection.server_id)[0];

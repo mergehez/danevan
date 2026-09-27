@@ -20,7 +20,7 @@ export default defineConfig({
             main: 'src/electron/main.ts',
             preload: 'src/electron/preload.ts',
             devServer: 'src/backend/devServer.ts',
-            apiMethods: 'src/shared/apiMethods.ts',
+            apiMethods: 'src/shared/utils/apiMethods.ts',
             // externalize: ['node-pty'],
         }),
         // Resolve monaco-editor deep imports that Rolldown can't resolve

@@ -82,6 +82,19 @@ function columnItem(page: Page, name: string) {
 function columnTypeInput(page: Page) {
     return page.locator('[data-testid="modify-column-type"] input');
 }
+
+async function dragColumnOnto(page: Page, sourceName: string, targetName: string) {
+    const source = await columnItem(page, sourceName).boundingBox();
+    const target = await columnItem(page, targetName).boundingBox();
+    if (!source || !target) throw new Error(`Column row not found: ${sourceName} or ${targetName}`);
+
+    await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 25 });
+    await page.waitForTimeout(150);
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+}
 test.describe('Modify table popup (e2e)', () => {
     let serverId = -1;
     let connectionId = -1;
@@ -202,6 +215,37 @@ test.describe('Modify table popup (e2e)', () => {
         const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
         const order = info.columns.map((c: any) => c.name);
         expect(order.indexOf('name')).toBe(order.indexOf('path') + 1);
+    });
+
+    test('drags two columns to the front through the popup', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+        await page.waitForTimeout(3000);
+
+        await openTableModifyPopup(page, connectionId, tableName, serverId);
+
+        // Drag `size`, then `height`, above `id`. The second move has to be applied
+        // against the order the first one leaves behind.
+        await dragColumnOnto(page, 'size', 'id');
+        await dragColumnOnto(page, 'height', 'id');
+        await page.locator('[data-testid="modify-apply"]').click();
+
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.columns.map((c: any) => c.name)).toEqual([
+            'size',
+            'height',
+            'id',
+            'name',
+            'path',
+            'description',
+            'foo_user_id',
+            'width',
+            'last_synced_at',
+            'created_at',
+            'created_by',
+        ]);
     });
 
     test('deletes a column through the popup', async ({ page }) => {

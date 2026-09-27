@@ -467,6 +467,7 @@ export type ConnectionRow = {
     port: number | undefined;
     database_name: string | undefined;
     readonly: number;
+    hidden: number;
     sequence: number | bigint;
     created_at: string;
     updated_at: string;
