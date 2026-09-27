@@ -374,85 +374,132 @@ export const TreeServer = component(
             servers.openSchemaSelectionModal(serverId, event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined);
         }
 
-        return () => (
-            <>
-                <div ref={(element) => (state.sidebarTreeRef = element as HTMLElement | undefined)} class="flex min-h-0 min-w-0 flex-col gap-1">
-                    {remoteServers.value.map((server) => (
-                        <div class="shrink-0" key={server.id}>
+        type FirstDepthItem = { key: string; kind: 'server' | 'file'; server: TreeServerItem };
+        const firstDepthItems = computed<FirstDepthItem[]>(() => [
+            ...remoteServers.value.map((server) => ({ key: `server-${server.id}`, kind: 'server' as const, server })),
+            ...fileServers.value.map((server) => ({ key: `file-server-${server.id}`, kind: 'file' as const, server })),
+        ]);
+
+        // A pinned row is painted at its stack slot while its own section is off-screen above, so
+        // clicking it would toggle a subtree nobody sees. Send the list back to that section instead.
+        function handleFirstDepthRowClick(item: FirstDepthItem, event: MouseEvent) {
+            const isToggleClick = event.currentTarget instanceof HTMLElement && event.currentTarget.dataset.sidebarToggleFor !== undefined;
+
+            if (!isToggleClick && state.scrollPinnedSidebarRowIntoPlace(`server:${item.server.id}`)) {
+                return;
+            }
+
+            if (item.kind === 'file') {
+                void handleFileServerToggle(item.server);
+                return;
+            }
+
+            if (focusSidebarEventTarget(event)) {
+                toggleServerCollapsed(item.server.id);
+            }
+        }
+
+        function renderFirstDepthRow(item: FirstDepthItem, slot: number) {
+            const server = item.server;
+
+            if (item.kind === 'file') {
+                return (
+                    <FileTreeButton
+                        item={server}
+                        icon={server.icon}
+                        tooltip={server.file_path}
+                        dataNodeId={`server:${server.id}`}
+                        stickySlot={slot}
+                        class="bg-x1"
+                        collapsed={state.isServerCollapsed(server.id)}
+                        isLoading={isFileServerLoading(server.id)}
+                        selected={isFileServerSelected(server.id)}
+                        onClick={(e) => handleFirstDepthRowClick(item, e)}
+                        onDblClick={() => void handleFileServerSelect(server)}
+                        contextMenuItems={serverMenuItems}
+                        children={() => getConnectionTreeChildren(getFileServerConnection(server.id)!.id)}
+                        slots={{
+                            child: ({ item: collection, parentId, allItems }) => (
+                                <TreeTable server={server} collection={collection} parentId={parentId} skipTitle={allItems.length === 1} />
+                            ),
+                        }}
+                    />
+                );
+            }
+
+            return (
+                <FileTreeButton
+                    icon={server.icon}
+                    item={server}
+                    tooltip={server.tooltip}
+                    dataNodeId={`server:${server.id}`}
+                    stickySlot={slot}
+                    collapsed={state.isServerCollapsed(server.id)}
+                    isLoading={isServerRefreshing(server.id)}
+                    onClick={(e) => handleFirstDepthRowClick(item, e)}
+                    contextMenuItems={serverMenuItems}
+                    children={() => server.children}
+                    class="bg-x4"
+                    slots={{
+                        default: () => (
+                            <Button
+                                severity="secondary"
+                                disabled={isServerRefreshing(server.id)}
+                                smaller={true}
+                                id="server-schema-selection-button"
+                                onClick={prevented((e: MouseEvent) => openSchemaSelectionPopover(server.id, e))}
+                                class="text-2xs px-1 py-0.5"
+                            >{`${server.children.length} of ${server.schema_count || connections.connections.filter((c) => c.server_id === server.id).length || '?'}`}</Button>
+                        ),
+                        child: ({ item: connection, parentId }) => (
                             <FileTreeButton
-                                icon={server.icon}
-                                item={server}
-                                tooltip={server.tooltip}
-                                dataNodeId={`server:${server.id}`}
-                                collapsed={state.isServerCollapsed(server.id)}
-                                isLoading={isServerRefreshing(server.id)}
-                                onClick={(e) => focusSidebarEventTarget(e) && toggleServerCollapsed(server.id)}
-                                contextMenuItems={serverMenuItems}
-                                children={() => server.children}
-                                class="bg-x4"
-                                slots={{
-                                    default: () => (
-                                        <Button
-                                            severity="secondary"
-                                            disabled={isServerRefreshing(server.id)}
-                                            smaller={true}
-                                            id="server-schema-selection-button"
-                                            onClick={prevented((e: MouseEvent) => openSchemaSelectionPopover(server.id, e))}
-                                            class="text-2xs px-1 py-0.5"
-                                        >{`${server.children.length} of ${server.schema_count || connections.connections.filter((c) => c.server_id === server.id).length || '?'}`}</Button>
-                                    ),
-                                    child: ({ item: connection, parentId }) => (
-                                        <>
-                                            {/* Grouped mode */}
-                                            <FileTreeButton
-                                                item={connection}
-                                                dataNodeId={`connection:${connection.id}`}
-                                                dataParentId={parentId}
-                                                collapsed={state.isGroupCollapsed(server.id, String(connection.id), true)}
-                                                isLoading={state.isConnectionLoading(connection.id)}
-                                                selected={connections.selectedConnectionId === connection.id}
-                                                onClick={() => void toggleConnectionRow(server.id, connection)}
-                                                onDblClick={() => void connections.selectConnection(connection.id)}
-                                                contextMenuItems={connectionMenuitems}
-                                                children={() => getConnectionTreeChildren(connection.id)}
-                                                slots={{
-                                                    child: ({ item: collection, parentId, allItems }) => (
-                                                        <TreeTable server={server} collection={collection} parentId={parentId} skipTitle={allItems.length === 1} />
-                                                    ),
-                                                }}
-                                            />
-                                        </>
-                                    ),
-                                }}
-                            />
-                        </div>
-                    ))}
-                    {fileServers.value.map((server) => (
-                        <div class="shrink-0" key={`file-server-${server.id}`}>
-                            {/* Grouped mode: both tables and views shown with collection headers */}
-                            <FileTreeButton
-                                item={server}
-                                icon={server.icon}
-                                tooltip={server.file_path}
-                                dataNodeId={`server:${server.id}`}
-                                collapsed={state.isServerCollapsed(server.id)}
-                                isLoading={isFileServerLoading(server.id)}
-                                selected={isFileServerSelected(server.id)}
-                                onClick={() => void handleFileServerToggle(server)}
-                                onDblClick={() => void handleFileServerSelect(server)}
-                                contextMenuItems={serverMenuItems}
-                                children={() => getConnectionTreeChildren(getFileServerConnection(server.id)!.id)}
+                                item={connection}
+                                dataNodeId={`connection:${connection.id}`}
+                                dataParentId={parentId}
+                                collapsed={state.isGroupCollapsed(server.id, String(connection.id), true)}
+                                isLoading={state.isConnectionLoading(connection.id)}
+                                selected={connections.selectedConnectionId === connection.id}
+                                onClick={() => void toggleConnectionRow(server.id, connection)}
+                                onDblClick={() => void connections.selectConnection(connection.id)}
+                                contextMenuItems={connectionMenuitems}
+                                children={() => getConnectionTreeChildren(connection.id)}
                                 slots={{
                                     child: ({ item: collection, parentId, allItems }) => (
                                         <TreeTable server={server} collection={collection} parentId={parentId} skipTitle={allItems.length === 1} />
                                     ),
                                 }}
                             />
-                        </div>
-                    ))}
-                    {!serverTree.value.length && !fileServers.value.length ? (
+                        ),
+                    }}
+                />
+            );
+        }
+
+        // Each section wraps everything below it, so a pinned row keeps its stack slot for
+        // the rest of the list and later rows pin underneath it instead of sliding over it.
+        function renderFirstDepthStack(index: number): unknown {
+            const item = firstDepthItems.value[index];
+
+            if (!item) {
+                return null;
+            }
+
+            return (
+                <div class="flex min-w-0 shrink-0 flex-col gap-1" key={item.key}>
+                    {renderFirstDepthRow(item, index)}
+                    {renderFirstDepthStack(index + 1)}
+                </div>
+            );
+        }
+
+        return () => (
+            <>
+                <div ref={(element) => (state.sidebarTreeRef = element as HTMLElement | undefined)} class="flex min-h-0 min-w-0 flex-col gap-1">
+                    {firstDepthItems.value.length ? (
+                        renderFirstDepthStack(0)
+                    ) : (
                         <p class="px-2 py-6 text-center text-xs opacity-60">Add a source, then create compact named connections under it.</p>
-                    ) : null}
+                    )}
                 </div>
                 <DbServerSchemasModal {...vModel(servers.schemaSelectionModal, 'visible', 'open')} />
                 <DbServerFormModal open={servers.updateForm.visible} serverId={servers.updateForm.serverId} onClose={servers.closeUpdateForm} />

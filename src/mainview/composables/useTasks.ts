@@ -9,6 +9,10 @@ import { useSqlHistory } from './useSqlHistory';
 const runningOperations = reactive({} as Record<string, number | undefined>); // key => timestamp
 const errors = reactive({} as Record<string, string | undefined>);
 
+// The panel shows one error; report the most recent failure rather than the first key in `errors`,
+// so an old failure cannot mask everything that fails afterwards.
+let lastErrorKey: string | undefined;
+
 const longRunningOperations = ref<string[]>([]);
 function updateLongRunningOperations() {
     longRunningOperations.value = Object.entries(runningOperations)
@@ -84,6 +88,7 @@ export function useAsyncTask2<TMethod extends AppRequestApi[keyof AppRequestApi]
         } catch (error) {
             const failure = withRequestTarget(error, ps);
             errors[methodName] = failure.message;
+            lastErrorKey = methodName;
             throw failure;
         } finally {
             runningOperations[finalKey] = undefined;
@@ -200,15 +205,21 @@ export const tasks = reactive({
 
     reportError(message: string, key = 'ui') {
         errors[key] = message;
+        lastErrorKey = key;
     },
     clearReportedError(key = 'ui') {
         errors[key] = undefined;
+
+        if (lastErrorKey === key) {
+            lastErrorKey = undefined;
+        }
     },
 
     get errorMessage(): string | undefined {
-        return Object.values(errors).find((t) => !!t);
+        return lastErrorKey ? errors[lastErrorKey] : undefined;
     },
     dismissError() {
+        lastErrorKey = undefined;
         Object.values(_tasks).forEach((v) => v.clearError());
     },
     get isBusy() {

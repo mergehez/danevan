@@ -291,6 +291,44 @@ function _useServerTree() {
         row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
+    // A pinned row is painted at its stack slot instead of at its own spot in the list; because the
+    // section is off-screen above, clicking it seems to do nothing. Scroll it back to that spot, which
+    // is where its slot now is, so the section and its children come into view.
+    function scrollPinnedSidebarRowIntoPlace(nodeId: string) {
+        const row = sidebarTreeRef.value?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(nodeId)}"]`);
+        const section = row?.parentElement;
+        const panel = section ? findSidebarScrollPanel(section) : undefined;
+
+        if (!row || !section || !panel) {
+            return false;
+        }
+
+        const delta = section.getBoundingClientRect().top - row.getBoundingClientRect().top;
+
+        if (delta > -1) {
+            return false;
+        }
+
+        panel.scrollTo({ top: panel.scrollTop + delta, behavior: 'smooth' });
+        return true;
+    }
+
+    function findSidebarScrollPanel(element: HTMLElement) {
+        let node: HTMLElement | null = element.parentElement;
+
+        while (node) {
+            const overflowY = getComputedStyle(node).overflowY;
+
+            if (overflowY === 'auto' || overflowY === 'scroll') {
+                return node;
+            }
+
+            node = node.parentElement;
+        }
+
+        return undefined;
+    }
+
     function buildConnectionTreeItem(connection: ConnectionRecord) {
         return {
             ...connection,
@@ -498,6 +536,7 @@ function _useServerTree() {
         requestRevealTableSelection: requestRevealTableSelection,
         revealSelectedSidebarRow: revealSelectedSidebarRow,
         scrollSelectedSidebarRowIntoView: scrollSelectedSidebarRowIntoView,
+        scrollPinnedSidebarRowIntoPlace: scrollPinnedSidebarRowIntoPlace,
         getPersistedTreeState: getPersistedTreeState,
         setPersistedTreeState: setPersistedTreeState,
         loadConnectionTablesSnapshot: loadConnectionTablesSnapshot,

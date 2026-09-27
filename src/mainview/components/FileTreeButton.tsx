@@ -21,6 +21,7 @@ type Props<T extends Pick<FileTreeItem, 'id' | 'rightText' | 'subtitle'> & { tit
     class?: string;
     selected?: boolean;
     skipTitle?: boolean;
+    stickySlot?: number;
     icon?: 'icon-[mdi--database-outline]' | 'icon-[mdi--folder-outline]' | 'icon-[mdi--file-outline]' | (string & {});
     contextMenuItems?: (item: T) => ContextMenuEntry[];
 
@@ -132,6 +133,9 @@ export const FileTreeButton = componentGeneric(
             return props.children();
         });
 
+        // Row height (min-h-5 plus the label's py-1); sticky rows stack at slot × this.
+        const ROW_HEIGHT = 24;
+
         return () => (
             <>
                 {!props.skipTitle ? (
@@ -146,6 +150,7 @@ export const FileTreeButton = componentGeneric(
                         data-sidebar-collapsed={String(props.collapsed)}
                         draggable={props.draggable}
                         type="button"
+                        style={props.stickySlot === undefined ? undefined : { top: `${props.stickySlot * ROW_HEIGHT}px` }}
                         v-menu={props.contextMenuItems ? { items: () => props.contextMenuItems!(props.item), key: props.dataNodeId } : undefined}
                         onClick={onRowClick}
                         onDblclick={handleDoubleClick}
@@ -153,6 +158,7 @@ export const FileTreeButton = componentGeneric(
                         onDragstart={handleDragStart}
                         class={twMerge(
                             'flex min-h-5 items-center gap-1 text-default w-full px-1 hover:bg-white/6  focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-white/50 focus-visible:bg-white/10',
+                            props.stickySlot === undefined ? undefined : 'sticky z-10 before:absolute before:inset-0 before:-z-10 before:bg-x1',
                             props.class,
                             props.selected ? 'bg-white/10' : ''
                         )}
@@ -209,6 +215,7 @@ export const FileTreeButton = componentGeneric(
             'class',
             'selected',
             'skipTitle',
+            'stickySlot',
             'icon',
             'contextMenuItems',
             'onClick',
