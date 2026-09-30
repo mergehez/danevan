@@ -200,6 +200,22 @@ export function useForeignKeyPeekViews(opts: {
         return `peek-${Date.now()}-${(peekSequence += 1)}`;
     }
 
+    function syncDocumentPointerListener(isOpen: boolean) {
+        if (isOpen) {
+            document.addEventListener('pointerdown', handleDocumentPointerDown, true);
+            return;
+        }
+
+        document.removeEventListener('pointerdown', handleDocumentPointerDown, true);
+    }
+
+    /** Single funnel for the peek stack, so the document listener follows it
+     *  explicitly instead of through a watcher on the array length. */
+    function setPeekViews(nextViews: FkPeekView[]) {
+        peekViews.value = nextViews;
+        syncDocumentPointerListener(nextViews.length > 0);
+    }
+
     function appendPeekView<TView extends FkPeekView>(view: TView, anchor: PeekAnchor) {
         const frame = createPeekFrame(anchor, peekViews.value.length);
         view.width = Math.min(view.width, frame.width);
@@ -207,7 +223,7 @@ export function useForeignKeyPeekViews(opts: {
         const clampedPosition = clampPeekPosition(frame.left, frame.top, view.width, view.height);
         view.left = clampedPosition.left;
         view.top = clampedPosition.top;
-        peekViews.value = [...peekViews.value, view];
+        setPeekViews([...peekViews.value, view]);
         refreshIgnoreCloseWindow();
         logPeekDebug('appendPeekView', {
             id: view.id,
@@ -290,7 +306,7 @@ export function useForeignKeyPeekViews(opts: {
             index,
             removedIds: peekViews.value.slice(index).map((view) => view.id),
         });
-        peekViews.value = peekViews.value.slice(0, index);
+        setPeekViews(peekViews.value.slice(0, index));
     }
 
     function closeLatestPeekView() {
@@ -303,7 +319,7 @@ export function useForeignKeyPeekViews(opts: {
             closingId: peekViews.value.at(-1)?.id,
             stackSize: peekViews.value.length,
         });
-        peekViews.value = peekViews.value.slice(0, -1);
+        setPeekViews(peekViews.value.slice(0, -1));
     }
 
     function findPeekView(id: string) {
@@ -610,20 +626,6 @@ export function useForeignKeyPeekViews(opts: {
     }
 
     watch(
-        () => peekViews.value.length,
-        (length) => {
-            logPeekDebug('peekViews length changed', { length, activeIds: peekViews.value.map((view) => view.id) });
-            if (length > 0) {
-                document.addEventListener('pointerdown', handleDocumentPointerDown, true);
-                return;
-            }
-
-            document.removeEventListener('pointerdown', handleDocumentPointerDown, true);
-        },
-        { immediate: true }
-    );
-
-    watch(
         () => [selectedConnectionId.value, selectedTableName.value],
         ([connectionId, tableName], previousValue) => {
             logPeekDebug('clearing peek views because selected connection or table changed', {
@@ -633,7 +635,7 @@ export function useForeignKeyPeekViews(opts: {
                 previousTableName: previousValue?.[1],
                 activeIds: peekViews.value.map((view) => view.id),
             });
-            peekViews.value = [];
+            setPeekViews([]);
         }
     );
 

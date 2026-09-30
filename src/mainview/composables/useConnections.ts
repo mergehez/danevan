@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue';
+import { reactive } from 'vue';
 import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
 import { _dbCoreState } from '../composables/dbCoreState';
 import { useDbCaches } from '../composables/useDbCaches';
@@ -230,6 +230,9 @@ export function _useConnections() {
         // settings stay in the app database, so there is nothing to confirm.
         async hideConnection(connectionId: number) {
             _dbCoreState.applyBootstrap(await tasks.hideConnection.run({ connectionId }));
+            // The connection is gone from the app database: its cached metadata
+            // must not linger for the rest of the session.
+            state.clearConnectionMetadata(connectionId);
         },
         async dropTable(connectionId: number, tableName: string) {
             const normalizedTableName = tableName.trim();
@@ -253,22 +256,6 @@ export function _useConnections() {
             state.applyConnectionSchemaCache(connectionId, cache);
         },
     });
-
-    watch(
-        () => _dbCoreState.connections.map((connection) => connection.id),
-        (connectionIds) => {
-            const activeIds = new Set(connectionIds);
-
-            for (const key of Object.keys(connectionTablesById)) {
-                const connectionId = Number(key);
-
-                if (!activeIds.has(connectionId)) {
-                    state.clearConnectionMetadata(connectionId);
-                }
-            }
-        },
-        { immediate: true }
-    );
 
     return state;
 }
