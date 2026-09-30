@@ -1,5 +1,4 @@
 import { component, ensureAllTsxProps, prevented, preventedKeys } from '#shared/utils/tsxHelpers.tsx';
-import { withKeys } from 'vue';
 import { Button } from '../shared/components/Button.tsx';
 import { CenteredModal } from '../shared/components/CenteredModal.tsx';
 import { IconButton } from '../shared/components/IconButton.tsx';

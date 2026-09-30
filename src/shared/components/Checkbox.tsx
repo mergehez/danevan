@@ -1,6 +1,6 @@
-import { ref, computed } from 'vue';
+import { component, ensureAllTsxProps, prevented, preventedKeys, tsxWithDefaults } from '#shared/utils/tsxHelpers.tsx';
+import { computed, ref } from 'vue';
 import { uniqueId } from '../utils/utils';
-import { component, ensureAllTsxProps, tsxWithDefaults, prevented, preventedKeys } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     disabled?: boolean;
