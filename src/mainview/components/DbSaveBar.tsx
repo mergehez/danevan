@@ -60,7 +60,13 @@ export const DbSaveBar = component(
                                     {' '}
                                     Preview{' '}
                                 </Button>
-                                <Button severity="primary" smaller={true} disabled={!props.pendingChangeCount || props.isSavingChanges} onClick={() => props.onSaveChanges?.()}>
+                                <Button
+                                    severity="primary"
+                                    smaller={true}
+                                    data-testid="save-bar-save"
+                                    disabled={!props.pendingChangeCount || props.isSavingChanges}
+                                    onClick={() => props.onSaveChanges?.()}
+                                >
                                     {resolvedSaveLabel.value}
                                 </Button>
                             </div>

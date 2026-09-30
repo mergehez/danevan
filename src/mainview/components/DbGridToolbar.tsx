@@ -184,6 +184,7 @@ export const DbGridToolbar = component(
                         {props.onAddRow ? (
                             <IconButton
                                 icon="icon-[mdi--plus]"
+                                data-testid="grid-add-row"
                                 v-tooltip={{ value: 'Add row', xs: true, nowrap: true }}
                                 smaller={true}
                                 severity="secondary"

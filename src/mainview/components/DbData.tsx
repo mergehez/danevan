@@ -140,21 +140,61 @@ export const DbData = component(
         });
 
         const tableColumns = computed(() => query.tableInfo?.columns ?? []);
+        type TableColumn = (typeof tableColumns.value)[number];
         const addRowFormState = ref<Record<string, string>>({});
         const addRowNullState = ref<Record<string, boolean>>({});
 
         watch(
             () => [dataGridState.isAddRowDialogOpen, dataGridState.isEditRowDialogOpen],
             () => {
-                if (dataGridState.isAddRowDialogOpen || dataGridState.isEditRowDialogOpen) {
-                    // Initialise form from the dialog values (empty for new row,
-                    // prefilled for duplicate / edit).
-                    addRowFormState.value = Object.fromEntries(tableColumns.value.map((col) => [col.name, String(dataGridState.addRowDialogValues[col.name] ?? '')]));
-                    // Track which columns have null values.
-                    addRowNullState.value = Object.fromEntries(tableColumns.value.map((col) => [col.name, dataGridState.addRowDialogValues[col.name] == null]));
+                if (!dataGridState.isAddRowDialogOpen && !dataGridState.isEditRowDialogOpen) {
+                    return;
                 }
+
+                // Filled for duplicate/edit, empty for a new row.
+                const dialogValues = dataGridState.addRowDialogValues;
+
+                addRowFormState.value = Object.fromEntries(tableColumns.value.map((col) => [col.name, String(dialogValues[col.name] ?? '')]));
+                // A field starts as NULL only when the dialog was opened with a null
+                // value for it. A new row must start editable, and a NOT NULL column
+                // must never start NULL: it has no checkbox, so its field would stay
+                // disabled with no way to enable it.
+                addRowNullState.value = Object.fromEntries(tableColumns.value.map((col) => [col.name, !col.notNull && col.name in dialogValues && dialogValues[col.name] == null]));
             }
         );
+
+        /** Value field shared by the add/edit row dialogs. Auto-increment columns
+         *  are disabled on purpose — the database fills them — and say so, so the
+         *  disabled state does not read as a bug. */
+        function renderColumnValueInput(field: 'add' | 'edit', col: TableColumn) {
+            const isAutoIncrement = Boolean(col.isAutoIncrement);
+            const input = (
+                <input
+                    data-testid={`${field}-row-value-${col.name}`}
+                    value={addRowFormState.value[col.name]}
+                    onInput={(e: any) => (addRowFormState.value[col.name] = e.target.value)}
+                    placeholder={isAutoIncrement ? 'auto' : (col.type ?? '')}
+                    disabled={isAutoIncrement || Boolean(addRowNullState.value[col.name])}
+                    class="w-full border border-x4 bg-x1 px-2 py-1.5 font-mono text-xs outline-none transition focus:border-x5 disabled:cursor-not-allowed disabled:opacity-60"
+                    key={col.name}
+                />
+            );
+
+            if (!isAutoIncrement) {
+                return input;
+            }
+
+            return (
+                <span
+                    data-testid={`${field}-row-auto-${col.name}`}
+                    v-tooltip={{ value: 'Auto increment - the database fills this column', xs: true, nowrap: true }}
+                    class="block min-w-0"
+                    key={col.name}
+                >
+                    {input}
+                </span>
+            );
+        }
 
         function commitAddRow() {
             if (!dataGridState.isAddRowDialogOpen) return;
@@ -396,7 +436,7 @@ export const DbData = component(
                 </div>
                 {/* Add / Duplicate Row dialog */}
                 <CenteredModal {...vModel(dataGridState, 'isAddRowDialogOpen', 'open')} title="Add Row" contentClass="max-w-2xl max-h-[80vh] overflow-auto">
-                    <form onSubmit={prevented(commitAddRow)} class="flex flex-col gap-3 p-4">
+                    <form data-testid="add-row-form" onSubmit={prevented(commitAddRow)} class="flex flex-col gap-3 p-4">
                         <div class="grid grid-cols-[auto_1fr_auto] gap-x-4 gap-y-1 text-xs">
                             <span class="text-right font-bold opacity-50">Column</span>
                             <span class="font-bold opacity-50">Value</span>
@@ -406,16 +446,11 @@ export const DbData = component(
                                     <label class="self-center text-right font-medium text-reverse opacity-80" key={col.name}>
                                         {col.name}
                                     </label>
-                                    <input
-                                        value={addRowFormState.value[col.name]}
-                                        onInput={(e: any) => (addRowFormState.value[col.name] = e.target.value)}
-                                        placeholder={col.isAutoIncrement ? 'auto' : (col.type ?? '')}
-                                        disabled={col.isAutoIncrement || addRowNullState.value[col.name]}
-                                        class="border border-x4 bg-x1 px-2 py-1.5 font-mono text-xs outline-none transition focus:border-x5"
-                                        key={col.name}
-                                    />
+                                    {renderColumnValueInput('add', col)}
                                     <div class="flex items-center justify-center gap-1" key={col.name}>
-                                        {!col.notNull ? <Checkbox {...vModel(addRowNullState.value, col.name)} small={true} class="opacity-80" /> : null}
+                                        {!col.notNull ? (
+                                            <Checkbox {...vModel(addRowNullState.value, col.name)} data-testid={`add-row-null-${col.name}`} small={true} class="opacity-80" />
+                                        ) : null}
                                     </div>
                                 </>
                             ))}
@@ -424,7 +459,7 @@ export const DbData = component(
                             <Button type="button" severity="secondary" smaller={true} onClick={() => dataGridState.closeAddRowDialog()}>
                                 Cancel
                             </Button>
-                            <Button type="submit" severity="primary" smaller={true}>
+                            <Button type="submit" data-testid="add-row-submit" severity="primary" smaller={true}>
                                 Add Row
                             </Button>
                         </div>
@@ -432,23 +467,18 @@ export const DbData = component(
                 </CenteredModal>
                 {/* Edit Row dialog */}
                 <CenteredModal {...vModel(dataGridState, 'isEditRowDialogOpen', 'open')} title="Edit Row" contentClass="max-w-2xl max-h-[80vh] overflow-auto">
-                    <form onSubmit={prevented(commitEditRow)} class="flex flex-col gap-3 p-4">
+                    <form data-testid="edit-row-form" onSubmit={prevented(commitEditRow)} class="flex flex-col gap-3 p-4">
                         <div class="grid grid-cols-[auto_1fr_auto] gap-x-4 gap-y-1 text-xs">
                             {tableColumns.value.map((col) => (
                                 <>
                                     <label class="self-center text-right font-medium text-reverse opacity-80" key={col.name}>
                                         {col.name}
                                     </label>
-                                    <input
-                                        value={addRowFormState.value[col.name]}
-                                        onInput={(e: any) => (addRowFormState.value[col.name] = e.target.value)}
-                                        placeholder={col.isAutoIncrement ? 'auto' : (col.type ?? '')}
-                                        disabled={col.isAutoIncrement || addRowNullState.value[col.name]}
-                                        class="border border-x4 bg-x1 px-2 py-1.5 font-mono text-xs outline-none transition focus:border-x5"
-                                        key={col.name}
-                                    />
+                                    {renderColumnValueInput('edit', col)}
                                     <div class="flex items-center justify-center" key={col.name}>
-                                        {!col.isAutoIncrement ? <Checkbox {...vModel(addRowNullState.value, col.name)} smaller={true} /> : null}
+                                        {!col.isAutoIncrement && !col.notNull ? (
+                                            <Checkbox {...vModel(addRowNullState.value, col.name)} data-testid={`edit-row-null-${col.name}`} smaller={true} />
+                                        ) : null}
                                     </div>
                                 </>
                             ))}
@@ -457,7 +487,7 @@ export const DbData = component(
                             <Button type="button" severity="secondary" smaller={true} onClick={() => dataGridState.closeEditRowDialog()}>
                                 Cancel
                             </Button>
-                            <Button type="submit" severity="primary" smaller={true}>
+                            <Button type="submit" data-testid="edit-row-submit" severity="primary" smaller={true}>
                                 Save
                             </Button>
                         </div>
