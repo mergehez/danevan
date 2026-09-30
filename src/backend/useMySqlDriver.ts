@@ -125,6 +125,12 @@ type MySqlQueryRunnerClient = RemoteDriverClient & {
     tableCache: Map<string, Promise<Table | undefined>>;
 };
 
+type MySqlNativeConnection = {
+    promise: () => {
+        query: (sql: string, params: SqlValue[]) => Promise<[Array<Record<string, SqlValue>>, Array<{ name: string }> | undefined]>;
+    };
+};
+
 type TypeOrmMemoryQueryRunner = QueryRunner & {
     enableSqlMemory(): void;
     disableSqlMemory(): void;
@@ -976,6 +982,16 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
             queryRows: async <TRow extends Record<string, unknown>>(statement: RemoteStatement) => {
                 const rows = await queryRunner.query(statement.sql, statement.params ?? []);
                 return Array.isArray(rows) ? (rows as TRow[]) : [];
+            },
+            queryRowsWithFields: async <TRow extends Record<string, unknown>>(statement: RemoteStatement) => {
+                // mysql2 hands back the result fields alongside the rows, but the
+                // TypeORM query runner drops them, so query the runner's own
+                // connection directly (a second pool connection would deadlock:
+                // connectionLimit is 1 and the runner holds that connection).
+                const connection = await (queryRunner as unknown as { connect: () => Promise<MySqlNativeConnection> }).connect();
+                const [rows, fields] = await connection.promise().query(statement.sql, statement.params ?? []);
+
+                return { columns: (fields ?? []).map((field) => field.name), rows: Array.isArray(rows) ? (rows as TRow[]) : [] };
             },
             execute: async (statement: RemoteStatement) => {
                 const result = await queryRunner.query(statement.sql, statement.params ?? []);

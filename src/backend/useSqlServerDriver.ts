@@ -34,6 +34,13 @@ type SqlServerQueryRunnerClient = RemoteDriverClient & {
     tableCache: Map<string, Promise<Table | undefined>>;
 };
 
+type SqlServerNativeModule = {
+    Request: new (pool: unknown) => {
+        input: (name: string, value: SqlValue) => void;
+        query: (sql: string) => Promise<unknown>;
+    };
+};
+
 type TypeOrmMemoryQueryRunner = QueryRunner & {
     enableSqlMemory(): void;
     disableSqlMemory(): void;
@@ -300,6 +307,21 @@ export function useSqlServerDriverTools(deps: SqlServerDriverToolsDeps): DriverT
                 const prepared = prepareSqlServerStatement(statement);
                 const rows = await queryRunner.query(prepared.sql, prepared.params);
                 return Array.isArray(rows) ? (rows as TRow[]) : [];
+            },
+            queryRowsWithFields: async <TRow extends Record<string, unknown>>(statement: RemoteStatement) => {
+                // The mssql recordset carries its column definitions, which the
+                // TypeORM query runner discards.
+                const prepared = prepareSqlServerStatement(statement);
+                const driver = dataSource.driver as unknown as { mssql: SqlServerNativeModule; master: unknown; obtainMasterConnection: () => Promise<unknown> };
+                const pool = await driver.obtainMasterConnection();
+                const request = new driver.mssql.Request(pool ?? driver.master);
+                prepared.params.forEach((param, index) => request.input(String(index), param));
+                const result = (await request.query(prepared.sql)) as { recordset?: Array<Record<string, SqlValue>> & { columns?: Record<string, unknown> } };
+                const recordset = result.recordset ?? [];
+                const fieldNames = Object.keys(recordset.columns ?? {});
+                const columns = fieldNames.length > 0 ? fieldNames : recordset.length > 0 ? Object.keys(recordset[0] ?? {}) : [];
+
+                return { columns, rows: recordset as TRow[] };
             },
             execute: async (statement: RemoteStatement) => {
                 const prepared = prepareSqlServerStatement(statement);

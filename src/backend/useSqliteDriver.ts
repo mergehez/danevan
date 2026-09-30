@@ -105,7 +105,7 @@ type SqliteServerRecord = {
     name: string;
 };
 
-type SqliteDriverToolsDeps = {
+export type SqliteDriverToolsDeps = {
     getConnection: (connectionId: number) => SqliteConnectionRecord | undefined;
     getServer: (serverId: number) => SqliteServerRecord | undefined;
     listConnections: (serverId: number) => SqliteConnectionRecord[];
@@ -605,6 +605,25 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
         };
     }
 
+    /** Column names of a statement that returned no rows; better-sqlite3 exposes
+     *  that metadata without executing the statement. */
+    function readSqliteResultColumns(client: SqliteTypeOrmClient, sql: string): string[] {
+        const driver = client.dataSource.driver as unknown as {
+            databaseConnection?: { prepare: (sql: string) => { columns: () => Array<{ name: string }> } };
+        };
+
+        try {
+            return (
+                driver.databaseConnection
+                    ?.prepare(sql)
+                    .columns()
+                    .map((column) => column.name) ?? []
+            );
+        } catch {
+            return [];
+        }
+    }
+
     async function collectSqliteForeignKeyViolationMessages(queryRunner: QueryRunner, tableName: string) {
         const rows = (await queryRunner.query(`PRAGMA foreign_key_check(${deps.quoteIdentifier(tableName)})`)) as Array<{
             table: string;
@@ -826,15 +845,15 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
             return withSqliteTypeOrm(connectionId, async ({ queryRunner }) => getSqliteTableData(queryRunner, tableName, limit, offset, orderBy, returnQuery));
         },
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
-            return withSqliteTypeOrm(connectionId, async ({ queryRunner }) => {
-                const result = (await queryRunner.query(sql, params ?? [], true)) as {
+            return withSqliteTypeOrm(connectionId, async (client) => {
+                const result = (await client.queryRunner.query(sql, params ?? [], true)) as {
                     raw: unknown;
                     records?: Array<Record<string, SqlValue>>;
                 };
                 const rows = Array.isArray(result.records) ? result.records : Array.isArray(result.raw) ? (result.raw as Array<Record<string, SqlValue>>) : undefined;
 
                 if (rows) {
-                    const columns = rows.length > 0 ? Object.keys(rows[0] ?? {}) : [];
+                    const columns = rows.length > 0 ? Object.keys(rows[0] ?? {}) : readSqliteResultColumns(client, sql);
 
                     return {
                         kind: 'rows',

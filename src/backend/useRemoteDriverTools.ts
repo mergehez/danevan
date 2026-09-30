@@ -21,8 +21,16 @@ export type RemoteStatement = {
     params?: SqlValue[];
 };
 
+export type RemoteRowsWithFields<TRow extends Record<string, unknown>> = {
+    columns: string[];
+    rows: TRow[];
+};
+
 export type RemoteDriverClient = {
     queryRows: <TRow extends Record<string, unknown>>(statement: RemoteStatement) => Promise<TRow[]>;
+    /** Same as queryRows, but also returns the result column names — an empty
+     *  result set has no rows left to infer them from. */
+    queryRowsWithFields?: <TRow extends Record<string, unknown>>(statement: RemoteStatement) => Promise<RemoteRowsWithFields<TRow>>;
     execute: (statement: RemoteStatement) => Promise<Record<string, unknown>>;
     withTransaction: <T>(callback: (client: RemoteDriverClient) => Promise<T>) => Promise<T>;
 };
@@ -63,6 +71,19 @@ type RemoteDriverToolsDeps = {
 };
 
 export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
+    async function readRowQuery(client: RemoteDriverClient, statement: RemoteStatement): Promise<RemoteRowsWithFields<Record<string, SqlValue>>> {
+        if (client.queryRowsWithFields) {
+            try {
+                return await client.queryRowsWithFields<Record<string, SqlValue>>(statement);
+            } catch {
+                // Fall through to the plain row query: drivers that cannot expose
+                // column metadata must not fail the query itself.
+            }
+        }
+
+        return { columns: [], rows: await client.queryRows<Record<string, SqlValue>>(statement) };
+    }
+
     async function readTableData(client: RemoteDriverClient, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
         const statement = deps.helper.buildReadTableStatement(tableName, limit, offset, orderBy);
         const [columns, rows, rowCount] = await Promise.all([
@@ -158,8 +179,8 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
                 const statement = { sql, params: bindings } satisfies RemoteStatement;
 
                 if (isRowReturningQuery) {
-                    const rowArray = await client.queryRows<Record<string, SqlValue>>(statement);
-                    const columns = rowArray.length > 0 ? Object.keys(rowArray[0] ?? {}) : [];
+                    const { columns: resultColumns, rows: rowArray } = await readRowQuery(client, statement);
+                    const columns = resultColumns.length > 0 ? resultColumns : rowArray.length > 0 ? Object.keys(rowArray[0] ?? {}) : [];
 
                     return {
                         kind: 'rows',

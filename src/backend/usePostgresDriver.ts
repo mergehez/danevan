@@ -44,6 +44,10 @@ type PostgresQueryRunnerClient = RemoteDriverClient & {
     currentSchema: Promise<string>;
 };
 
+type PostgresNativeConnection = {
+    query: (sql: string, params?: SqlValue[]) => Promise<Array<Record<string, SqlValue>> | { rows?: Array<Record<string, SqlValue>>; fields?: Array<{ name: string }> }>;
+};
+
 type TypeOrmMemoryQueryRunner = QueryRunner & {
     enableSqlMemory(): void;
     disableSqlMemory(): void;
@@ -564,6 +568,20 @@ export function usePostgresDriverTools(deps: PostgresDriverToolsDeps): DriverToo
                 const prepared = preparePostgresStatement(statement);
                 const rows = await queryRunner.query(prepared.sql, prepared.params);
                 return Array.isArray(rows) ? (rows as TRow[]) : [];
+            },
+            queryRowsWithFields: async <TRow extends Record<string, unknown>>(statement: RemoteStatement) => {
+                // pg reports the result fields, but the TypeORM query runner keeps
+                // only the rows; the runner's own client has both (the pool is
+                // limited to a single connection, so it must not be borrowed twice).
+                const prepared = preparePostgresStatement(statement);
+                const connection = await (queryRunner as unknown as { connect: () => Promise<PostgresNativeConnection> }).connect();
+                const result = await connection.query(prepared.sql, prepared.params);
+
+                if (Array.isArray(result)) {
+                    return { columns: [], rows: result as TRow[] };
+                }
+
+                return { columns: (result.fields ?? []).map((field) => field.name), rows: (result.rows ?? []) as TRow[] };
             },
             execute: async (statement: RemoteStatement) => {
                 const prepared = preparePostgresStatement(statement);

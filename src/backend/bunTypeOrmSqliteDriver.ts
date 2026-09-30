@@ -23,6 +23,11 @@ class BunTypeOrmSqliteStatement {
         return this.statement.all(...parameters);
     }
 
+    /** Result column names, available before the statement is executed. */
+    columns() {
+        return this.statement.columns();
+    }
+
     run(...parameters: unknown[]) {
         this.logQuery?.(this.sql);
         return this.statement.run(...parameters);
