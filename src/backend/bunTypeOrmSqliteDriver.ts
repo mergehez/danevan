@@ -15,7 +15,9 @@ class BunTypeOrmSqliteStatement {
         private readonly logQuery: ((sql: string) => void) | undefined,
         private readonly sql: string
     ) {
-        this.reader = statement.columns().length > 0;
+        // `columns()` throws on statements that return no data (INSERT/UPDATE/…), which is
+        // exactly the statements TypeORM asks the `reader` flag about.
+        this.reader = statement.reader;
     }
 
     all(...parameters: unknown[]) {
