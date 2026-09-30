@@ -1,6 +1,6 @@
-import { ref, computed, withKeys } from 'vue';
+import { ref, computed } from 'vue';
 import { uniqueId } from '../utils/utils';
-import { component, ensureAllTsxProps, tsxWithDefaults, prevented } from '#shared/utils/tsxHelpers.tsx';
+import { component, ensureAllTsxProps, tsxWithDefaults, prevented, preventedKeys } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     disabled?: boolean;
@@ -86,7 +86,7 @@ export const Checkbox = component(
                         aria-checked={modelValue.value}
                         aria-disabled={props.disabled || undefined}
                         tabindex={props.disabled ? -1 : 0}
-                        onKeydown={prevented(withKeys(toggleValue, ['space']))}
+                        onKeydown={preventedKeys(toggleValue, ['space'])}
                         class={[
                             'flex items-center justify-center overflow-hidden border text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-400/80 focus-visible:ring-offset-1 focus-visible:ring-offset-x1',
                             [sizeClass.value, colorClasses.value],

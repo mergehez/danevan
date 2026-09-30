@@ -669,6 +669,30 @@ describe('DataGrid', () => {
         expect(localStorage.getItem(layoutStorageKey) ?? '').not.toContain('DateLastLogin');
     });
 
+    it('does not swallow keystrokes in the inline cell editor', async () => {
+        const { state } = createGridState();
+        const wrapper = mount(DataGrid, {
+            attachTo: document.body,
+            props: { state },
+            global: { directives: { menu: {}, tooltip: {} } },
+        });
+
+        state.startEditingCell(0, 1);
+        await nextTick();
+
+        const editor = wrapper.find('textarea').element as HTMLTextAreaElement;
+
+        const typedEvent = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
+        editor.dispatchEvent(typedEvent);
+        expect(typedEvent.defaultPrevented).toBe(false);
+
+        const arrowEvent = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
+        editor.dispatchEvent(arrowEvent);
+        expect(arrowEvent.defaultPrevented).toBe(true);
+
+        wrapper.unmount();
+    });
+
     it('never sorts by a column the result set does not have', () => {
         const layoutStorageKey = 'data-grid-test-stale-sort';
 

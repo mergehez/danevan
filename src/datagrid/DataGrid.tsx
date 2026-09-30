@@ -1,4 +1,4 @@
-import { component, ensureAllTsxProps, prevented } from '#shared/utils/tsxHelpers.tsx';
+import { component, ensureAllTsxProps, prevented, preventedKeys } from '#shared/utils/tsxHelpers.tsx';
 import { withKeys } from 'vue';
 import { Button } from '../shared/components/Button.tsx';
 import { CenteredModal } from '../shared/components/CenteredModal.tsx';
@@ -79,7 +79,7 @@ export const DataGrid = component(
                             wrap={vs.isModalEditTextWrap ? 'soft' : 'off'}
                             spellcheck="false"
                             onInput={(e) => props.state.setModalEditingValue?.((e.target as HTMLTextAreaElement).value)}
-                            onKeydown={prevented(withKeys(() => props.state.commitModalEditingCell?.(), ['enter']))}
+                            onKeydown={preventedKeys(() => props.state.commitModalEditingCell?.(), ['enter'])}
                             class={[
                                 'min-h-0 flex-1 resize-none border border-x4 bg-x1 px-3 py-2 text-sm outline-none',
                                 vs.isModalEditTextWrap ? 'whitespace-pre-wrap wrap-break-word' : 'whitespace-pre overflow-auto',
@@ -211,7 +211,7 @@ export const DataGrid = component(
                                     onInput={vs.onInput}
                                     onWheel={vs.handleEditingInputWheel}
                                     onBlur={() => props.state.commitEditingCell()}
-                                    onKeydown={prevented(withKeys(() => {}, ['left']))}
+                                    onKeydown={preventedKeys(() => {}, ['left'])}
                                     class="absolute bg-x1 outline-none ring-1 ring-blue-300"
                                     style={vs.editingInputStyle}
                                 />

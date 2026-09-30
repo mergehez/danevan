@@ -3,7 +3,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { h } from 'vue';
-import { component, componentGeneric } from './tsxHelpers.tsx';
+import { component, componentGeneric, preventedKeys } from './tsxHelpers.tsx';
 
 type Props = { modelValue: string; onChange?: (val: string) => unknown };
 
@@ -45,5 +45,53 @@ describe('model props', () => {
         await wrapper.get('[data-testid=generic]').trigger('input');
 
         expect(onUpdate).toHaveBeenCalledWith(true);
+    });
+});
+
+function keydownEvent(key: string) {
+    return new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+}
+
+// `prevented(withKeys(...))` cancelled every keydown, so inputs never received a
+// character. The default may only be cancelled for the keys we handle.
+describe('preventedKeys', () => {
+    it('leaves keys it does not handle alone', () => {
+        const handler = vi.fn();
+        const event = keydownEvent('a');
+
+        preventedKeys(handler, ['enter'])(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('cancels the handled key and runs the callback', () => {
+        const handler = vi.fn();
+        const event = keydownEvent('Enter');
+
+        preventedKeys(handler, ['enter'])(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it('understands the Vue key aliases', () => {
+        const handler = vi.fn();
+        const event = keydownEvent(' ');
+
+        preventedKeys(handler, ['space'])(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it('matches the key-name form of the same key', () => {
+        const handler = vi.fn();
+        const event = keydownEvent('Space');
+
+        preventedKeys(handler, ['space'])(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(handler).toHaveBeenCalledOnce();
     });
 });

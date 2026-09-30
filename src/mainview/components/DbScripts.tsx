@@ -1,5 +1,5 @@
-import { component, ensureAllTsxProps, prevented, vModel } from '#shared/utils/tsxHelpers.tsx';
-import { computed, reactive, ref, watch, withKeys } from 'vue';
+import { component, ensureAllTsxProps, preventedKeys, vModel } from '#shared/utils/tsxHelpers.tsx';
+import { computed, reactive, ref, watch } from 'vue';
 import { DataGrid } from '../../datagrid/DataGrid.tsx';
 import { Button } from '../../shared/components/Button.tsx';
 import { CenteredModal } from '../../shared/components/CenteredModal.tsx';
@@ -416,7 +416,7 @@ export const DbScripts = component(
         return () => (
             <>
                 <CenteredModal {...vModel(isSaveModalOpen, 'value', 'open')} title="Save script" contentClass="max-w-lg">
-                    <div onKeydown={prevented(withKeys(submitScriptSave, ['enter']))} class="space-y-3 px-4 py-4">
+                    <div onKeydown={preventedKeys(submitScriptSave, ['enter'])} class="space-y-3 px-4 py-4">
                         <div class="space-y-1">
                             <label class="text-xs font-medium uppercase tracking-[0.2em] opacity-70">Script name</label>
                             <input

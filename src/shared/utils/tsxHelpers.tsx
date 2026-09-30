@@ -225,6 +225,38 @@ export function prevented<T extends Event>(cb: (e: T) => void) {
     };
 }
 
+// Same aliases Vue's `withKeys` understands (`@keydown.space`, `.esc`, ...).
+const KEY_ALIASES: Record<string, string> = {
+    esc: 'escape',
+    space: ' ',
+    up: 'arrowup',
+    down: 'arrowdown',
+    left: 'arrowleft',
+    right: 'arrowright',
+    delete: 'backspace',
+};
+
+/**
+ * Keyboard handler for `keys` that cancels the browser default — like Vue's
+ * `.prevent` modifier — only for those keys. `prevented(withKeys(...))` cancelled
+ * every keydown instead, which stopped inputs from ever receiving a character.
+ */
+export function preventedKeys<T extends KeyboardEvent>(cb: (e: T) => void, keys: string[]) {
+    // Match the alias itself as well as the key it stands for: browsers report
+    // space as `' '`, while tools (and legacy browsers) may report `'Space'`.
+    const matchedKeys = new Set(keys.flatMap((key) => [key.toLocaleLowerCase(), (KEY_ALIASES[key] ?? key).toLocaleLowerCase()]));
+
+    return (e: T) => {
+        if (!matchedKeys.has(e.key.toLocaleLowerCase())) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        cb(e);
+    };
+}
+
 // Vue's `.self` modifier: only fire when the event target is the element itself.
 export function selfOnly<T extends Event>(cb: (e: T) => void) {
     return (e: T) => {

@@ -1,11 +1,11 @@
-import { ref, computed, withKeys } from 'vue';
+import { ref, computed } from 'vue';
 import { Button } from '../../shared/components/Button.tsx';
 import { CenteredModal } from '../../shared/components/CenteredModal.tsx';
 import { Input } from '../../shared/components/Input.tsx';
 import { _dbCoreState } from '../composables/dbCoreState';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
-import { component, ensureAllTsxProps, vModel, prevented } from '#shared/utils/tsxHelpers.tsx';
+import { component, ensureAllTsxProps, vModel, preventedKeys } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     open: boolean;
@@ -74,12 +74,12 @@ export const DbCreateDatabaseModal = component(
                 <div class="space-y-3 px-4 py-4 text-xs">
                     <label class="block">
                         <span class="mb-1 block text-xs opacity-70">Database name</span>
-                        <Input {...vModel(databaseName, 'value')} small={true} placeholder="mydatabase" onKeydown={prevented(withKeys(submit, ['enter']))} />
+                        <Input {...vModel(databaseName, 'value')} small={true} placeholder="mydatabase" onKeydown={preventedKeys(submit, ['enter'])} />
                     </label>
                     {supportsCollation.value ? (
                         <label class="block">
                             <span class="mb-1 block text-xs opacity-70">Collation</span>
-                            <Input {...vModel(collation, 'value')} small={true} placeholder="utf8mb4_unicode_ci" onKeydown={prevented(withKeys(submit, ['enter']))} />
+                            <Input {...vModel(collation, 'value')} small={true} placeholder="utf8mb4_unicode_ci" onKeydown={preventedKeys(submit, ['enter'])} />
                         </label>
                     ) : null}
                     {errorMessage.value ? <p class="text-xs text-red-300">{errorMessage.value}</p> : null}

@@ -1,5 +1,5 @@
-import { component, ensureAllTsxProps, prevented, vModel } from '#shared/utils/tsxHelpers.tsx';
-import { computed, effectScope, onBeforeUnmount, ref, watch, withKeys, type EffectScope } from 'vue';
+import { component, ensureAllTsxProps, prevented, preventedKeys, vModel } from '#shared/utils/tsxHelpers.tsx';
+import { computed, effectScope, onBeforeUnmount, ref, watch, type EffectScope } from 'vue';
 import { useEditableDataGridState, type EditableDataGridState } from '../../datagrid';
 import { DataGrid } from '../../datagrid/DataGrid.tsx';
 import { Button } from '../../shared/components/Button.tsx';
@@ -338,7 +338,7 @@ export const DbData = component(
                                     value={query.customQueryText}
                                     onInput={(e: any) => query.setCustomQueryText(e.target.value)}
                                     placeholder="select * from myTable limit 100;"
-                                    onKeydown={prevented(withKeys(() => query.runCustomQuery(), ['enter']))}
+                                    onKeydown={preventedKeys(() => query.runCustomQuery(), ['enter'])}
                                     class="w-full border border-x4 bg-x1 px-2 py-1 text-xs font-mono outline-none transition focus:border-x5"
                                 />
                             </div>
