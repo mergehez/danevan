@@ -378,7 +378,7 @@ export const DbScripts = component(
 
         function appendQueryText(nextStatement: string) {
             const currentText = query.queryText.trimEnd();
-            query.queryText = currentText ? `${currentText}\n${nextStatement}` : nextStatement;
+            navState.setActiveTabText(currentText ? `${currentText}\n${nextStatement}` : nextStatement);
         }
 
         async function handleEditorTableDrop(payload: { connectionId: number; tableName: string }) {
@@ -459,6 +459,7 @@ export const DbScripts = component(
                             <div class="bg-x0 flex-1">
                                 <SqlEditor
                                     {...vModel(query, 'queryText')}
+                                    onChange={(text: string) => navState.setActiveTabText(text)}
                                     title={activeScriptTab.value?.name || selectedScript.value?.name || 'Scratch SQL'}
                                     connectionId={editorConnectionId.value}
                                     sqlDialect={editorSqlDialect.value}

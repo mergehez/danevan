@@ -179,8 +179,8 @@ vi.mock('../../composables/dbCoreState', () => {
 
 import { useNavState } from '../../composables/useNavState';
 
-const scratchTab = () => ({
-    hash: 'scratch-1',
+const scratchTab = (hash = 'scratch-1') => ({
+    hash,
     type: 'scratch' as const,
     connectionId: 1,
     targetId: 11,
@@ -213,11 +213,12 @@ describe('useNavState draft-sync round-trip', () => {
     });
 
     it('does not re-run selectScript when the draft sync replaces the active tab', async () => {
-        useNavState();
+        const navState = useNavState();
 
         // Single scratch tab, already active (the "single tab" scenario).
-        holders.settings.tabs = [scratchTab()];
-        holders.settings.activeTabHash = 'scratch-1';
+        holders.settings.tabs = [scratchTab('scratch-draft')];
+        holders.settings.activeTabHash = 'scratch-draft';
+        navState.activateActiveTab();
 
         // Let the initial activation settle.
         await flushAll();
@@ -226,8 +227,8 @@ describe('useNavState draft-sync round-trip', () => {
 
         selectScriptRun.mockClear();
 
-        // Simulate the user typing: modelValue -> query.queryText.
-        holders.query.queryText = 'hello';
+        // Simulate the user typing: editor onChange -> setActiveTabText.
+        navState.setActiveTabText('hello');
         await flushAll();
 
         // Let the 150ms draft sync flush -> replaceTab -> setTabs.
@@ -236,43 +237,72 @@ describe('useNavState draft-sync round-trip', () => {
         await vi.runAllTimersAsync();
         await flushAll();
 
+        expect(holders.settings.tabs[0]?.draftSql).toBe('hello');
         // Typing must not re-trigger activation/selectScript. Only the initial
         // activation (cleared above) is allowed.
         expect(selectScriptRun).not.toHaveBeenCalled();
     });
 
     it('does not clobber newer typing while a selectScript call is in flight', async () => {
-        useNavState();
+        const navState = useNavState();
 
-        holders.settings.tabs = [scratchTab()];
-        holders.settings.activeTabHash = 'scratch-1';
-
-        await flushAll();
-        await vi.runAllTimersAsync();
-        await flushAll();
-
-        selectScriptRun.mockClear();
-
-        // Type 'A', then let the draft sync flush. With the bug, the flush's
-        // setTabs re-triggers activateTab, which calls selectScript (pending).
         holders.selectScriptPending = true;
-        holders.query.queryText = 'A';
-        await flushAll();
-        await vi.advanceTimersByTimeAsync(160);
+        holders.settings.tabs = [scratchTab('scratch-in-flight')];
+        holders.settings.activeTabHash = 'scratch-in-flight';
+        navState.activateActiveTab();
+
         await flushAll();
 
-        // The user keeps typing while selectScript is still pending.
-        holders.query.queryText = 'AB';
+        // The activation is still waiting for selectScript while the user types.
+        navState.setActiveTabText('AB');
         await flushAll();
 
-        // selectScript resolves; activateTab resumes and must NOT overwrite
-        // the newer 'AB' with the stale draftSql 'A'. Assert immediately, before
-        // any later draft-sync round-trip could re-apply the text.
         holders.resolveSelectScript?.();
         await flushAll();
 
         expect(holders.query.queryText).toBe('AB');
-        expect(selectScriptRun).not.toHaveBeenCalled();
+    });
+});
+
+describe('useNavState tab actions', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+        holders.settings.tabs = [];
+        holders.settings.activeTabHash = undefined;
+        holders.conns.connections = [{ id: 1, name: 'test' }];
+        holders.conns.selectedConnectionId = 1;
+        holders.query.queryText = '';
+        selectScriptRun.mockClear();
+        holders.selectScriptPending = false;
+        holders.resolveSelectScript = undefined;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('activates the tab that was selected, and only that tab', async () => {
+        const navState = useNavState();
+        const tab = scratchTab('scratch-selected');
+        holders.settings.tabs = [tab];
+
+        navState.selectTab(tab);
+
+        await vi.waitFor(() => expect(selectScriptRun).toHaveBeenCalledWith(undefined));
+        expect(holders.query.queryText).toBe('');
+    });
+
+    it('activates the neighbour after closing the active tab', async () => {
+        const navState = useNavState();
+        const closed = scratchTab('scratch-closed');
+        const kept = { ...scratchTab('scratch-kept'), draftSql: 'select 2' };
+        holders.settings.tabs = [closed, kept];
+        holders.settings.activeTabHash = 'scratch-closed';
+
+        navState.closeTab(closed);
+
+        await vi.waitFor(() => expect(holders.query.queryText).toBe('select 2'));
+        expect(holders.settings.activeTabHash).toBe('scratch-kept');
     });
 });
 

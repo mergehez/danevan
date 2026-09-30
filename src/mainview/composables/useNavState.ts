@@ -52,6 +52,13 @@ const createNavState = () => {
     const hasHydratedBootstrap = computed(() => _dbCoreState.stateCounter > 0);
     let draftSyncTimeout: ReturnType<typeof setTimeout> | undefined;
     let pendingDraftSync: { tabHash: string; draftSql: string } | undefined;
+    /** Hash of the tab whose activation has completed; the guard that keeps a
+     *  tab-list change from re-running activation for the tab that is already
+     *  open (which used to clobber the editor text on every keystroke). */
+    let activatedTabHash: string | undefined;
+    /** Activations run one after another, so a switch never sees the previous
+     *  one half-applied. */
+    let activationQueue: Promise<void> = Promise.resolve();
 
     function setTabs(tabs: Tab[]) {
         settings.setTabs(tabs.map((tab) => normalizeStoredTab(tab)));
@@ -108,6 +115,20 @@ const createNavState = () => {
             ...currentTab,
             connectionId,
         });
+    }
+
+    /** Explicit counterpart of the old `query.queryText` watcher: the editor calls
+     *  this on every change, and the active script/scratch tab stores the text. */
+    function setActiveTabText(text: string) {
+        query.queryText = text;
+
+        const currentTab = settings.tabs.find((tab) => tab.hash === settings.activeTabHash);
+
+        if (!currentTab || !isScriptTab(currentTab) || currentTab.draftSql === text) {
+            return;
+        }
+
+        scheduleDraftSync(currentTab.hash, text);
     }
 
     function ensureActiveTabExists() {
@@ -401,6 +422,7 @@ const createNavState = () => {
         moveScriptTabRuntimeState(scratchHash, nextTab.hash);
         setTabs(settings.tabs.map((tab) => (tab.hash === scratchHash ? nextTab : tab)));
         settings.setActiveTab(nextTab);
+        activateActiveTab();
     };
 
     const selectTab = (tab: Tab) => {
@@ -411,6 +433,7 @@ const createNavState = () => {
         }
 
         settings.setActiveTab(existingTab ?? normalizeStoredTab(tab));
+        activateActiveTab();
     };
 
     const closeTab = (_tab: Tab) => {
@@ -421,6 +444,7 @@ const createNavState = () => {
             const nextActive = nextTabs.find((t) => t.hash == (settings.tabs[i + 1] ?? settings.tabs[i - 1])?.hash) ?? nextTabs[i] ?? nextTabs[i - 1];
             setTabs(nextTabs);
             settings.setActiveTab(nextActive);
+            activateActiveTab();
         }
     };
 
@@ -429,12 +453,14 @@ const createNavState = () => {
         pushClosedTabs(closingTabs);
         setTabs(settings.tabs.filter((entry) => entry.hash === tab.hash));
         settings.setActiveTab(tab);
+        activateActiveTab();
     };
 
     const closeAllTabs = () => {
         pushClosedTabs(settings.tabs);
         setTabs([]);
         settings.setActiveTab(undefined);
+        activateActiveTab();
     };
 
     const reopenClosedTab = () => {
@@ -462,6 +488,10 @@ const createNavState = () => {
 
         try {
             tasks.dismissError();
+
+            // Activation awaits several backend calls; text typed during them
+            // belongs to the user, not to the tab we were loading.
+            const textBeforeActivation = query.queryText;
 
             if (conns.selectedConnectionId !== tab.connectionId) {
                 await conns.selectConnection(tab.connectionId);
@@ -512,7 +542,7 @@ const createNavState = () => {
 
                 const nextQueryText = tab.draftSql ?? script.sql_text ?? '';
 
-                if (query.queryText !== nextQueryText) {
+                if (query.queryText === textBeforeActivation && query.queryText !== nextQueryText) {
                     query.queryText = nextQueryText;
                 }
 
@@ -521,7 +551,7 @@ const createNavState = () => {
 
             await scripts.selectScript(undefined);
 
-            if (query.queryText !== (tab.draftSql ?? '')) {
+            if (query.queryText === textBeforeActivation && query.queryText !== (tab.draftSql ?? '')) {
                 query.queryText = tab.draftSql ?? '';
             }
         } catch (error) {
@@ -530,43 +560,60 @@ const createNavState = () => {
         }
     }
 
-    // Raw SQL can drop or rename tables, so the table list the open table tabs
-    // are validated against has to be refetched before the next activation.
-    watch(
-        () => query.isTableDataStale,
-        (isStale) => {
-            if (isStale && conns.selectedConnectionId !== undefined) {
+    /**
+     * Runs the activation of the tab that is currently marked active: hydrates the
+     * table lists it needs, drops tabs that no longer exist, then loads the tab's
+     * connection/table/script. Called explicitly by the tab actions and by the
+     * watchers that react to data arriving from the app (bootstrap, scripts,
+     * restored tabs); it is a no-op when that tab is already active.
+     */
+    function activateActiveTab() {
+        activationQueue = activationQueue.then(runActivation, runActivation);
+        return activationQueue;
+    }
+
+    async function runActivation() {
+        flushPendingDraftSync();
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const targetTab = settings.tabs.find((tab) => tab.hash === settings.activeTabHash);
+
+            // Raw SQL can drop or rename tables, so a table tab's list has to be
+            // refetched before this activation validates the tab against it.
+            if (query.isTableDataStale && targetTab?.type === 'table' && conns.selectedConnectionId !== undefined) {
                 verifiedTableTabConnectionIds.delete(conns.selectedConnectionId);
             }
-        }
-    );
 
-    // IMPORTANT: the source must be a primitive string, NOT an array. Vue's
-    // watch compares arrays by reference, so an array source would re-fire on
-    // EVERY setTabs (e.g. the 150ms draft sync replacing the active tab's
-    // draftSql) even when the tab hashes are unchanged. That re-ran activateTab
-    // on every keystroke, calling scripts.selectScript and clobbering
-    // query.queryText with a stale draftSql (which made MonacoEditor jump the
-    // cursor back to the start of the text).
-    watch(
-        () => `${settings.activeTabHash}|${settings.tabs.map((tab) => tab.hash).join('|')}`,
-        () => {
-            flushPendingDraftSync();
-            ensureActiveTabExists();
-            void (async () => {
-                await hydrateTableTabConnections();
-                sanitizeTabs();
-                ensureActiveTabExists();
-                await activateTab(settings.tabs.find((tab) => tab.hash === settings.activeTabHash));
-            })();
-        },
-        { immediate: true }
-    );
-
-    watch(
-        () => `${hasHydratedBootstrap.value}|${conns.connections.map((connection) => connection.id).join('|')}|${scripts.scripts.map((script) => script.id).join('|')}`,
-        () => {
+            await hydrateTableTabConnections();
             sanitizeTabs();
+            ensureActiveTabExists();
+
+            const tab = settings.tabs.find((entry) => entry.hash === settings.activeTabHash);
+
+            if (tab?.hash === activatedTabHash) {
+                return;
+            }
+
+            await activateTab(tab);
+            activatedTabHash = tab?.hash;
+
+            if (settings.activeTabHash === activatedTabHash) {
+                return;
+            }
+        }
+    }
+
+    // External data only: the bootstrap, the saved scripts and the restored tab
+    // list (settings.load) can add or invalidate tabs. Tab actions call
+    // activateActiveTab() themselves, so a draft sync or a tab reorder no longer
+    // re-runs activation for the tab that is already open.
+    watch(
+        () =>
+            `${
+                hasHydratedBootstrap.value
+            }|${conns.connections.map((connection) => connection.id).join('|')}|${scripts.scripts.map((script) => script.id).join('|')}|${settings.tabs.map((tab) => tab.hash).join('|')}`,
+        () => {
+            void activateActiveTab();
         },
         { immediate: true }
     );
@@ -583,23 +630,6 @@ const createNavState = () => {
             }
         },
         { immediate: true }
-    );
-
-    watch(
-        () => query.queryText,
-        (nextQueryText) => {
-            const currentTab = settings.tabs.find((tab) => tab.hash === settings.activeTabHash);
-
-            if (!currentTab || (currentTab.type !== 'script' && currentTab.type !== 'scratch')) {
-                return;
-            }
-
-            if (currentTab.draftSql === nextQueryText) {
-                return;
-            }
-
-            scheduleDraftSync(currentTab.hash, nextQueryText);
-        }
     );
 
     watch(
@@ -647,6 +677,8 @@ const createNavState = () => {
         openScratchTab,
         replaceScratchTabWithScript,
         updateTabConnection,
+        setActiveTabText: setActiveTabText,
+        activateActiveTab: activateActiveTab,
         closeTab,
         closeOtherTabs,
         closeAllTabs,
