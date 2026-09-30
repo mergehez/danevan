@@ -616,4 +616,38 @@ describe('DataGrid', () => {
 
         wrapper.unmount();
     });
+
+    it('keeps the column headers and shows a no-rows message for an empty table', async () => {
+        const { state } = createGridState({ rows: [] });
+        const wrapper = mount(DataGrid, {
+            attachTo: document.body,
+            props: { state },
+            global: { directives: { menu: {}, tooltip: {} } },
+        });
+
+        // Header canvas only: no rows, so no body canvas to paint.
+        expect(wrapper.findAll('canvas')).toHaveLength(1);
+        expect(wrapper.text()).toContain('No rows');
+
+        state.setSearchQuery('zzz');
+        await nextTick();
+
+        expect(wrapper.text()).toContain('No matching rows.');
+
+        wrapper.unmount();
+    });
+
+    it('shows the empty hint instead of headers when there is no result set', () => {
+        const { state } = createGridState({ columns: [], rows: [] });
+        const wrapper = mount(DataGrid, {
+            attachTo: document.body,
+            props: { state },
+            global: { directives: { menu: {}, tooltip: {} } },
+        });
+
+        expect(wrapper.findAll('canvas')).toHaveLength(0);
+        expect(wrapper.text()).toContain('Select a table to preview rows.');
+
+        wrapper.unmount();
+    });
 });

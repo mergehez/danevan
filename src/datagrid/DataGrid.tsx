@@ -160,7 +160,7 @@ export const DataGrid = component(
                         </div>
                     </div>
                 ) : null}
-                {vs.rowCount ? (
+                {props.state.orderedColumns.length ? (
                     <div
                         ref={(element) => (vs.viewportElement = element as HTMLElement)}
                         tabindex="0"
@@ -185,15 +185,21 @@ export const DataGrid = component(
                                     backgroundColor: vs.canvasColors.headerBackground,
                                 }}
                             />
-                            <canvas
-                                ref={(element) => (vs.bodyCanvasElement = element as HTMLCanvasElement)}
-                                onClick={vs.pointerHandlers.handleBodyClick}
-                                onDblclick={vs.pointerHandlers.handleBodyDoubleClick}
-                                onPointerdown={vs.pointerHandlers.handleBodyPointerDown}
-                                onContextmenu={prevented(vs.pointerHandlers.handleBodyContextMenu)}
-                                class="block"
-                                style={{ width: `${vs.viewportWidth}px`, height: `${vs.bodyCanvasHeight}px`, backgroundColor: vs.canvasColors.bodyBackground }}
-                            />
+                            {vs.rowCount ? (
+                                <canvas
+                                    ref={(element) => (vs.bodyCanvasElement = element as HTMLCanvasElement)}
+                                    onClick={vs.pointerHandlers.handleBodyClick}
+                                    onDblclick={vs.pointerHandlers.handleBodyDoubleClick}
+                                    onPointerdown={vs.pointerHandlers.handleBodyPointerDown}
+                                    onContextmenu={prevented(vs.pointerHandlers.handleBodyContextMenu)}
+                                    class="block"
+                                    style={{ width: `${vs.viewportWidth}px`, height: `${vs.bodyCanvasHeight}px`, backgroundColor: vs.canvasColors.bodyBackground }}
+                                />
+                            ) : (
+                                <div class="flex items-center justify-center text-sm opacity-60" style={{ width: `${vs.viewportWidth}px`, height: `${vs.bodyCanvasHeight}px` }}>
+                                    {props.state.emptyText || 'No rows'}
+                                </div>
+                            )}
                             {props.state.editingCell.rowIndex >= 0 && props.state.editingCell.columnIndex >= 0 && vs.editingVisualRowIndex >= 0 ? (
                                 <textarea
                                     ref={(element) => (vs.editingTextareaElement = element as HTMLTextAreaElement)}

@@ -96,6 +96,8 @@ export const DbData = component(
             }
         }
 
+        const hasResultColumns = computed(() => (query.tableData?.columns.length ?? 0) > 0);
+
         const fkPeekViews = useForeignKeyPeekViews({
             selectedConnectionId: computed(() => connections.selectedConnectionId),
             selectedTableName: computed(() => query.selectedTableName),
@@ -109,7 +111,9 @@ export const DbData = component(
         });
         const dataGridState = useDbDataGrid({
             connectionId: () => connections.selectedConnectionId!,
-            emptyText: () => `Select a table to preview${isUnlimitedDataLimit.value ? '' : ` up to ${settings.state.queryRowLimit} rows`}.`,
+            // A result set with columns means a table is loaded: only an empty
+            // grid needs the "select a table" hint.
+            emptyText: () => (hasResultColumns.value ? 'No rows' : `Select a table to preview${isUnlimitedDataLimit.value ? '' : ` up to ${settings.state.queryRowLimit} rows`}.`),
             onPeekRelation: async (params) => {
                 await fkPeekViews.openPeekView({
                     connectionId: params.connectionId,
