@@ -469,7 +469,7 @@ const createNavState = () => {
                     return;
                 }
 
-                if (query.selectedTableName !== tableName || query.loadedConnectionId !== tab.connectionId) {
+                if (query.selectedTableName !== tableName || query.loadedConnectionId !== tab.connectionId || query.isTableDataStale) {
                     await query.selectTable(tab.connectionId, tableName);
                 }
 

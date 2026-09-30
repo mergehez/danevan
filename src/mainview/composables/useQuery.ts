@@ -40,6 +40,8 @@ export function _useQuery() {
     const isLoadingTables = ref(false);
     const isLoadingSelectedTable = ref(false);
     const isRunningQuery = ref(false);
+    /** Set when raw SQL runs, so the grid reloads when its table tab is shown again. */
+    const isTableDataStale = ref(false);
     const customQueryText = ref('');
     const isCustomQueryMode = ref(false);
     /** SQL returned by the backend for the current grid view. */
@@ -116,6 +118,7 @@ export function _useQuery() {
             isCustomQueryMode.value = cachedCustomQuery?.isCustomQueryMode ?? false;
             tableInfo.value = tableInfo2;
             tableData.value = tableData2;
+            isTableDataStale.value = false;
             console.log(
                 `[perf][ui] loadSelectedTable ${Math.round(performance.now() - startedAt)}ms ${JSON.stringify({ connectionId, tableName, getTableInfo: infoDurationMs, getTableData: dataDurationMs })}`
             );
@@ -195,6 +198,7 @@ export function _useQuery() {
         isLoadingTables: isLoadingTables,
         isLoadingSelectedTable: isLoadingSelectedTable,
         isRunningQuery: isRunningQuery,
+        isTableDataStale: isTableDataStale,
         /** Loads the table list for the current connection. Does NOT
          *  auto-select or auto-load a table — the caller (e.g. activateTab)
          *  is responsible for calling selectTable / loadSelectedTable. */
@@ -257,10 +261,10 @@ export function _useQuery() {
                 isRunningQuery.value = false;
             }
 
-            const connId = connections.selectedConnectionId;
-            if (connId && selectedTableName.value) {
-                await this.loadSelectedTable(connId, selectedTableName.value);
-            }
+            // The script may have changed data that the (currently hidden) table
+            // grid shows: leave the reload to the table tab's activation instead
+            // of fetching a table the user is not looking at.
+            isTableDataStale.value = true;
         },
         async runCustomQuery() {
             if (!connections.selectedConnectionId || !customQueryText.value.trim()) {

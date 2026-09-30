@@ -721,13 +721,11 @@ function genElement(node: any, props: Set<string>, refs: Set<string>, bindings: 
         const bindings = (node.props ?? [])
             .filter((property: any) => property.type === 7 && property.name === 'bind' && property.arg?.content)
             .map((property: any) => ({ name: toCamel(property.arg.content), value: expression(property.exp?.content || property.arg.content) }));
-        const args = bindings.map(
-            (binding: { name: string; value: ParsedExpression }): SlotArg => ({
-                name: binding.name,
-                type: slotArgTypeFor(binding.value.source),
-                optional: false,
-            })
-        );
+        const args = bindings.map((binding: { name: string; value: ParsedExpression }): SlotArg => ({
+            name: binding.name,
+            type: slotArgTypeFor(binding.value.source),
+            optional: false,
+        }));
         recordSlotOutlet(slotKey, args);
         return { kind: 'slot', name: slotKey, fallback: children, bindings };
     }

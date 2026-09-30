@@ -240,7 +240,7 @@ export const DbServerSchemasModal = component(
                 return;
             }
 
-             onOpenChange(false);
+            onOpenChange(false);
         }
 
         function handleDocumentKeydown(event: KeyboardEvent) {
@@ -250,7 +250,7 @@ export const DbServerSchemasModal = component(
 
             if (event.key === 'Escape') {
                 event.preventDefault();
-                 onOpenChange(false);
+                onOpenChange(false);
             }
         }
 
