@@ -1,4 +1,4 @@
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref } from 'vue';
 import { clearPersistedGridSort, isInvalidSortColumnError, readPersistedGridSort } from '../../datagrid/dataGridLayoutStorage';
 import type { QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateColumnParams } from '../../shared/types';
 import { splitSqlStatements } from '../../shared/utils/sqlStatements';
@@ -48,31 +48,27 @@ export function _useQuery() {
     const gridQueryText = ref('');
 
     // Per-table cache of the custom query text + custom-query mode, so a user's
-    // custom query is restored when they return to a table.
+    // custom query is restored when they return to a table. Written explicitly by
+    // the paths that change it instead of by a watcher on the refs.
     const customQueryCache: Record<string, { text: string; isCustomQueryMode: boolean }> = {};
-    const suppressCustomQuerySync = ref(false);
 
-    watch(
-        [customQueryText, isCustomQueryMode],
-        ([text, mode]) => {
-            if (suppressCustomQuerySync.value) {
-                return;
-            }
+    function rememberCustomQuery() {
+        const connId = connections.selectedConnectionId;
+        const tableName = selectedTableName.value;
 
-            const connId = connections.selectedConnectionId;
-            const tableName = selectedTableName.value;
+        if (!connId || !tableName) {
+            return;
+        }
 
-            if (!connId || !tableName) {
-                return;
-            }
+        customQueryCache[`${connId}:${tableName}`] = { text: customQueryText.value, isCustomQueryMode: isCustomQueryMode.value };
+    }
 
-            customQueryCache[`${connId}:${tableName}`] = { text, isCustomQueryMode: mode };
-        },
-        { flush: 'sync' }
-    );
+    function setCustomQueryText(text: string) {
+        customQueryText.value = text;
+        rememberCustomQuery();
+    }
 
     async function loadSelectedTable(connectionId: number, tableName: string, options?: LoadSelectedTableOptions) {
-        suppressCustomQuerySync.value = true;
         isCustomQueryMode.value = false;
         loadedConnectionId.value = connectionId;
         const offset = Math.max(0, Math.round(options?.offset ?? tableData.value.offset ?? 0));
@@ -123,7 +119,6 @@ export function _useQuery() {
             tableData.value = getEmptyTableData();
         } finally {
             isLoadingSelectedTable.value = false;
-            suppressCustomQuerySync.value = false;
         }
     }
 
@@ -330,8 +325,10 @@ export function _useQuery() {
                 isCustomQueryMode.value = false;
             } finally {
                 isRunningQuery.value = false;
+                rememberCustomQuery();
             }
         },
+        setCustomQueryText: setCustomQueryText,
         clearCustomQuery() {
             const connId = connections.selectedConnectionId;
             const tableName = selectedTableName.value;
@@ -340,10 +337,9 @@ export function _useQuery() {
                 delete customQueryCache[`${connId}:${tableName}`];
             }
 
-            suppressCustomQuerySync.value = true;
             customQueryText.value = '';
             isCustomQueryMode.value = false;
-            suppressCustomQuerySync.value = false;
+            rememberCustomQuery();
 
             if (connId && tableName) {
                 void this.loadSelectedTable(connId, tableName);

@@ -123,4 +123,22 @@ describe('loadSelectedTable order by', () => {
         expect(run).toHaveBeenCalledTimes(1);
         expect(query.tableData.rows).toEqual([]);
     });
+
+    it('remembers the custom query per table', async () => {
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        query.setCustomQueryText('SELECT 1');
+
+        query.selectedTableName = 'users';
+        await query.loadSelectedTable(1, 'users');
+        expect(query.customQueryText).toBe('');
+
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+        expect(query.customQueryText).toBe('SELECT 1');
+    });
 });

@@ -336,7 +336,7 @@ export const DbData = component(
                             <div class="flex-1 min-w-0">
                                 <input
                                     value={query.customQueryText}
-                                    onInput={(e: any) => (query.customQueryText = e.target.value)}
+                                    onInput={(e: any) => query.setCustomQueryText(e.target.value)}
                                     placeholder="select * from myTable limit 100;"
                                     onKeydown={prevented(withKeys(() => query.runCustomQuery(), ['enter']))}
                                     class="w-full border border-x4 bg-x1 px-2 py-1 text-xs font-mono outline-none transition focus:border-x5"
