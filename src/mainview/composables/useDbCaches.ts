@@ -1,7 +1,6 @@
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref } from 'vue';
 import type { ConnectionSchemaCache, ServerSchemaRecord, TableInfo, TableSummary } from '../../shared/types';
 import { resetCacheState, useCache } from '../../shared/utils/useCache';
-import { _dbCoreState } from './dbCoreState';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -210,38 +209,6 @@ export function _useDbCaches() {
     }
 
     // --- Watchers to clean up stale entries ---
-
-    watch(
-        () => _dbCoreState.servers.map((server) => server.id),
-        (serverIds) => {
-            const activeIds = new Set(serverIds);
-
-            for (const key of Object.keys(cachedSchemasState.value)) {
-                const serverId = Number(key);
-
-                if (!activeIds.has(serverId)) {
-                    delete cachedSchemasState.value[serverId];
-                }
-            }
-        },
-        { immediate: true }
-    );
-
-    watch(
-        () => _dbCoreState.connections.map((connection) => connection.id),
-        (connectionIds) => {
-            const activeIds = new Set(connectionIds);
-
-            for (const key of Object.keys(connectionSchemaCacheState.value)) {
-                const connectionId = Number(key);
-
-                if (!activeIds.has(connectionId)) {
-                    delete connectionSchemaCacheState.value[connectionId];
-                }
-            }
-        },
-        { immediate: true }
-    );
 
     return reactive({
         // Reactive state (exposed for direct access by other composables)

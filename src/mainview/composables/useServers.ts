@@ -2,6 +2,7 @@ import { reactive } from 'vue';
 import { dbTypes, type CreateServerParams, type DbType, type ServerSchemaRecord, type UpdateServerParams } from '../../shared/types';
 import { confirmAction } from '../lib/utils';
 import { _dbCoreState } from './dbCoreState';
+import { useConnections } from './useConnections';
 import { useDbCaches } from './useDbCaches';
 import { tasks } from './useTasks';
 
@@ -25,6 +26,7 @@ function getAnchorPosition(anchorElement?: HTMLElement) {
 
 export function _useServers() {
     const dbCaches = useDbCaches();
+    const connections = useConnections();
 
     const state = reactive({
         addForm: {
@@ -146,7 +148,17 @@ export function _useServers() {
                 return;
             }
 
+            const removedConnectionIds = _dbCoreState.connections.filter((connection) => connection.server_id === serverId).map((connection) => connection.id);
+
             _dbCoreState.applyBootstrap(await tasks.deleteServer.run({ serverId }));
+
+            // The server and its connections are gone from the app database:
+            // drop their cached metadata instead of leaving it to a watcher.
+            for (const connectionId of removedConnectionIds) {
+                connections.clearConnectionMetadata(connectionId);
+            }
+
+            dbCaches.clearServerSchemas(serverId);
         },
         async reorderServer(serverId: number, toIndex: number) {
             _dbCoreState.applyBootstrap(await tasks.reorderServer.run({ serverId, toIndex }));
