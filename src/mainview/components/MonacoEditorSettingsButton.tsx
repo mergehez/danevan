@@ -1,8 +1,8 @@
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { component, ensureAllTsxProps, prevented } from '#shared/utils/tsxHelpers.tsx';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useOverlaysState } from '../../directives/useOverlaysState';
 import { IconButton } from '../../shared/components/IconButton.tsx';
 import { useSettings } from '../composables/useSettings';
-import { component, ensureAllTsxProps, prevented } from '#shared/utils/tsxHelpers.tsx';
 
 type Props = {
     hideDiffOptions?: boolean;
