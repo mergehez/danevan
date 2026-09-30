@@ -35,6 +35,8 @@ const holders = vi.hoisted(() => ({
     servers: null as any,
     query: null as any,
     dbCoreState: null as any,
+    freshTables: [] as any[],
+    ensureConnectionTables: undefined as any,
     selectScriptPending: false,
     resolveSelectScript: undefined as undefined | (() => void),
 }));
@@ -69,8 +71,16 @@ vi.mock('../../composables/useConnections', async () => {
     const store = reactive({
         connections: [] as any[],
         selectedConnectionId: undefined as number | undefined,
+        tableState: { loaded: false, loading: false, tables: [] as any[] },
     });
     holders.conns = store;
+    const ensureConnectionTables = vi.fn(async (_connectionId: number, force?: boolean) => {
+        if (force) {
+            store.tableState.tables = holders.freshTables;
+            store.tableState.loaded = true;
+        }
+    });
+    holders.ensureConnectionTables = ensureConnectionTables;
     return {
         useConnections: () => ({
             get connections() {
@@ -80,8 +90,8 @@ vi.mock('../../composables/useConnections', async () => {
                 return store.selectedConnectionId;
             },
             selectConnection: vi.fn(async () => {}),
-            getConnectionTablesState: () => ({ loaded: false, loading: false, tables: [] }),
-            ensureConnectionTables: vi.fn(async () => {}),
+            getConnectionTablesState: () => store.tableState,
+            ensureConnectionTables: ensureConnectionTables,
         }),
     };
 });
@@ -263,5 +273,33 @@ describe('useNavState draft-sync round-trip', () => {
 
         expect(holders.query.queryText).toBe('AB');
         expect(selectScriptRun).not.toHaveBeenCalled();
+    });
+});
+
+describe('useNavState invalid table tabs', () => {
+    beforeEach(() => {
+        holders.settings.tabs = [];
+        holders.settings.activeTabHash = undefined;
+        holders.conns.connections = [{ id: 1, name: 'test' }];
+        holders.conns.selectedConnectionId = 1;
+        holders.query.queryText = '';
+        holders.query.selectedTableName = undefined;
+        // Stale list from the on-disk schema cache vs. what the database has now.
+        holders.conns.tableState.loaded = true;
+        holders.conns.tableState.tables = [{ name: 'loginlog' }];
+        holders.freshTables = [{ name: 'orders' }];
+    });
+
+    it('drops a persisted table tab whose table no longer exists', async () => {
+        useNavState();
+
+        holders.settings.tabs = [{ hash: 'table-1-loginlog', type: 'table', connectionId: 1, targetId: 123, pinned: false, name: 'loginlog' }];
+        holders.settings.activeTabHash = 'table-1-loginlog';
+
+        // The table list is refetched before the persisted tab is trusted, so the
+        // tab for the dropped table is closed instead of erroring on every visit.
+        await vi.waitFor(() => expect(holders.settings.tabs).toHaveLength(0));
+        expect(holders.settings.activeTabHash).toBeUndefined();
+        expect(holders.ensureConnectionTables).toHaveBeenCalledWith(1, true);
     });
 });

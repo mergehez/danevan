@@ -47,6 +47,8 @@ const createNavState = () => {
     const closedTabsState = reactive<Tab[]>([]);
     const scriptTabRuntimeStateByHash = reactive<Record<string, ScriptTabRuntimeState | undefined>>({});
     const hydratingTableTabConnectionIds = reactive<Record<number, boolean>>({});
+    /** Connections whose table list has been refetched from the database this session. */
+    const verifiedTableTabConnectionIds = new Set<number>();
     const hasHydratedBootstrap = computed(() => _dbCoreState.stateCounter > 0);
     let draftSyncTimeout: ReturnType<typeof setTimeout> | undefined;
     let pendingDraftSync: { tabHash: string; draftSql: string } | undefined;
@@ -292,15 +294,23 @@ const createNavState = () => {
         await Promise.all(
             tableTabConnectionIds.map(async (connectionId) => {
                 const tableState = conns.getConnectionTablesState(connectionId);
+                // Refetch the table list once per session: it may come from a
+                // stale on-disk schema cache, and a table that no longer exists
+                // must lose its tab rather than error on every visit.
+                const force = !verifiedTableTabConnectionIds.has(connectionId);
 
-                if (tableState.loaded || tableState.loading || hydratingTableTabConnectionIds[connectionId]) {
+                if (hydratingTableTabConnectionIds[connectionId] || (!force && (tableState.loaded || tableState.loading))) {
                     return;
                 }
 
                 hydratingTableTabConnectionIds[connectionId] = true;
 
                 try {
-                    await conns.ensureConnectionTables(connectionId);
+                    await conns.ensureConnectionTables(connectionId, force);
+
+                    if (conns.getConnectionTablesState(connectionId).loaded) {
+                        verifiedTableTabConnectionIds.add(connectionId);
+                    }
                 } finally {
                     delete hydratingTableTabConnectionIds[connectionId];
                 }
@@ -519,6 +529,17 @@ const createNavState = () => {
             tasks.reportError(error instanceof Error ? error.message : String(error));
         }
     }
+
+    // Raw SQL can drop or rename tables, so the table list the open table tabs
+    // are validated against has to be refetched before the next activation.
+    watch(
+        () => query.isTableDataStale,
+        (isStale) => {
+            if (isStale && conns.selectedConnectionId !== undefined) {
+                verifiedTableTabConnectionIds.delete(conns.selectedConnectionId);
+            }
+        }
+    );
 
     // IMPORTANT: the source must be a primitive string, NOT an array. Vue's
     // watch compares arrays by reference, so an array source would re-fire on
