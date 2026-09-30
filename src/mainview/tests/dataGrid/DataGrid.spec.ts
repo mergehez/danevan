@@ -16,6 +16,7 @@ type GridStateOptions = {
     searchable?: boolean;
     sqlInsertTableName?: string;
     primaryKeyColumns?: string[];
+    layoutStorageKey?: string;
     addRow?: () => void | Promise<void>;
     deleteSelectedRows?: () => void | Promise<void>;
     canAddRow?: boolean;
@@ -124,7 +125,7 @@ function createGridState(options: GridStateOptions = {}) {
             { id: 3, name: 'Bravo', city: 'Cairo' },
         ]
     );
-    const layoutStorageKey = `data-grid-test-${layoutStorageCounter++}`;
+    const layoutStorageKey = options.layoutStorageKey ?? `data-grid-test-${layoutStorageCounter++}`;
 
     const state = useDataGrid({
         layoutStorageKey,
@@ -649,5 +650,33 @@ describe('DataGrid', () => {
         expect(wrapper.text()).toContain('Select a table to preview rows.');
 
         wrapper.unmount();
+    });
+
+    it('keeps each grid instance on its own layout for the same table', () => {
+        const layoutStorageKey = 'data-grid-test-shared';
+        const first = createGridState({ layoutStorageKey, columns: ['id', 'DateLastLogin'] });
+
+        first.state.toggleSort('DateLastLogin');
+        expect(first.state.sortState).toMatchObject({ columnName: 'DateLastLogin' });
+
+        // A second grid for the same storage key but a different result set
+        // (e.g. a script result for that table) neither inherits nor clobbers
+        // the first grid's layout.
+        const second = createGridState({ layoutStorageKey, columns: ['id', 'email'] });
+
+        expect(second.state.sortState).toBeNull();
+        expect(first.state.sortState).toMatchObject({ columnName: 'DateLastLogin' });
+        expect(localStorage.getItem(layoutStorageKey) ?? '').not.toContain('DateLastLogin');
+    });
+
+    it('never sorts by a column the result set does not have', () => {
+        const layoutStorageKey = 'data-grid-test-stale-sort';
+
+        localStorage.setItem(layoutStorageKey, JSON.stringify({ columnWidths: { DateLastLogin: 180 }, sort: { columnName: 'DateLastLogin', direction: 'desc' } }));
+
+        const { state } = createGridState({ layoutStorageKey, columns: ['id', 'email'] });
+
+        expect(state.sortState).toBeNull();
+        expect(localStorage.getItem(layoutStorageKey) ?? '').not.toContain('DateLastLogin');
     });
 });

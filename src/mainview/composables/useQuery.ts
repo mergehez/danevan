@@ -1,5 +1,5 @@
 import { reactive, ref, watch } from 'vue';
-import { readPersistedGridSort } from '../../datagrid/dataGridLayoutStorage';
+import { clearPersistedGridSort, isInvalidSortColumnError, readPersistedGridSort } from '../../datagrid/dataGridLayoutStorage';
 import type { QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateColumnParams } from '../../shared/types';
 import { splitSqlStatements } from '../../shared/utils/sqlStatements';
 import { useConnections } from './useConnections';
@@ -76,7 +76,8 @@ export function _useQuery() {
         isCustomQueryMode.value = false;
         loadedConnectionId.value = connectionId;
         const offset = Math.max(0, Math.round(options?.offset ?? tableData.value.offset ?? 0));
-        const orderBy = options?.orderBy ?? readPersistedGridSort(connectionId, tableName);
+        const requestedOrderBy = options?.orderBy ?? readPersistedGridSort(connectionId, tableName);
+        const orderBy = resolveOrderBy(connectionId, tableName, requestedOrderBy);
         const startedAt = performance.now();
         let infoDurationMs = 0;
         let dataDurationMs = 0;
@@ -97,14 +98,7 @@ export function _useQuery() {
             })();
             const tableDataPromise = (async () => {
                 const operationStartedAt = performance.now();
-                const result = await tasks.getTableData.run({
-                    connectionId,
-                    tableName,
-                    limit: settings.state.queryRowLimit,
-                    offset,
-                    orderBy,
-                    returnQuery: true,
-                });
+                const result = await readTableData(connectionId, tableName, { offset, orderBy });
                 dataDurationMs = Math.round(performance.now() - operationStartedAt);
                 return result;
             })();
@@ -130,6 +124,46 @@ export function _useQuery() {
         } finally {
             isLoadingSelectedTable.value = false;
             suppressCustomQuerySync.value = false;
+        }
+    }
+
+    /** Drops a sort whose column the table is known not to have (renamed or
+     *  dropped since the layout was persisted). */
+    function resolveOrderBy(connectionId: number, tableName: string, orderBy: SortOrder | undefined) {
+        if (!orderBy) {
+            return undefined;
+        }
+
+        const knownColumns = connections.getTableDetailsState(connectionId, tableName).info?.columns;
+
+        if (!knownColumns?.length || knownColumns.some((column) => column.name === orderBy.column)) {
+            return orderBy;
+        }
+
+        clearPersistedGridSort(connectionId, tableName);
+        return undefined;
+    }
+
+    async function readTableData(connectionId: number, tableName: string, params: { offset: number; orderBy: SortOrder | undefined }) {
+        const request = {
+            connectionId,
+            tableName,
+            limit: settings.state.queryRowLimit,
+            offset: params.offset,
+            returnQuery: true as const,
+        };
+
+        try {
+            return await tasks.getTableData.run({ ...request, orderBy: params.orderBy });
+        } catch (error) {
+            if (!params.orderBy || !isInvalidSortColumnError(error, params.orderBy.column)) {
+                throw error;
+            }
+
+            // The table no longer has that column: forget the sort instead of
+            // failing the whole grid, and load the rows unsorted.
+            clearPersistedGridSort(connectionId, tableName);
+            return await tasks.getTableData.run({ ...request, orderBy: undefined });
         }
     }
 

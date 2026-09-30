@@ -1,4 +1,5 @@
 import { reactive, watch } from 'vue';
+import { prunePersistedGridLayout } from '../../datagrid/dataGridLayoutStorage';
 import type { DbType, ModifyTableColumnParams, TableColumnInfo, TableForeignKeyInfo, TableIndexInfo, TableInfo } from '../../shared/types';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { getDbCollationOptionsQuery, normalizeDbCollationOptions } from '../lib/collations';
@@ -3195,6 +3196,14 @@ export function _useModifyTable() {
 
                 await connections.ensureConnectionTables(state.connectionId, true);
                 await connections.ensureTableDetails(state.connectionId, finalTableName, true);
+
+                // The schema changed: drop the persisted grid layout entries for
+                // columns that no longer exist before anything reloads the grid.
+                prunePersistedGridLayout(
+                    state.connectionId,
+                    finalTableName,
+                    connections.getTableDetailsState(state.connectionId, finalTableName).info?.columns.map((column) => column.name) ?? []
+                );
 
                 if (query.selectedTableName === currentTableName && connections.selectedConnectionId === state.connectionId) {
                     query.selectedTableName = finalTableName;

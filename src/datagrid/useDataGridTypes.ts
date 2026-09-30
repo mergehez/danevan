@@ -222,3 +222,31 @@ export function normalizeGridLayoutState(value: Partial<GridLayoutState> | null 
         showRowNumbers: typeof value?.showRowNumbers === 'boolean' ? value.showRowNumbers : DEFAULT_DATA_GRID_SHOW_ROW_NUMBERS,
     };
 }
+
+/**
+ * Drops the layout entries that reference columns the current result set does
+ * not have — a table can be renamed or rebuilt between sessions, and an
+ * ordering by a column that no longer exists is rejected by the database.
+ */
+export function pruneGridLayout(layout: GridLayoutState, columnNames: string[]): GridLayoutState {
+    if (columnNames.length === 0) {
+        return layout;
+    }
+
+    const columnNameSet = new Set(columnNames);
+    const keepKnownColumns = <TValue>(entries: Record<string, TValue>) => Object.fromEntries(Object.entries(entries).filter(([columnName]) => columnNameSet.has(columnName)));
+    const keepKnownColumn = (columnName: string) => columnNameSet.has(columnName);
+
+    return {
+        ...layout,
+        columnOrder: layout.columnOrder.filter(keepKnownColumn),
+        columnWidths: keepKnownColumns(layout.columnWidths),
+        hiddenColumns: layout.hiddenColumns.filter(keepKnownColumn),
+        displayTypes: keepKnownColumns(layout.displayTypes),
+        sort: layout.sort && keepKnownColumn(layout.sort.columnName) ? layout.sort : null,
+    };
+}
+
+export function gridLayoutsEqual(left: GridLayoutState, right: GridLayoutState) {
+    return JSON.stringify(left) === JSON.stringify(right);
+}

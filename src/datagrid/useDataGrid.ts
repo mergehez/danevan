@@ -1,6 +1,6 @@
-import { computed, reactive, toRaw, toRef, unref, watch } from 'vue';
+import { computed, reactive, ref, toRaw, toRef, unref, watch } from 'vue';
 import { useContextMenu } from '../directives/useContextMenu';
-import { useCache } from '../shared/utils/useCache';
+import { readGridLayout, writeGridLayout } from './dataGridLayoutStorage';
 import { formatValue } from '../shared/utils/valueFormatting';
 import { DEFAULT_DATA_GRID_FONT_FAMILY, DEFAULT_DATA_GRID_SHOW_ROW_NUMBERS, resolveDataGridTheme, type DataGridFontFamily } from './dataGridAppearance';
 import { createDataGridClipboard } from './useDataGridClipboard';
@@ -9,7 +9,9 @@ import { createDataGridMenus } from './useDataGridMenus';
 import { createDataGridNavigation } from './useDataGridNavigation';
 import {
     fillMissionOptions,
+    gridLayoutsEqual,
     normalizeGridLayoutState,
+    pruneGridLayout,
     type DataGridCellChange,
     type DataGridModalEditingCell,
     type DataGridPendingChange,
@@ -60,13 +62,35 @@ function createInternalState(options: UseDataGridFinalOptions) {
             offset: resolvedTableData?.offset,
         };
     });
-    const layoutState = useCache<GridLayoutState>({
-        key: computed(() => unref(options.layoutStorageKey)),
-        initialValue: createInitialGridLayoutState,
-    });
-    const normalizedLayoutState = computed(() => normalizeGridLayoutState(layoutState.state.value));
     const tableDataColumns = computed(() => tableData.value.columns);
     const tableDataColumnSet = computed(() => new Set(tableDataColumns.value));
+
+    // The layout belongs to this grid instance and to the storage key it is
+    // showing: it is loaded for that key and saved whenever it changes, pruned
+    // to the columns that actually exist (a table can lose columns between
+    // sessions, and ordering by a missing column is rejected by the database).
+    const layoutStorageKey = computed(() => unref(options.layoutStorageKey));
+    const layoutState = ref<GridLayoutState>(createInitialGridLayoutState());
+
+    function loadStoredLayout() {
+        const stored = readGridLayout(layoutStorageKey.value);
+        const next = stored ? pruneGridLayout(stored, tableDataColumns.value) : createInitialGridLayoutState();
+
+        layoutState.value = next;
+
+        if (stored && !gridLayoutsEqual(stored, next)) {
+            writeGridLayout(layoutStorageKey.value, next);
+        }
+    }
+
+    function saveLayout() {
+        writeGridLayout(layoutStorageKey.value, pruneGridLayout(layoutState.value, tableDataColumns.value));
+    }
+
+    loadStoredLayout();
+    watch(layoutStorageKey, loadStoredLayout);
+
+    const normalizedLayoutState = computed(() => normalizeGridLayoutState(layoutState.value));
     const sourceHiddenColumns = computed(() => normalizedLayoutState.value.hiddenColumns.filter((columnName: string) => tableDataColumnSet.value.has(columnName)));
     const sourceOrderedColumns = computed(() => {
         const ordered: string[] = [];
@@ -133,8 +157,12 @@ function createInternalState(options: UseDataGridFinalOptions) {
         theme: computed(() => resolveDataGridTheme(unref(options.theme))),
 
         tableData: tableData,
-        layoutStateCache: layoutState.state,
+        layoutStateCache: layoutState,
         normalizedLayoutState: normalizedLayoutState,
+        applyLayoutUpdate(toUpdate: Partial<GridLayoutState>) {
+            state.layoutStateCache = { ...state.layoutStateCache, ...toUpdate };
+            saveLayout();
+        },
         gridFontFamily: computed(() => normalizedLayoutState.value.fontFamily),
         showRowNumbers: computed(() => normalizedLayoutState.value.showRowNumbers),
         sourceRows: computed(() => tableData.value.rows),
@@ -576,10 +604,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
     }
 
     function updateLayoutState(toUpdate: Partial<GridLayoutState>) {
-        baseState.layoutStateCache = {
-            ...baseState.layoutStateCache,
-            ...toUpdate,
-        };
+        baseState.applyLayoutUpdate(toUpdate);
     }
 
     function setFontFamily(fontFamily: DataGridFontFamily) {
