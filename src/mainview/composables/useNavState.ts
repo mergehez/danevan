@@ -56,9 +56,9 @@ const createNavState = () => {
      *  tab-list change from re-running activation for the tab that is already
      *  open (which used to clobber the editor text on every keystroke). */
     let activatedTabHash: string | undefined;
-    /** Activations run one after another, so a switch never sees the previous
-     *  one half-applied. */
-    let activationQueue: Promise<void> = Promise.resolve();
+    /** Activations run one after another; requests coalesce into the running one. */
+    let isActivating = false;
+    let activationPending = false;
 
     function setTabs(tabs: Tab[]) {
         settings.setTabs(tabs.map((tab) => normalizeStoredTab(tab)));
@@ -566,10 +566,32 @@ const createNavState = () => {
      * connection/table/script. Called explicitly by the tab actions and by the
      * watchers that react to data arriving from the app (bootstrap, scripts,
      * restored tabs); it is a no-op when that tab is already active.
+     *
+     * One activation runs at a time and requests that arrive meanwhile coalesce
+     * into a single follow-up run, so a slow activation cannot build up a backlog
+     * of stale runs behind it.
      */
     function activateActiveTab() {
-        activationQueue = activationQueue.then(runActivation, runActivation);
-        return activationQueue;
+        activationPending = true;
+
+        if (isActivating) {
+            return;
+        }
+
+        isActivating = true;
+
+        void (async () => {
+            try {
+                while (activationPending) {
+                    activationPending = false;
+                    await runActivation();
+                }
+            } catch (error) {
+                tasks.reportError(error instanceof Error ? error.message : String(error));
+            } finally {
+                isActivating = false;
+            }
+        })();
     }
 
     async function runActivation() {
@@ -613,7 +635,7 @@ const createNavState = () => {
                 hasHydratedBootstrap.value
             }|${conns.connections.map((connection) => connection.id).join('|')}|${scripts.scripts.map((script) => script.id).join('|')}|${settings.tabs.map((tab) => tab.hash).join('|')}`,
         () => {
-            void activateActiveTab();
+            activateActiveTab();
         },
         { immediate: true }
     );
