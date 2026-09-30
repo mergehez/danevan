@@ -1,5 +1,3 @@
-import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
-import type { ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 import type {
     ApplyTableChangesResult,
     QueryExecutionResult,
@@ -15,6 +13,8 @@ import type {
     TestConnectionResult,
     UpdateColumnParams,
 } from '../shared/types';
+import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
+import type { ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 export type RemoteStatement = {
     sql: string;

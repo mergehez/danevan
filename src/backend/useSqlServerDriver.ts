@@ -1,11 +1,11 @@
+import 'reflect-metadata';
+import { DataSource, type QueryRunner, type Table, type View } from 'typeorm';
+import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
 import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
 import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
 import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import type { ModifySchemaPlan } from './useSqliteDriver.ts';
-import 'reflect-metadata';
-import { DataSource, type QueryRunner, type Table, type View } from 'typeorm';
-import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 
 type SqlServerDataSourceConfig = {
     host: string;
