@@ -36,6 +36,8 @@ To efficiently build this compact email client;
 
 - Avoid creating manual types, instead try to infer them. If needed, use a helper function to create a inferred type.
 
+- Never pass the same prop twice on one element, such as a `{...vModel(state, 'text')}` spread plus an explicit `onChange`. The JSX transform compiles spreads into `mergeProps`, which turns two same-named handlers into an array: the component then throws `props.onChange is not a function` on every change, and the state it was supposed to update silently keeps its old value.
+
 ## 🛠️ The Tooling & QA Optimizer (Oxlint, Oxfmt, Vitest)
 
 **Role:** Ensures code quality, fast build times, and continuous reliability through strict CLI adherence.

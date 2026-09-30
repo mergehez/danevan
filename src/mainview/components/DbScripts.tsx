@@ -457,8 +457,12 @@ export const DbScripts = component(
                     slots={{
                         top: () => (
                             <div class="bg-x0 flex-1">
+                                {/* `setActiveTabText` writes queryText and the tab draft. It must be the
+                                    only change handler: a second one on the same element would be merged
+                                    into an array by the JSX transform, and the editor would then throw on
+                                    every keystroke instead of updating the text it runs. */}
                                 <SqlEditor
-                                    {...vModel(query, 'queryText')}
+                                    modelValue={query.queryText}
                                     onChange={(text: string) => navState.setActiveTabText(text)}
                                     title={activeScriptTab.value?.name || selectedScript.value?.name || 'Scratch SQL'}
                                     connectionId={editorConnectionId.value}
