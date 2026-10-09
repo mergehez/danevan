@@ -18,6 +18,9 @@ export const DATA_GRID_ROW_HEADER_COMPACT_WIDTH = 18;
 /** Typing in the grid search must not reformat the whole result set per keystroke. */
 export const DATA_GRID_SEARCH_DEBOUNCE_MS = 200;
 
+/** A column resize fires a pointermove per pixel; the layout is written once it settles. */
+export const DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS = 200;
+
 export const DATA_GRID_NEWLINE_SYMBOL = '⏎';
 export const DATA_GRID_NEWLINE_TOKEN = ` ${DATA_GRID_NEWLINE_SYMBOL} `;
 

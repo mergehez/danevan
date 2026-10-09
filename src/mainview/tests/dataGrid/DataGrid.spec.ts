@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
 import {
     DATA_GRID_COLUMN_MIN_WIDTH,
+    DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS,
     DATA_GRID_ROW_HEIGHT,
     DATA_GRID_SEARCH_DEBOUNCE_MS,
     useDataGrid,
@@ -435,6 +436,37 @@ describe('DataGrid', () => {
         await state.copyAllCellsAsJson?.();
 
         expect(execCommandStub).toHaveBeenCalledWith('copy');
+    });
+
+    it('writes the grid layout once at the end of a column resize', () => {
+        vi.useFakeTimers();
+
+        try {
+            const layoutStorageKey = 'data-grid-test-resize-save';
+            const { state } = createGridState({ layoutStorageKey });
+            const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+            // A resize drag updates the width on every pointermove.
+            for (let width = DATA_GRID_COLUMN_MIN_WIDTH + 5; width < DATA_GRID_COLUMN_MIN_WIDTH + 45; width += 5) {
+                state.setColumnWidth('name', width);
+            }
+
+            expect(setItem).not.toHaveBeenCalled();
+
+            vi.advanceTimersByTime(DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS);
+
+            expect(setItem).toHaveBeenCalledTimes(1);
+            expect(JSON.parse(localStorage.getItem(layoutStorageKey) ?? '{}').columnWidths.name).toBe(DATA_GRID_COLUMN_MIN_WIDTH + 40);
+
+            // Every other layout change is still persisted immediately.
+            setItem.mockClear();
+            state.hideColumn('city');
+
+            expect(setItem).toHaveBeenCalledTimes(1);
+            expect(JSON.parse(localStorage.getItem(layoutStorageKey) ?? '{}').hiddenColumns).toContain('city');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('fits empty-cell editors to the cell size', async () => {

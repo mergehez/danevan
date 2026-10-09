@@ -541,12 +541,16 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
     }
 
     function setColumnWidth(columnName: string, width: number) {
-        args.updateLayoutState({
-            columnWidths: {
-                ...internalState.normalizedLayoutState.columnWidths,
-                [columnName]: Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(Math.round(width), DATA_GRID_COLUMN_MAX_WIDTH)),
+        // Called on every pointermove of a resize drag: update state now, persist when it settles.
+        args.updateLayoutState(
+            {
+                columnWidths: {
+                    ...internalState.normalizedLayoutState.columnWidths,
+                    [columnName]: Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(Math.round(width), DATA_GRID_COLUMN_MAX_WIDTH)),
+                },
             },
-        });
+            { deferSave: true }
+        );
     }
 
     function clearColumnWidth(columnName: string) {

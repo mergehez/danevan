@@ -1,6 +1,7 @@
-import { computed, reactive, ref, toRaw, toRef, unref, watch } from 'vue';
+import { computed, getCurrentScope, onScopeDispose, reactive, ref, toRaw, toRef, unref, watch } from 'vue';
 import { useContextMenu } from '../directives/useContextMenu';
 import { formatValue } from '../shared/utils/valueFormatting';
+import { DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS } from './dataGrid';
 import { DEFAULT_DATA_GRID_FONT_FAMILY, DEFAULT_DATA_GRID_SHOW_ROW_NUMBERS, resolveDataGridTheme, type DataGridFontFamily } from './dataGridAppearance';
 import { readGridLayout, writeGridLayout } from './dataGridLayoutStorage';
 import { createDataGridClipboard } from './useDataGridClipboard';
@@ -87,8 +88,51 @@ function createInternalState(options: UseDataGridFinalOptions) {
         writeGridLayout(layoutStorageKey.value, pruneGridLayout(layoutState.value, tableDataColumns.value));
     }
 
+    // A column resize updates the layout on every pointermove; writing storage on
+    // each of those blocks the main thread, so only a settled layout is persisted.
+    let layoutSaveTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function writeLayout(storageKey: string | undefined) {
+        writeGridLayout(storageKey, pruneGridLayout(layoutState.value, tableDataColumns.value));
+    }
+
+    function flushDeferredSave(storageKey: string | undefined) {
+        if (layoutSaveTimer === undefined) {
+            return;
+        }
+
+        clearTimeout(layoutSaveTimer);
+        layoutSaveTimer = undefined;
+        writeLayout(storageKey);
+    }
+
+    function scheduleLayoutSave() {
+        if (layoutSaveTimer !== undefined) {
+            clearTimeout(layoutSaveTimer);
+        }
+
+        layoutSaveTimer = setTimeout(() => {
+            layoutSaveTimer = undefined;
+            saveLayout();
+        }, DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS);
+    }
+
     loadStoredLayout();
-    watch(layoutStorageKey, loadStoredLayout);
+    watch(layoutStorageKey, (_key, previousKey) => {
+        // The pending resize belongs to the table being left behind.
+        flushDeferredSave(previousKey);
+        loadStoredLayout();
+    });
+
+    if (getCurrentScope()) {
+        onScopeDispose(() => {
+            if (layoutSaveTimer !== undefined) {
+                clearTimeout(layoutSaveTimer);
+                layoutSaveTimer = undefined;
+                saveLayout();
+            }
+        });
+    }
 
     const normalizedLayoutState = computed(() => normalizeGridLayoutState(layoutState.value));
     const sourceHiddenColumns = computed(() => normalizedLayoutState.value.hiddenColumns.filter((columnName: string) => tableDataColumnSet.value.has(columnName)));
@@ -164,8 +208,14 @@ function createInternalState(options: UseDataGridFinalOptions) {
         tableData: tableData,
         layoutStateCache: layoutState,
         normalizedLayoutState: normalizedLayoutState,
-        applyLayoutUpdate(toUpdate: Partial<GridLayoutState>) {
+        applyLayoutUpdate(toUpdate: Partial<GridLayoutState>, updateOptions?: { deferSave?: boolean }) {
             state.layoutStateCache = { ...state.layoutStateCache, ...toUpdate };
+
+            if (updateOptions?.deferSave) {
+                scheduleLayoutSave();
+                return;
+            }
+
             saveLayout();
         },
         gridFontFamily: computed(() => normalizedLayoutState.value.fontFamily),
@@ -628,8 +678,8 @@ export function useDataGrid(_options: UseDataGridOptions) {
         applyCellChange(change, { trackHistory: false, clearRedo: false });
     }
 
-    function updateLayoutState(toUpdate: Partial<GridLayoutState>) {
-        baseState.applyLayoutUpdate(toUpdate);
+    function updateLayoutState(toUpdate: Partial<GridLayoutState>, updateOptions?: { deferSave?: boolean }) {
+        baseState.applyLayoutUpdate(toUpdate, updateOptions);
     }
 
     function setFontFamily(fontFamily: DataGridFontFamily) {

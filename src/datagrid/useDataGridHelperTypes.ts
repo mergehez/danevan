@@ -41,6 +41,6 @@ export type DataGridKeyboardNavigation = {
 
 export type DataGridCommandKeydownContext = Parameters<NonNullable<UseDataGridFinalOptions['handleGridCommandKeydown']>>[1];
 
-export type DataGridUpdateLayoutState = (toUpdate: Partial<GridLayoutState>) => void;
+export type DataGridUpdateLayoutState = (toUpdate: Partial<GridLayoutState>, options?: { deferSave?: boolean }) => void;
 
 export type { DataGridCellFocusOptions, DataGridCellValue, DataGridPendingChange, DataGridResolvedCell, DataGridRowSelectionOptions, GridCellRange };
