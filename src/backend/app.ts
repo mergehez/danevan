@@ -752,14 +752,15 @@ export const app = {
             await saveServerAuth(ps.serverId, existingServer.name, username, password);
         }
 
+        // Host, username or password may have changed: pooled sessions are stale.
+        await dbTools.disconnectServer(ps.serverId);
+
         return buildBootstrap();
     },
     deleteServer: async (ps: { serverId: number }) => {
         ensureServerExists(ps.serverId);
         await deleteServerPassword(ps.serverId);
-        for (const connection of appDb.listConnections(ps.serverId)) {
-            await dbTools.disconnectConnection(connection.id);
-        }
+        await dbTools.disconnectServer(ps.serverId);
         appDb.deleteSetting(`serverSchemas:${ps.serverId}`);
         appDb.deleteServer(ps.serverId);
         return buildBootstrap();
@@ -933,6 +934,9 @@ export const app = {
             port: normalizeConnectionPort(ps.connection.port),
             databaseName: ps.connection.databaseName?.trim(),
         });
+
+        // Host, port or database may have changed: the pooled session is stale.
+        await dbTools.disconnectConnection(ps.connectionId);
 
         const updatedConnection = appDb.getConnection(ps.connectionId);
 

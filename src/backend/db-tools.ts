@@ -23,6 +23,7 @@ import type {
 import { normalizeSqlInputWhitespace } from '../shared/utils/sqlTextNormalization';
 import { readServerPassword as readServerPasswordFromKeychain } from './auth.ts';
 import { useAppDb } from './db-app.ts';
+import { connectionPoolKey, remoteDataSourcePool, serverPoolKey } from './remoteDataSourcePool.ts';
 import { useMsAccessDriverTools } from './useMsAccessDriver.ts';
 import { useMsAccessWindowsDriverTools } from './useMsAccessWindowsDriver.ts';
 import { useMySqlDriverTools } from './useMySqlDriver.ts';
@@ -784,7 +785,17 @@ export const dbTools = {
         invalidateAllMetadataCaches();
     },
     async disconnectConnection(connectionId: number): Promise<void> {
+        // Drop the pooled connection first: the driver's own cleanup (SQLite, MS Access)
+        // must not run against a data source that is about to be destroyed.
+        await remoteDataSourcePool.dispose(connectionPoolKey(connectionId));
         await getConnectionDriverTools(connectionId).disconnectConnection?.(connectionId);
+    },
+    async disconnectServer(serverId: number): Promise<void> {
+        await remoteDataSourcePool.dispose(serverPoolKey(serverId));
+
+        for (const connection of appDb.listConnections(serverId, { includeHidden: true })) {
+            await remoteDataSourcePool.dispose(connectionPoolKey(connection.id));
+        }
     },
     async getTableData(connectionId: number, params: { tableName: string; limit?: number; offset?: number; orderBy?: SortOrder; returnQuery?: boolean }): Promise<TableData> {
         const normalizedTableName = normalizeTableName(params.tableName);

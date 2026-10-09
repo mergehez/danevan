@@ -40,6 +40,24 @@ async function deleteKeychainSecret(serviceName: string, accountName: string) {
     await runSecurityCommand(['delete-generic-password', '-a', accountName, '-s', serviceName], [0, 44]);
 }
 
+/**
+ * Reading a secret spawns a `security` process (~16 ms measured), and one UI
+ * interaction issues several backend calls, so the secret is cached per account.
+ * Every write through this module drops the cached entry.
+ */
+const keychainSecretCache = new Map<string, string | null>();
+
+async function readKeychainSecretCached(serviceName: string, accountName: string) {
+    if (keychainSecretCache.has(accountName)) {
+        return keychainSecretCache.get(accountName) ?? null;
+    }
+
+    const secret = await readKeychainSecret(serviceName, accountName);
+    keychainSecretCache.set(accountName, secret);
+
+    return secret;
+}
+
 function ensureSupportedPlatform() {
     if (process.platform !== 'darwin') {
         throw new Error('Secure account storage is currently supported on macOS only.');
@@ -58,34 +76,38 @@ export async function storeConnectionPassword(connectionId: number, label: strin
     ensureSupportedPlatform();
 
     await storeKeychainSecret(KEYCHAIN_SERVICE_NAME, getConnectionPasswordAccountName(connectionId), label, password);
+    keychainSecretCache.delete(getConnectionPasswordAccountName(connectionId));
 }
 
 export async function deleteConnectionPassword(connectionId: number) {
     ensureSupportedPlatform();
 
     await deleteKeychainSecret(KEYCHAIN_SERVICE_NAME, getConnectionPasswordAccountName(connectionId));
+    keychainSecretCache.delete(getConnectionPasswordAccountName(connectionId));
 }
 
 export async function readConnectionPassword(connectionId: number) {
     ensureSupportedPlatform();
 
-    return await readKeychainSecret(KEYCHAIN_SERVICE_NAME, getConnectionPasswordAccountName(connectionId));
+    return await readKeychainSecretCached(KEYCHAIN_SERVICE_NAME, getConnectionPasswordAccountName(connectionId));
 }
 
 export async function storeServerPassword(serverId: number, label: string, password: string) {
     ensureSupportedPlatform();
 
     await storeKeychainSecret(KEYCHAIN_SERVICE_NAME, getServerPasswordAccountName(serverId), label, password);
+    keychainSecretCache.delete(getServerPasswordAccountName(serverId));
 }
 
 export async function deleteServerPassword(serverId: number) {
     ensureSupportedPlatform();
 
     await deleteKeychainSecret(KEYCHAIN_SERVICE_NAME, getServerPasswordAccountName(serverId));
+    keychainSecretCache.delete(getServerPasswordAccountName(serverId));
 }
 
 export async function readServerPassword(serverId: number) {
     ensureSupportedPlatform();
 
-    return await readKeychainSecret(KEYCHAIN_SERVICE_NAME, getServerPasswordAccountName(serverId));
+    return await readKeychainSecretCached(KEYCHAIN_SERVICE_NAME, getServerPasswordAccountName(serverId));
 }

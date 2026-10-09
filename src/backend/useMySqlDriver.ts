@@ -4,6 +4,7 @@ import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo
 import { splitSqlStatements } from '../shared/utils/sqlStatements';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
 import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { connectionPoolKey, remoteDataSourcePool, serverPoolKey } from './remoteDataSourcePool.ts';
 import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type MySqlSchemaHelperDeps = {
@@ -1047,47 +1048,43 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
     }
 
     async function withMySqlClient<T>(connectionId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
-        const target = deps.getRemoteConnectionTarget(connectionId);
-        const password = (await deps.readConnectionPassword(connectionId)) ?? '';
-        const dataSource = createMySqlDataSource({
-            host: target.hostname,
-            port: target.port,
-            database: target.database,
-            username: target.username,
-            password,
-        });
+        return await remoteDataSourcePool.withDataSource(
+            connectionPoolKey(connectionId),
+            // The target and its secret are only resolved when a new pool entry is needed.
+            async () => {
+                const target = deps.getRemoteConnectionTarget(connectionId);
+                const password = (await deps.readConnectionPassword(connectionId)) ?? '';
 
-        await dataSource.initialize();
-        const queryRunner = dataSource.createQueryRunner();
-
-        try {
-            return await callback(createRemoteClient(dataSource, queryRunner));
-        } finally {
-            await queryRunner.release();
-            await dataSource.destroy();
-        }
+                return createMySqlDataSource({
+                    host: target.hostname,
+                    port: target.port,
+                    database: target.database,
+                    username: target.username,
+                    password,
+                });
+            },
+            (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
+        );
     }
 
     async function withMySqlServerClient<T>(serverId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
-        const target = deps.getRemoteServerTarget(serverId);
-        const password = (await deps.readServerPassword(serverId)) ?? '';
-        const dataSource = createMySqlDataSource({
-            host: target.hostname,
-            port: target.port,
-            database: target.database,
-            username: target.username,
-            password,
-        });
+        return await remoteDataSourcePool.withDataSource(
+            serverPoolKey(serverId),
+            // The target and its secret are only resolved when a new pool entry is needed.
+            async () => {
+                const target = deps.getRemoteServerTarget(serverId);
+                const password = (await deps.readServerPassword(serverId)) ?? '';
 
-        await dataSource.initialize();
-        const queryRunner = dataSource.createQueryRunner();
-
-        try {
-            return await callback(createRemoteClient(dataSource, queryRunner));
-        } finally {
-            await queryRunner.release();
-            await dataSource.destroy();
-        }
+                return createMySqlDataSource({
+                    host: target.hostname,
+                    port: target.port,
+                    database: target.database,
+                    username: target.username,
+                    password,
+                });
+            },
+            (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
+        );
     }
 
     async function testConnection(params: TestConnectionParams): Promise<TestConnectionResult> {

@@ -6,6 +6,7 @@ import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, map
 import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
 import { useMySqlSchemaHelper } from './useMySqlDriver.ts';
 import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { connectionPoolKey, remoteDataSourcePool, serverPoolKey } from './remoteDataSourcePool.ts';
 import type { ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type PostgresSchemaHelperDeps = {
@@ -672,45 +673,43 @@ export function usePostgresDriverTools(deps: PostgresDriverToolsDeps): DriverToo
     }
 
     async function withPostgresClient<T>(connectionId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
-        const target = deps.getRemoteConnectionTarget(connectionId);
-        const dataSource = createPostgresDataSource({
-            host: target.hostname,
-            port: target.port,
-            database: target.database,
-            username: target.username,
-            password: (await deps.readConnectionPassword(connectionId)) ?? '',
-        });
+        return await remoteDataSourcePool.withDataSource(
+            connectionPoolKey(connectionId),
+            // The target and its secret are only resolved when a new pool entry is needed.
+            async () => {
+                const target = deps.getRemoteConnectionTarget(connectionId);
+                const password = (await deps.readConnectionPassword(connectionId)) ?? '';
 
-        await dataSource.initialize();
-        const queryRunner = dataSource.createQueryRunner();
-
-        try {
-            return await callback(createRemoteClient(dataSource, queryRunner));
-        } finally {
-            await queryRunner.release();
-            await dataSource.destroy();
-        }
+                return createPostgresDataSource({
+                    host: target.hostname,
+                    port: target.port,
+                    database: target.database,
+                    username: target.username,
+                    password,
+                });
+            },
+            (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
+        );
     }
 
     async function withPostgresServerClient<T>(serverId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
-        const target = deps.getRemoteServerTarget(serverId);
-        const dataSource = createPostgresDataSource({
-            host: target.hostname,
-            port: target.port,
-            database: target.database,
-            username: target.username,
-            password: (await deps.readServerPassword(serverId)) ?? '',
-        });
+        return await remoteDataSourcePool.withDataSource(
+            serverPoolKey(serverId),
+            // The target and its secret are only resolved when a new pool entry is needed.
+            async () => {
+                const target = deps.getRemoteServerTarget(serverId);
+                const password = (await deps.readServerPassword(serverId)) ?? '';
 
-        await dataSource.initialize();
-        const queryRunner = dataSource.createQueryRunner();
-
-        try {
-            return await callback(createRemoteClient(dataSource, queryRunner));
-        } finally {
-            await queryRunner.release();
-            await dataSource.destroy();
-        }
+                return createPostgresDataSource({
+                    host: target.hostname,
+                    port: target.port,
+                    database: target.database,
+                    username: target.username,
+                    password,
+                });
+            },
+            (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
+        );
     }
 
     async function testConnection(params: TestConnectionParams): Promise<TestConnectionResult> {
