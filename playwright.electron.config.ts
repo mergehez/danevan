@@ -6,6 +6,8 @@ import { defineConfig } from '@playwright/test';
 // config with its own testDir and no webServer. Build first: `bun run test:e2e:electron`.
 export default defineConfig({
     testDir: './src/mainview/tests/electron',
+    // The packaged-app smoke test has its own config and needs `build/mac-arm64/Danevan.app`.
+    testIgnore: '**/packaged.spec.ts',
     fullyParallel: false,
     forbidOnly: !!process.env.CI,
     // Same rule as the browser config: the specs are sleep-free and deterministic, so a retry
