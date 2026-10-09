@@ -64,7 +64,6 @@ export function useSidebarKeyboardNavigation() {
             event.preventDefault();
 
             if (currentRow.dataset.sidebarExpandable === 'true' && currentRow.dataset.sidebarCollapsed === 'false') {
-                console.log('toggle');
                 toggleSidebarRow(currentRow);
                 return;
             }
