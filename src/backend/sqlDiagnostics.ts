@@ -169,6 +169,18 @@ async function ensureManagedSqlFluffRuntime(userDataDir: string) {
         }
     }
 
+    // A runtime that is already provisioned must not pay for a pip resolution:
+    // probed once per process, and a working `sqlfluff --version` is the proof.
+    const existingVersion = await canRunSqlFluff(pythonPath, ['-m', 'sqlfluff']);
+
+    if (existingVersion) {
+        return {
+            command: pythonPath,
+            argsPrefix: ['-m', 'sqlfluff'],
+            source: 'managed',
+        } satisfies SqlFluffRuntime;
+    }
+
     const [, installStderr, installExitCode] = await executeTextCommand({
         command: pythonPath,
         args: ['-m', 'pip', 'install', '--disable-pip-version-check', 'sqlfluff'],
