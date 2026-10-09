@@ -51,8 +51,14 @@ describe('useSqlHistory', () => {
         expect(entry.connectionLabel).toBe('mydb');
         expect(entry.dialect).toBe('mysql');
         expect(entry.durationMs).toBe(25);
-        expect(typeof entry.id).toBe('string');
-        expect(typeof entry.timestamp).toBe('number');
+        expect(entry.id).toMatch(/^sql-history-\d+-[a-z0-9]{1,6}$/);
+        expect(entry.timestamp).toBeGreaterThan(0);
+        expect(entry.timestamp).toBeLessThanOrEqual(Date.now());
+
+        // Every entry needs its own key, or the history list keyed by id would collide.
+        history.record({ source: 'modify-table', sql: 'SELECT 2', status: 'success' });
+        expect(history.entries).toHaveLength(2);
+        expect(history.entries[0]!.id).not.toBe(history.entries[1]!.id);
     });
 
     it('clears the history', () => {

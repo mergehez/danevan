@@ -344,7 +344,9 @@ describe('buildDatabaseComparisonSections', () => {
         const all = filterComparisonSections(sections, true);
         const differences = filterComparisonSections(sections, false);
 
-        expect(all.length).toBeGreaterThan(0);
+        // Comparing a table with itself: the table row, its two columns and its one key.
+        expect(all.map((section) => section.id)).toEqual(['table', 'columns', 'keys']);
+        expect(all.flatMap((section) => section.rows)).toHaveLength(4);
         expect(all.flatMap((section) => section.rows).every((row) => row.Status === 'identical')).toBe(true);
         expect(differences).toEqual([]);
     });

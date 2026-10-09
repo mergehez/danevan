@@ -15,9 +15,14 @@ function createTempDir() {
 function isProcessAlive(marker: string) {
     try {
         return execFileSync('pgrep', ['-f', marker], { encoding: 'utf8' }).trim().length > 0;
-    } catch {
-        // pgrep exits with code 1 when nothing matches.
-        return false;
+    } catch (error) {
+        // pgrep exits with code 1 when nothing matches. Any other failure means we cannot
+        // tell, and answering `false` would let the liveness assertion pass vacuously.
+        if ((error as { status?: number }).status === 1) {
+            return false;
+        }
+
+        throw new Error(`Cannot tell whether the "${marker}" process is still running: pgrep is unavailable.`, { cause: error });
     }
 }
 

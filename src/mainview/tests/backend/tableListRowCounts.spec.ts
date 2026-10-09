@@ -15,8 +15,12 @@ function createClient(queryRows: ReturnType<typeof vi.fn>) {
 }
 
 describe('resolveListedRowCount', () => {
-    it('reports the catalog estimate and never asks for an exact count', () => {
+    // The "no COUNT(*) per table" guarantee lives in the getTableNames spec below; this only
+    // pins how a catalog value is reported.
+    it('always reports the catalog value as an estimate, even when the catalog has none', () => {
         expect(resolveListedRowCount(765_432)).toEqual({ rowCount: 765_432, rowCountIsEstimated: true });
+        // 0 is a real estimate, not a missing one.
+        expect(resolveListedRowCount(0)).toEqual({ rowCount: 0, rowCountIsEstimated: true });
         // A missing estimate is still an estimate; the opened table replaces it.
         expect(resolveListedRowCount(undefined)).toEqual({ rowCount: 0, rowCountIsEstimated: true });
     });

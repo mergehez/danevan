@@ -220,6 +220,30 @@ const GridViewHarness = defineComponent({
     `,
 });
 
+function mountDataGrid(state: TDataGridState) {
+    return mount(DataGrid, {
+        attachTo: document.body,
+        props: {
+            state,
+            hasToolbar: true,
+        },
+        global: {
+            directives: {
+                menu: {},
+                tooltip: {},
+            },
+            stubs: {
+                CenteredModal: {
+                    template: '<div><slot /></div>',
+                },
+                IconButton: {
+                    template: '<button type="button"><slot /></button>',
+                },
+            },
+        },
+    });
+}
+
 async function mountGridViewHarness(state: TDataGridState) {
     const wrapper = mount(GridViewHarness, {
         attachTo: document.body,
@@ -705,32 +729,25 @@ describe('DataGrid', () => {
 
     it('mounts the public DataGrid component with the current state contract', () => {
         const { state } = createGridState();
-        const wrapper = mount(DataGrid, {
-            attachTo: document.body,
-            props: {
-                state,
-                hasToolbar: true,
-            },
-            global: {
-                directives: {
-                    menu: {},
-                    tooltip: {},
-                },
-                stubs: {
-                    CenteredModal: {
-                        template: '<div><slot /></div>',
-                    },
-                    IconButton: {
-                        template: '<button type="button"><slot /></button>',
-                    },
-                },
-            },
-        });
+        const wrapper = mountDataGrid(state);
 
         const searchInput = wrapper.find('input[type="search"]');
 
         expect(searchInput.exists()).toBe(true);
         expect(searchInput.attributes('placeholder')).toBe('Search grid');
+        // Columns are loaded, so the grid draws a viewport rather than the "no table" message.
+        expect(wrapper.find('[data-testid="data-grid-viewport"]').exists()).toBe(true);
+        expect(wrapper.text()).not.toContain('Select a table to preview rows.');
+
+        wrapper.unmount();
+    });
+
+    it('shows the placeholder instead of a viewport when no table is loaded', () => {
+        const { state } = createGridState({ columns: [] });
+        const wrapper = mountDataGrid(state);
+
+        expect(wrapper.find('[data-testid="data-grid-viewport"]').exists()).toBe(false);
+        expect(wrapper.text()).toContain('Select a table to preview rows.');
 
         wrapper.unmount();
     });
