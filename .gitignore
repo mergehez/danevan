@@ -36,6 +36,9 @@ dist-ssr
 test-results/
 playwright-report/
 
+# Vitest coverage
+coverage/
+
 assets/msaccess-runtime/
 assets/test-access-db.mdb
 build/
