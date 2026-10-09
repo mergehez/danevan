@@ -1,6 +1,6 @@
 # Test audit — what to test next
 
-**Status:** 429 unit tests (42 files) · 74 browser tests (20 files) · coverage over every source
+**Status:** 429 unit tests (42 files) · 87 browser tests (23 files) · coverage over every source
 file **29.1 % statements / 22.8 % branches** · floors enforced in `vitest.config.js` ·
 **still a long tail of 0 % files**.
 
@@ -46,29 +46,14 @@ password)** · **multi-row "Delete N Rows"** · **two-change preview and the FK-
 Copy as DDL, create database** · **foreign-key peek (relation, usages, empty states)** · **table
 comparison (differences, identical filter, breaking changes, Markdown export)** · **the HTTP API
 contract (all 54 backend handlers, their input guards and the server/connection/script/settings round
-trips)** · **PostgreSQL and SQL Server table lists and row counts**.
+trips)** · **PostgreSQL and SQL Server table lists and row counts** · **tabs (neighbour close, reopen,
+close all, drag reorder)** · **SQL editor panels (save modal create/rename, Problems, per-script
+History, Format)** · **sidebar management (script create/delete, Collapse all, Clear metadata caches,
+collection filter, SQL history modal)** · **mysqldump export from the modal with chosen options**.
 
 ---
 
 ## Browser tasks (in priority order)
-
-### e2e-8 · Tabs (medium)
-`DbTabs.tsx`, `DragTabs.tsx`. New `e2e/tabs.spec.ts`: open two scripts, close one and assert the
-neighbour becomes active, `Close all`, reopen closed, and drag-reorder then assert the editor content
-still matches the tab it was dragged with (the bug class `sql-editor-run.spec.ts` covers for one tab).
-
-### e2e-9 · SQL editor panels (medium)
-`DbScripts.tsx` (683 lines): the save-script modal (name/group, create + update), the Problems tab, the
-per-script History tab and the Format button. New `e2e/sql-editor-panels.spec.ts` on a seeded script.
-
-### e2e-10 · Sidebar and script tree management (medium)
-Script create/rename/delete with confirmation, `Clear metadata caches`, `Collapse all`, the collection
-filter, and the global SQL history modal (`DbSidebar.tsx:197-224,459-482,523-527`). New `e2e/sidebar.spec.ts`.
-
-### e2e-11 · mysqldump export submit (medium)
-`mysqldump-export.spec.ts` opens the modal but never clicks Export. Extend it: choose options and an
-output path, submit, assert the progress state resolves to success and the file exists with the chosen
-options applied.
 
 ### e2e-12 · Electron shell (medium)
 Everything runs in browser-only dev mode, so the shipped shell is untested. Add a Playwright project
