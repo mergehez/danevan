@@ -6,6 +6,7 @@ import { Alert } from '../shared/components/Alert.tsx';
 import { AppConfirmationModal } from '../shared/components/AppConfirmationModal.tsx';
 import Splitter from '../shared/components/Splitter';
 import { DbData } from './components/DbData.tsx';
+import DbComparisonModal from './components/DbComparisonModal';
 import DbScripts from './components/DbScripts';
 import { DbSidebar } from './components/DbSidebar.tsx';
 import { DbTabs } from './components/DbTabs.tsx';
@@ -150,6 +151,7 @@ export const App = component(
                     <AppConfirmationModal />
                     <GridFormatterModal />
                     <ModifyTableModal />
+                    <DbComparisonModal />
                     <ContextMenu state={contextMenu} />
                 </div>
                 {tasks.isBusy ? (

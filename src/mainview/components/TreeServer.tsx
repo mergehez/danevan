@@ -6,6 +6,7 @@ import { dbTypeIcons, type ServerRecord } from '../../shared/types';
 import { withMinLifetime } from '../../shared/utils/useMinLifetime';
 import { formatNumber, tryCatch } from '../../shared/utils/utils.ts';
 import { useConnections } from '../composables/useConnections';
+import { useComparison } from '../composables/useComparison';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useModifyTable } from '../composables/useModifyTable';
 import { useServers } from '../composables/useServers';
@@ -26,6 +27,7 @@ export const TreeServer = component(
         const servers = useServers();
         const connections = useConnections();
         const modifyTable = useModifyTable();
+        const comparison = useComparison();
 
         const state = useServerTree();
 
@@ -328,6 +330,14 @@ export const TreeServer = component(
                             connectionId: connection.id,
                             mode: 'create',
                         });
+                    },
+                },
+                {
+                    id: `connection-compare:${connection.id}`,
+                    label: 'Compare database...',
+                    iconClass: 'icon-[mdi--compare-horizontal]',
+                    action: async () => {
+                        await comparison.openDatabaseComparison({ connectionId: connection.id });
                     },
                 },
             ];

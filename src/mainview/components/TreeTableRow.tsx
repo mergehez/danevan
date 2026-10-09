@@ -4,6 +4,7 @@ import type { ServerRecord } from '../../shared/types';
 import { withMinLifetime } from '../../shared/utils/useMinLifetime';
 import { formatNumber } from '../../shared/utils/utils';
 import { useConnections } from '../composables/useConnections';
+import { useComparison } from '../composables/useComparison';
 import { copyTableAsDdl } from '../composables/useCopyTableDdl';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useModifyTable } from '../composables/useModifyTable';
@@ -26,6 +27,7 @@ export const TreeTableRow = component(
         const state = useServerTree();
         const navState = useNavState();
         const modifyTable = useModifyTable();
+        const comparison = useComparison();
 
         function getColumnItems(group: DetailCollectionTreeItem): DetailLeafTreeItem[] {
             const info = connections.getTableDetailsState(group.connectionId, group.tableName).info;
@@ -228,6 +230,17 @@ export const TreeTableRow = component(
                     {
                         type: 'separator',
                         id: `table-separator:${table.id}`,
+                    },
+                    {
+                        id: `table-compare:${table.id}`,
+                        label: 'Compare with...',
+                        iconClass: 'icon-[mdi--compare-horizontal]',
+                        action: async () => {
+                            await comparison.openTableComparison({
+                                connectionId: table.connectionId,
+                                tableName: table.name,
+                            });
+                        },
                     },
                     {
                         id: `table-copy-ddl:${table.id}`,
