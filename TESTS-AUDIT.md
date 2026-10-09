@@ -1,8 +1,8 @@
 # Test audit — what to test next
 
-**Status:** 379 unit tests (39 files) · 70 browser tests (18 files) · coverage over every source
-file **26.0 % statements / 20.8 % branches** · floors enforced in `vitest.config.js` ·
-**85 source files still at 0 %**.
+**Status:** 429 unit tests (42 files) · 74 browser tests (20 files) · coverage over every source
+file **29.1 % statements / 22.8 % branches** · floors enforced in `vitest.config.js` ·
+**still a long tail of 0 % files**.
 
 The long survey that drove the last round of fixes is recoverable from git:
 `git show 7e54f4c:TESTS-AUDIT.md`. This file is the work list.
@@ -18,7 +18,9 @@ The long survey that drove the last round of fixes is recoverable from git:
   `createFileSource(request, { label, schema })` (a temp SQLite file + source; `schema` seeds tables),
   `createMySqlServerAndConnection(request, MYSQL.database, label)`, `post(request, method, data)`
   (throws with the endpoint and body on failure), `requireMySqlDatabase(db, 'spec file')`,
-  `requireMySqlExecutable`, `requireFixtureData(value, message)`, `MYSQL`, `API`.
+  `requireMySqlExecutable`, `requireFixtureData(value, message)`, `MYSQL`, `API`, plus the sidebar
+  navigation helpers (`reloadSidebarRow`, `expandSidebarRow`, `openSidebarRowMenu`, `openSidebarTable`) —
+  sidebar rows are sticky, so navigation dispatches events instead of hit-testing a pinned row.
 - Never `test.skip` — call a `require*` precondition so a missing dependency fails loudly.
 - No `waitForTimeout`, no inline timeouts. Use `await expect(locator)…` or `await expect.poll(…)`.
 - Assert the exact value the user sees. Never `length > 0`, `toBeTruthy()` or a screenshot alone.
@@ -41,24 +43,14 @@ column, API + popup) · mysqldump dump output/defaults/menu visibility · run SQ
 reload, cursor stability · sticky sidebar rows · **add source through the form (SQLite + MySQL with a
 password)** · **multi-row "Delete N Rows"** · **two-change preview and the FK-violation dialog** ·
 **grid toolbar (column visibility, paging, page size, reload, custom query)** · **table create/delete,
-Copy as DDL, create database**.
+Copy as DDL, create database** · **foreign-key peek (relation, usages, empty states)** · **table
+comparison (differences, identical filter, breaking changes, Markdown export)** · **the HTTP API
+contract (all 54 backend handlers, their input guards and the server/connection/script/settings round
+trips)** · **PostgreSQL and SQL Server table lists and row counts**.
 
 ---
 
 ## Browser tasks (in priority order)
-
-### e2e-6 · Foreign-key peek (medium)
-`useForeignKeyPeek.ts` (773 lines, 0 % covered) plus `DbData.tsx:500-596`. New `e2e/fk-peek.spec.ts`
-on a seeded file source with two related tables: cell menu `Peek Relation` opens a popover with the
-referenced row, `Peek Usages` lists the referencing rows, and the popover shows the value it was opened
-for. Read the composable for the exact query it issues.
-
-### e2e-7 · Comparison modal (medium)
-`DbComparisonModal.tsx` + `useComparison.ts`. The *logic* is well unit-tested; the screen is not. New
-`e2e/comparison.spec.ts`: seed two SQLite files differing by a column, open `Compare with…` from the
-table menu (`TreeTableRow.tsx:236`), assert the differing row is listed with its direction, that
-`Differences only` hides identical rows, that a breaking change is marked, and that `Export Markdown`
-produces the report.
 
 ### e2e-8 · Tabs (medium)
 `DbTabs.tsx`, `DragTabs.tsx`. New `e2e/tabs.spec.ts`: open two scripts, close one and assert the
@@ -87,17 +79,6 @@ exposed by the preload, and one request/response round-trips through IPC. Needs 
 ---
 
 ## Unit tasks
-
-### unit-1 · The HTTP API contract (high)
-`src/backend/app.ts` — 531 lines at 0 %. `src/shared/utils/apiMethods.ts` declares 57 methods. New
-`src/mainview/tests/backend/appApi.spec.ts`: for every declared method assert the handler exists and
-that bad input is rejected with the documented message; then real round trips for the server/connection/
-script/settings groups against a temp SQLite app DB (pattern: `db-app.spec.ts`).
-
-### unit-2 · PostgreSQL and SQL Server schema helpers (high)
-`useMySqlSchemaHelper.getTableNames` is tested (`tableListRowCounts.spec.ts`); the Postgres and SQL Server
-equivalents (268 + 146 lines at 0 %) are not. Mirror that spec for both: one catalog query, no `COUNT(*)`,
-estimate-vs-exact row counts, views reported as `type: 'view'`.
 
 ### unit-3 · `useDbDataGrid.ts` menu and action planning (medium)
 493 lines at 0 %; it decides which grid menu items exist and what they do. Unit-test the planning
