@@ -31,6 +31,9 @@ export type DataGridEditingCell = {
     rowIndex: number;
     columnIndex: number;
     draftValue: string;
+    /** Draft as formatted when editing started. Committing an unchanged draft is a
+     *  no-op, so an editor that was merely opened and closed never marks the cell dirty. */
+    initialDraftValue?: string;
 };
 
 export type DataGridModalEditingCell = {
@@ -38,6 +41,8 @@ export type DataGridModalEditingCell = {
     rowIndex: number;
     columnIndex: number;
     draftValue: string;
+    /** See `DataGridEditingCell.initialDraftValue`. */
+    initialDraftValue?: string;
 };
 
 export type DataGridRowSelectionMode = 'replace' | 'toggle' | 'range';
@@ -125,7 +130,7 @@ type DataGridCommandKeydownContext = {
     isTextInputTarget: boolean;
 };
 
-type DataGridPendingChangeContext = DataGridCellChange & {
+export type DataGridPendingChangeContext = DataGridCellChange & {
     rawValue: DataGridCellValue;
 };
 

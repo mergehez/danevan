@@ -3,7 +3,17 @@ import DataGrid from '#datagrid/DataGrid.tsx';
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
-import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_ROW_HEIGHT, useDataGrid, useDataGridView, type DataGridRow, type TDataGridState } from '../../../datagrid';
+import {
+    DATA_GRID_COLUMN_MIN_WIDTH,
+    DATA_GRID_ROW_HEIGHT,
+    useDataGrid,
+    useDataGridView,
+    type DataGridCellValue,
+    type DataGridPendingChange,
+    type DataGridPendingChangeContext,
+    type DataGridRow,
+    type TDataGridState,
+} from '../../../datagrid';
 
 const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
 vi.stubGlobal('navigator', { clipboard: { writeText: writeClipboardText } });
@@ -22,6 +32,8 @@ type GridStateOptions = {
     canAddRow?: boolean;
     canDeleteSelectedRows?: boolean;
     getPendingRowState?: (rowIndex: number) => 'inserted' | 'deleted' | undefined;
+    parseEditingValue?: (draftValue: string, originalValue: DataGridCellValue) => DataGridCellValue;
+    createPendingChange?: (change: DataGridPendingChangeContext) => DataGridPendingChange;
 };
 
 type MockCanvasContext = CanvasRenderingContext2D & {
@@ -158,6 +170,8 @@ function createGridState(options: GridStateOptions = {}) {
         canAddRow: options.canAddRow,
         canDeleteSelectedRows: options.canDeleteSelectedRows,
         getPendingRowState: options.getPendingRowState,
+        parseEditingValue: options.parseEditingValue,
+        createPendingChange: options.createPendingChange,
     });
 
     return { columns, rows, state };
@@ -722,6 +736,48 @@ describe('DataGrid', () => {
 
         viewport.removeEventListener('keydown', gridKeydown);
         wrapper.unmount();
+    });
+
+    it('does not stage a change when the inline editor is closed without typing', () => {
+        const binary = new Uint8Array([137, 80, 78, 71]);
+        const { rows, state } = createGridState({
+            columns: ['id', 'board', 'score', 'doc'],
+            rows: [{ id: 1, board: binary, score: 42, doc: '{"a":1}' }],
+            parseEditingValue: (draftValue, originalValue) => (typeof originalValue === 'number' ? Number(draftValue) : draftValue),
+            createPendingChange: ({ rowIndex, columnName, nextValue, rawValue }) => ({ rowIndex, columnName, previousValue: rawValue, nextValue, rawValue }),
+        });
+
+        // A binary value is formatted as JSON and parsed back to a string, and a
+        // numeric value coerces — both used to look like edits on a mere blur.
+        for (const columnIndex of [1, 2, 3]) {
+            state.startEditingCell(0, columnIndex);
+            state.commitEditingCell();
+        }
+
+        expect(state.dirtyChanges).toHaveLength(0);
+        expect(rows.value[0]?.board).toBe(binary);
+        expect(rows.value[0]?.score).toBe(42);
+
+        // Typing still stages a change.
+        state.startEditingCell(0, 2);
+        state.setEditingValue('43');
+        state.commitEditingCell();
+
+        expect(state.dirtyChanges).toHaveLength(1);
+        expect(state.dirtyChanges[0]).toMatchObject({ columnName: 'score', nextValue: 43 });
+    });
+
+    it('does not mark a binary cell changed when the editor is blurred without typing', () => {
+        const binary = new Uint8Array([1, 2, 3]);
+        const { rows, state } = createGridState({
+            columns: ['id', 'board'],
+            rows: [{ id: 1, board: binary }],
+        });
+
+        state.startEditingCell(0, 1);
+        state.commitEditingCell();
+
+        expect(rows.value[0]?.board).toBe(binary);
     });
 
     it('never sorts by a column the result set does not have', () => {

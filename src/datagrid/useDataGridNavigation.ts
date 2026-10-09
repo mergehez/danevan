@@ -300,6 +300,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         internalState.editingCell.rowIndex = rowIndex;
         internalState.editingCell.columnIndex = columnIndex;
         internalState.editingCell.draftValue = options.formatEditingValue(resolvedCell.value);
+        internalState.editingCell.initialDraftValue = internalState.editingCell.draftValue;
 
         void nextTick(() => {
             const input = internalState.gridElement?.querySelector(`[data-editor-key="${rowIndex}:${columnIndex}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
@@ -323,6 +324,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         internalState.editingCell.rowIndex = -1;
         internalState.editingCell.columnIndex = -1;
         internalState.editingCell.draftValue = '';
+        internalState.editingCell.initialDraftValue = undefined;
         focusGrid();
     }
 
@@ -335,6 +337,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         internalState.modalEditingCell.rowIndex = -1;
         internalState.modalEditingCell.columnIndex = -1;
         internalState.modalEditingCell.draftValue = '';
+        internalState.modalEditingCell.initialDraftValue = undefined;
 
         if (options?.focusGrid ?? true) {
             focusGrid();
@@ -361,10 +364,18 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         internalState.modalEditingCell.rowIndex = rowIndex;
         internalState.modalEditingCell.columnIndex = columnIndex;
         internalState.modalEditingCell.draftValue = options.formatEditingValue(resolvedCell.value);
+        internalState.modalEditingCell.initialDraftValue = internalState.modalEditingCell.draftValue;
     }
 
     function commitModalEditingCell() {
         if (!internalState.modalEditingCell.open || internalState.modalEditingCell.rowIndex < 0 || internalState.modalEditingCell.columnIndex < 0) {
+            return;
+        }
+
+        // Saving an untouched draft must not stage a change: for object/binary
+        // values the format/parse round-trip is lossy and used to look like an edit.
+        if (internalState.modalEditingCell.initialDraftValue !== undefined && internalState.modalEditingCell.draftValue === internalState.modalEditingCell.initialDraftValue) {
+            closeModalEditingCell();
             return;
         }
 
@@ -394,6 +405,12 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
 
     function commitEditingCell() {
         if (internalState.editingCell.rowIndex < 0 || internalState.editingCell.columnIndex < 0) {
+            return;
+        }
+
+        // An editor that was opened and closed without typing is not an edit.
+        if (internalState.editingCell.initialDraftValue !== undefined && internalState.editingCell.draftValue === internalState.editingCell.initialDraftValue) {
+            cancelEditingCell();
             return;
         }
 
@@ -565,6 +582,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
             internalState.editingCell.rowIndex = -1;
             internalState.editingCell.columnIndex = -1;
             internalState.editingCell.draftValue = '';
+            internalState.editingCell.initialDraftValue = undefined;
         } else {
             internalState.editingCell.columnIndex = nextVisibleColumns.indexOf(editingColumnName);
         }
@@ -665,6 +683,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
             internalState.editingCell.rowIndex = -1;
             internalState.editingCell.columnIndex = -1;
             internalState.editingCell.draftValue = '';
+            internalState.editingCell.initialDraftValue = undefined;
             return;
         }
 
@@ -676,6 +695,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
                 internalState.editingCell.rowIndex = -1;
                 internalState.editingCell.columnIndex = -1;
                 internalState.editingCell.draftValue = '';
+                internalState.editingCell.initialDraftValue = undefined;
             }
         }
     }
@@ -684,6 +704,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         internalState.editingCell.rowIndex = -1;
         internalState.editingCell.columnIndex = -1;
         internalState.editingCell.draftValue = '';
+        internalState.editingCell.initialDraftValue = undefined;
         internalState.selectedRowIndexes = [];
         internalState.selectedColumnName = undefined;
         internalState.selectedCellRange = undefined;

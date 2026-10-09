@@ -26,6 +26,8 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
         internalState.editingCell.rowIndex = rowIndex;
         internalState.editingCell.columnIndex = columnIndex;
         internalState.editingCell.draftValue = nextValue === null ? '__NULL__' : formatDefaultEditingValue(nextValue);
+        // A menu-picked value is a deliberate change, even when it formats like the old one.
+        internalState.editingCell.initialDraftValue = undefined;
         nav.commitEditingCell();
     }
 
