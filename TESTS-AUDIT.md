@@ -1,8 +1,8 @@
 # Test audit — what to test next
 
-**Status:** 720 unit tests (64 files) · 89 browser tests (24 files) · 2 Electron shell tests
+**Status:** 747 unit tests (66 files) · 91 browser tests (24 files) · 2 Electron shell tests
 (dev build + packaged `.app`) ·
-coverage over every source file **38.4 % statements / 30.6 % branches** · aggregate and per-area
+coverage over every source file **38.6 % statements / 30.7 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
 
@@ -66,7 +66,12 @@ vs multi selection, header formatter menu, toolbar copy item, and the `useDbData
 `better-sqlite3` are proven to work, not just the dev build)** · **SQLite table DDL
 (`sqliteTableDdl.ts`: statement splitting with quoted and nested commas, column definition lookup,
 AUTOINCREMENT/COLLATE detection, and the `CREATE TABLE` generated for a modify plan)** · **a save against a dead connection keeps the pending change and says why in the save bar ·
-credentials the server rejects name the connection**.
+credentials the server rejects name the connection · an unreachable backend shows its "Request
+failed" panel instead of an empty shell and recovers on reload · a `mysqldump` path that is gone is
+reported in the export modal · an unwritable app data directory reports the path it could not use** ·
+**dialect SQL (`dialectSql.ts`: quoting per dialect, referential actions, TypeORM foreign keys,
+PostgreSQL statement preparation) and the Windows MySQL client lookup (`where.exe`, `Program Files`
+candidates, `bin\<command>.exe` scan)**.
 
 ---
 
@@ -84,31 +89,18 @@ loudly — the dialect where wrong SQL silently corrupts data is the one with no
 - _depends on_: a reachable PostgreSQL and SQL Server — the Docker and Podman CLIs are installed here
   but no daemon is running, so the images, credentials and seeded test databases are missing too.
 
-### e2e-14 · Startup and export failure modes (small)
-
-The failed save and the rejected credentials are covered (`failure-modes.spec.ts`); two failure modes
-still have no spec. An unwritable app data directory makes the backend throw `SqliteError: attempt to
-write a readonly database`, never listen on the API port, and leave every screen dead with no message
-— the shell must say so instead of showing an empty window. And a `mysqldump` executable that
-disappears between opening the export modal and submitting it must show its error in the modal (the
-API-level guard is covered in `appApi.spec.ts`, the screen is not). Both are implementable here: the
-read-only case only needs `APP_DATA_DIR` pointed at an unwritable directory, and the export modal lets
-the spec type a bogus executable path itself.
-
 ---
 
 ## Unit tasks
 
-### unit-8 · Remote driver SQL and value mapping (medium)
+### unit-8 · Remote driver DDL internals (medium)
 
-The SQLite driver's DDL now lives in `sqliteTableDdl.ts` and is covered; the remote drivers are still
-the largest uncovered code in the backend: `useMsAccessDriver.ts` (654 statements, 0.6 %),
-`useMySqlDriver.ts` (417, 6.5 %), `usePostgresDriver.ts` (297, 11.8 %) and
-`useMsAccessWindowsDriver.ts` (213, 4.2 %). Extract what decides the SQL that reaches those servers —
-identifier quoting, WHERE/LIMIT/OFFSET building, INSERT/UPDATE/DELETE and DDL generation, value
-coercion (dates, binary, bigint, NULL versus empty string) and error mapping — into pure helpers and
-cover them directly, the way the grid menus and the SQLite DDL were. No server is needed, and this is
-where a wrong string corrupts data.
+`dialectSql.ts` now covers what was extractable without a server (identifier quoting, referential
+actions, TypeORM foreign keys, PostgreSQL statement preparation); the rest of `useMySqlDriver.ts`
+(6 %) and `usePostgresDriver.ts` (12 %) is schema and DDL builder code that runs against a live
+server. Next slice: extract the pure DDL builders (index and ALTER statement generation) the way
+`sqliteTableDdl.ts` was, and cover the server-bound remainder through the write-path specs instead of
+unit tests. Extraction needs nothing; the remainder inherits e2e-13's dependency.
 
 ### unit-9 · MS Access driver and bridge (medium)
 
@@ -122,17 +114,15 @@ interaction as units, injecting the process boundary for the Java and PowerShell
   missing: Java 17 is installed, the `msaccess-runtime` jars are already cached under the app data
   directory, and `assets/test-access-db.mdb` is the fixture.
 
-### unit-10 · Windows process boundary (small)
+### unit-10 · Windows runner verification (small)
 
-`clientExecutables.spec.ts`, `sqlScriptRunner.spec.ts` and `bunSubprocess.spec.ts` are wrapped in
-`describe.skipIf(!hasPosixShell)`, so they disappear on Windows — exactly where client discovery,
-`MYSQL_PWD`, exit handling and the PowerShell probes differ. Inject the spawn/fs boundary so both the
-POSIX and win32 branches run on every platform, and keep one POSIX-only integration test for the real
-shell behaviour. Note the finding that motivates this: `findClientExecutable` is POSIX-only (`sh -c
-command -v` plus POSIX candidate paths), so on Windows the app cannot locate `mysql`/`mysqldump` at all.
+`findClientExecutable` now injects the process/fs boundary, so its Windows lookup (`where.exe`, the
+`Program Files` candidates and the `bin\<command>.exe` scan) is asserted on every platform — and the
+POSIX-only lookup that made the app unable to find `mysql`/`mysqldump` on Windows is fixed.
+`sqlScriptRunner.spec.ts` and `bunSubprocess.spec.ts` still wrap their real-spawn cases in
+`describe.skipIf(!hasPosixShell)`; run those on a Windows runner to prove the real process behaviour.
 
-- _depends on_: a Windows runner to prove the real `where.exe` and process behaviour; the
-  injected-boundary tests themselves run on any platform.
+- _depends on_: a Windows runner for the real-spawn specs (the injected-boundary specs run anywhere).
 
 ---
 
