@@ -85,9 +85,21 @@ describe('quoteSqlIdentifier / unquoteSqlIdentifier round trip', () => {
         }
     });
 
-    it('does not restore a qualified identifier, because unquote only strips the outer pair', () => {
-        expect(unquoteSqlIdentifier(quoteSqlIdentifier('app.users', 'mysql'))).toBe('app`.`users');
-        expect(unquoteSqlIdentifier(quoteSqlIdentifier('app.users', 'postgresql'))).toBe('app"."users');
-        expect(unquoteSqlIdentifier(quoteSqlIdentifier('app.users', 'sqlserver'))).toBe('app].[users');
+    it('restores every part of a qualified identifier', () => {
+        for (const dialect of dialects) {
+            expect(unquoteSqlIdentifier(quoteSqlIdentifier('app.users', dialect))).toBe('app.users');
+            expect(unquoteSqlIdentifier(quoteSqlIdentifier('app.public.users', dialect))).toBe('app.public.users');
+        }
+    });
+
+    it('keeps a dot that the quoting protects', () => {
+        expect(unquoteSqlIdentifier('`my.table`')).toBe('my.table');
+        expect(unquoteSqlIdentifier('"my.table"')).toBe('my.table');
+        expect(unquoteSqlIdentifier('[my.table]')).toBe('my.table');
+    });
+
+    it('unquotes a qualified name whose parts are padded', () => {
+        expect(unquoteSqlIdentifier('`app` . `users`')).toBe('app.users');
+        expect(unquoteSqlIdentifier(' [app] . [dbo] . [users] ')).toBe('app.dbo.users');
     });
 });
