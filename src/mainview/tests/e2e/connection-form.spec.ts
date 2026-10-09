@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { API, MYSQL, post, requireFixtureData, requireMySqlDatabase } from './helpers';
+import { API, MYSQL, post, reloadSidebarRow, requireFixtureData, requireMySqlDatabase } from './helpers';
 
 const ADD_SOURCE_BUTTON = 'aside button:has(i[class*="database-plus-outline"])';
 
@@ -29,25 +29,6 @@ async function createdIds(request: APIRequestContext, serverName: string, connec
 
 function serverRow(page: Page, serverId: number) {
     return page.locator(`[data-node-id="server:${serverId}"]`);
-}
-
-/** The chevron is the explicit toggle; collapse first so expanding really loads the children. */
-async function expandServer(page: Page, serverId: number) {
-    const row = serverRow(page, serverId);
-    await expect(row).toBeVisible();
-
-    const panel = row.locator('xpath=ancestor::div[contains(@class,"overflow-auto")][1]');
-    await panel.evaluate((element) => (element.scrollTop = element.scrollHeight));
-
-    const toggle = row.locator('[data-sidebar-toggle-for]');
-
-    if ((await row.getAttribute('data-sidebar-collapsed')) === 'false') {
-        await toggle.click();
-        await expect(row).toHaveAttribute('data-sidebar-collapsed', 'true');
-    }
-
-    await toggle.click();
-    await expect(row).toHaveAttribute('data-sidebar-collapsed', 'false');
 }
 
 test.describe('Create a connection through the form', () => {
@@ -87,7 +68,7 @@ test.describe('Create a connection through the form', () => {
             const row = serverRow(page, serverId);
             await expect(row).toContainText(sourceName);
 
-            await expandServer(page, serverId);
+            await reloadSidebarRow(row);
             await expect(page.locator(`[data-node-id="table:${ids.connectionId}:people"]`)).toContainText('people');
         } finally {
             if (serverId > 0) {

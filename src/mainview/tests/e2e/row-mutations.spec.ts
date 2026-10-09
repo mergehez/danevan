@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { API, MYSQL, createFileSource, createMySqlServerAndConnection, post, requireMySqlDatabase } from './helpers';
+import { API, MYSQL, createFileSource, createMySqlServerAndConnection, expandSidebarRow, openSidebarTable, post, reloadSidebarRow, requireMySqlDatabase } from './helpers';
 
 /** The row-number gutter, then the first body row and its height, as the canvas draws them. */
 const ROW_HEADER_X = 20;
@@ -31,22 +31,8 @@ async function peopleNames(request: APIRequestContext, connectionId: number) {
 }
 
 async function openPeopleTable(page: Page, source: Source) {
-    const serverRow = page.locator(`[data-node-id="server:${source.serverId}"]`);
-    await expect(serverRow).toBeVisible();
-
-    if ((await serverRow.getAttribute('data-sidebar-collapsed')) === 'false') {
-        await serverRow.locator('[data-sidebar-toggle-for]').click();
-        await expect(serverRow).toHaveAttribute('data-sidebar-collapsed', 'true');
-    }
-
-    await serverRow.locator('[data-sidebar-toggle-for]').click();
-
-    // A single click only toggles the row's details; the table opens on double click.
-    const tableRow = page.locator(`[data-node-id="table:${source.connectionId}:people"]`);
-    await expect(tableRow).toBeVisible();
-    await tableRow.dblclick();
-
-    await expect(page.getByTestId('data-grid-viewport')).toBeVisible();
+    await reloadSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
+    await openSidebarTable(page, source.connectionId, 'people');
 }
 
 /** Opens the row menu from the row-number gutter and picks an entry. */
@@ -77,21 +63,12 @@ async function saveChanges(page: Page) {
     await page.getByTestId('save-bar-save').click();
 }
 
-/** Expands a sidebar row when it is collapsed. */
-async function expandRow(row: ReturnType<Page['locator']>) {
-    await expect(row).toBeVisible();
-
-    if ((await row.getAttribute('data-sidebar-collapsed')) === 'true') {
-        await row.locator('[data-sidebar-toggle-for]').click();
-    }
-}
-
 type MySqlSource = Awaited<ReturnType<typeof createMySqlServerAndConnection>>;
 
 /** Expands a MySQL server down to one of its tables and opens it. */
 async function openMySqlTable(page: Page, source: MySqlSource, tableName: string) {
-    await expandRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
-    await expandRow(page.locator(`[data-node-id="connection:${source.connectionId}"]`));
+    await expandSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
+    await expandSidebarRow(page.locator(`[data-node-id="connection:${source.connectionId}"]`));
 
     // Tables can sit behind a "tables" group; the collection filter can flatten them.
     const tablesCollection = page.locator(`[data-collection-kind="tables"][data-parent-id="connection:${source.connectionId}"]`);
@@ -101,13 +78,10 @@ async function openMySqlTable(page: Page, source: MySqlSource, tableName: string
     await expect(tablesCollection.or(tableRow).first()).toBeVisible({ timeout: 15_000 });
 
     if ((await tablesCollection.count()) > 0) {
-        await expandRow(tablesCollection.first());
+        await expandSidebarRow(tablesCollection.first());
     }
 
-    await expect(tableRow).toBeVisible();
-    await tableRow.dblclick();
-
-    await expect(page.getByTestId('data-grid-viewport')).toBeVisible();
+    await openSidebarTable(page, source.connectionId, tableName);
 }
 
 /** Fills the Edit Row dialog and submits it, staging one change per edited column. */

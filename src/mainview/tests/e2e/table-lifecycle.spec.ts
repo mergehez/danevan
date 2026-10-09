@@ -1,24 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { API, MYSQL, createFileSource, createMySqlServerAndConnection, post, requireFixtureData, requireMySqlDatabase } from './helpers';
+import { API, MYSQL, createFileSource, createMySqlServerAndConnection, openSidebarRowMenu, post, reloadSidebarRow, requireFixtureData, requireMySqlDatabase } from './helpers';
 
 /** A source that already has one table, so the connection it creates really works. */
 const SEED_SCHEMA = `
     CREATE TABLE keep_me (id INTEGER PRIMARY KEY, note TEXT);
     INSERT INTO keep_me (id, note) VALUES (1, 'stays');
 `;
-
-async function expand(page: Page, serverId: number) {
-    const serverRow = page.locator(`[data-node-id="server:${serverId}"]`);
-    await expect(serverRow).toBeVisible();
-
-    // Collapse first: expanding is what loads the table list.
-    if ((await serverRow.getAttribute('data-sidebar-collapsed')) === 'false') {
-        await serverRow.locator('[data-sidebar-toggle-for]').click();
-        await expect(serverRow).toHaveAttribute('data-sidebar-collapsed', 'true');
-    }
-
-    await serverRow.locator('[data-sidebar-toggle-for]').click();
-}
 
 async function tableNames(request: APIRequestContext, connectionId: number) {
     const tables = await post(request, 'getTables', { connectionId });
@@ -27,7 +14,7 @@ async function tableNames(request: APIRequestContext, connectionId: number) {
 
 /** Picks an entry from a sidebar row's context menu. */
 async function rowMenu(page: Page, nodeId: string, item: string) {
-    await page.locator(`[data-node-id="${nodeId}"]`).click({ button: 'right' });
+    await openSidebarRowMenu(page.locator(`[data-node-id="${nodeId}"]`));
 
     const menuItem = page.locator('.v-menu-item', { hasText: item });
     await expect(menuItem).toBeVisible();
@@ -41,7 +28,7 @@ test.describe('Table lifecycle', () => {
 
         try {
             await page.goto('/');
-            await expand(page, source.serverId);
+            await reloadSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
 
             // Server menu entry 221 creates a table on the file source's only connection.
             await rowMenu(page, `server:${source.serverId}`, 'Create new table...');
@@ -95,7 +82,7 @@ test.describe('Table lifecycle', () => {
             await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
             await page.goto('/');
-            await expand(page, source.serverId);
+            await reloadSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
 
             await rowMenu(page, `table:${source.connectionId}:keep_me`, 'Copy as DDL');
 

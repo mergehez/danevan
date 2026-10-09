@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { API, createFileSource, post } from './helpers';
+import { API, createFileSource, openSidebarTable, post, reloadSidebarRow } from './helpers';
 
 /** The first body cell of a one-column result set, as the canvas draws it. */
 const FIRST_COLUMN_X = 78;
@@ -18,22 +18,8 @@ function peopleSchema() {
 type Source = Awaited<ReturnType<typeof createFileSource>>;
 
 async function openPeopleTable(page: Page, source: Source) {
-    const serverRow = page.locator(`[data-node-id="server:${source.serverId}"]`);
-    await expect(serverRow).toBeVisible();
-
-    // Collapse first: expanding is what loads the table list.
-    if ((await serverRow.getAttribute('data-sidebar-collapsed')) === 'false') {
-        await serverRow.locator('[data-sidebar-toggle-for]').click();
-        await expect(serverRow).toHaveAttribute('data-sidebar-collapsed', 'true');
-    }
-
-    await serverRow.locator('[data-sidebar-toggle-for]').click();
-
-    const tableRow = page.locator(`[data-node-id="table:${source.connectionId}:people"]`);
-    await expect(tableRow).toBeVisible();
-    await tableRow.dblclick();
-
-    await expect(page.getByTestId('data-grid-viewport')).toBeVisible();
+    await reloadSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
+    await openSidebarTable(page, source.connectionId, 'people');
 }
 
 /** Opens the in-cell editor of the first row from the grid's starting active cell. */

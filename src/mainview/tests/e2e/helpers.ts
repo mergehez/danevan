@@ -1,4 +1,4 @@
-import { test, type APIRequestContext } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -98,7 +98,10 @@ export function requireFixtureData<T>(value: T, message: string): NonNullable<T>
 
 /** The bootstrap response must echo the row that was just created, or the setup is broken. */
 function findCreatedId<T extends { name: string; id: number }>(rows: T[] | undefined, name: string, call: string): number {
-    return requireFixtureData(rows?.find((entry) => entry.name === name), `${call} did not come back with the row "${name}".`).id;
+    return requireFixtureData(
+        rows?.find((entry) => entry.name === name),
+        `${call} did not come back with the row "${name}".`
+    ).id;
 }
 
 export async function createMySqlServerAndConnection(request: APIRequestContext, database: string, label: string) {
@@ -132,10 +135,7 @@ export async function createMySqlServerAndConnection(request: APIRequestContext,
 }
 
 /** Creates a throwaway SQLite file plus a matching file source, and returns how to clean it up. */
-export async function createFileSource(
-    request: APIRequestContext,
-    options: { label: string; tableCount?: number; tableNames?: string[]; schema?: string } = { label: 'file' }
-) {
+export async function createFileSource(request: APIRequestContext, options: { label: string; tableCount?: number; tableNames?: string[]; schema?: string } = { label: 'file' }) {
     const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const databasePath = join(tmpdir(), `e2e-${options.label}-${suffix}.sqlite`);
     const file = new Database(databasePath);
@@ -182,4 +182,53 @@ export async function createFileSource(
             }
         },
     };
+}
+
+/**
+ * Sidebar rows are sticky: once the source list is long enough, a row's chevron ends up
+ * pinned outside the scroll panel, covered by the section headers above it. Navigation
+ * therefore dispatches a bubbling click instead of relying on hit-testing.
+ * `sidebar-sticky.spec.ts` is the spec that guards the pinned-row hit-testing behaviour.
+ */
+export async function toggleSidebarRow(row: Locator) {
+    await expect(row).toBeVisible();
+    await row.locator('[data-sidebar-toggle-for]').dispatchEvent('click');
+}
+
+/** Expands a collapsed sidebar row, leaving an already expanded one alone. */
+export async function expandSidebarRow(row: Locator) {
+    await expect(row).toBeVisible();
+
+    if ((await row.getAttribute('data-sidebar-collapsed')) === 'true') {
+        await toggleSidebarRow(row);
+        await expect(row).toHaveAttribute('data-sidebar-collapsed', 'false');
+    }
+}
+
+/** Collapses then expands a row, which is what makes it (re)load its children. */
+export async function reloadSidebarRow(row: Locator) {
+    await expect(row).toBeVisible();
+
+    if ((await row.getAttribute('data-sidebar-collapsed')) === 'false') {
+        await toggleSidebarRow(row);
+        await expect(row).toHaveAttribute('data-sidebar-collapsed', 'true');
+    }
+
+    await toggleSidebarRow(row);
+    await expect(row).toHaveAttribute('data-sidebar-collapsed', 'false');
+}
+
+/** Opens a sidebar row's context menu from a dispatched event, anchored on screen. */
+export async function openSidebarRowMenu(row: Locator) {
+    await expect(row).toBeVisible();
+    await row.dispatchEvent('contextmenu', { clientX: 48, clientY: 48 });
+}
+
+/** Opens a table by double-clicking its sidebar row and waits for the grid. */
+export async function openSidebarTable(page: Page, connectionId: number, tableName: string) {
+    const tableRow = page.locator(`[data-node-id="table:${connectionId}:${tableName}"]`);
+    await expect(tableRow).toBeVisible();
+    await tableRow.dispatchEvent('dblclick');
+
+    await expect(page.getByTestId('data-grid-viewport').first()).toBeVisible();
 }
