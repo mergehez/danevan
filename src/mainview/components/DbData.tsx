@@ -13,6 +13,7 @@ import { useConnections } from '../composables/useConnections';
 import { useDbDataGrid } from '../composables/useDbDataGrid';
 import { useDbSettings } from '../composables/useDbSettings';
 import { formatUsageRelationColumns, isFkPeekRowsView, isFkUsageListView, useForeignKeyPeekViews, type FkPeekRowsView } from '../composables/useForeignKeyPeek';
+import { useNavState } from '../composables/useNavState';
 import { useQuery } from '../composables/useQuery';
 import { useServers } from '../composables/useServers';
 import { DbGridToolbar } from './DbGridToolbar.tsx';
@@ -337,7 +338,11 @@ export const DbData = component(
             { immediate: true }
         );
 
-        const isLoading = computed(() => query.isLoadingTables || query.isLoadingSelectedTable);
+        // Activating a table tab first hydrates its connection's table list, and that
+        // phase used to leave the panel looking idle while the only hint was the
+        // global busy indicator in the corner of the window.
+        const navState = useNavState();
+        const isLoading = computed(() => query.isLoadingTables || query.isLoadingSelectedTable || navState.isActivatingTab);
 
         onBeforeUnmount(() => {
             for (const scope of peekGridScopes.values()) {

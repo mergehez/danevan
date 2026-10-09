@@ -1,4 +1,4 @@
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import type { QueryExecutionResult, SqlDiagnosticMarker } from '../../shared/types';
 import { strToNumber, uniqueId } from '../../shared/utils/utils';
 import { _dbCoreState } from './dbCoreState';
@@ -57,8 +57,10 @@ const createNavState = () => {
      *  open (which used to clobber the editor text on every keystroke). */
     let activatedTabHash: string | undefined;
     /** Activations run one after another; requests coalesce into the running one. */
-    let isActivating = false;
     let activationPending = false;
+    /** Same flag as a ref, so the main panel can show that a tab is loading
+     *  (hydrating a table list takes a round trip before any grid state exists). */
+    const isActivatingTab = ref(false);
 
     function setTabs(tabs: Tab[]) {
         settings.setTabs(tabs.map((tab) => normalizeStoredTab(tab)));
@@ -574,11 +576,11 @@ const createNavState = () => {
     function activateActiveTab() {
         activationPending = true;
 
-        if (isActivating) {
+        if (isActivatingTab.value) {
             return;
         }
 
-        isActivating = true;
+        isActivatingTab.value = true;
 
         void (async () => {
             try {
@@ -589,7 +591,7 @@ const createNavState = () => {
             } catch (error) {
                 tasks.reportError(error instanceof Error ? error.message : String(error));
             } finally {
-                isActivating = false;
+                isActivatingTab.value = false;
             }
         })();
     }
@@ -687,6 +689,7 @@ const createNavState = () => {
         scriptTabs,
         nonScriptTabs,
         activeTab,
+        isActivatingTab,
         closedTabs: computed(() => closedTabsState),
         getScriptTabRuntimeState,
         setScriptTabRuntimeState,
