@@ -41,13 +41,13 @@ connections, grid page sizes up to 2000 rows.
 
 ## Quick wins (small, low risk)
 
-| ID  | Task                                                                                    | Effort |
-| --- | --------------------------------------------------------------------------------------- | ------ |
-| T7  | `import type` in `src/electron/main.ts:6` + drop the duplicate `configureDatabase`      | 5 min  |
-| T9  | Probe the managed SQLFluff venv before running `pip install`                            | 15 min |
-| T13 | One-time cleanup of orphaned `tableInfo:*` settings rows                                | 15 min |
-| T3b | Always use catalog estimates for table _lists_ (keep exact counts for the opened table) | 30 min |
-| T5  | Debounce the grid search + cache formatted cell text                                    | 1–2 h  |
+| ID  | Task                                                                                    | Effort | Status |
+| --- | --------------------------------------------------------------------------------------- | ------ | ------ |
+| T7  | `import type` in `src/electron/main.ts:6` + drop the duplicate `configureDatabase`      | 5 min  | done   |
+| T9  | Probe the managed SQLFluff venv before running `pip install`                            | 15 min | done   |
+| T13 | One-time cleanup of orphaned `tableInfo:*` settings rows                                | 15 min | done   |
+| T3b | Always use catalog estimates for table _lists_ (keep exact counts for the opened table) | 30 min | done   |
+| T5  | Debounce the grid search + cache formatted cell text                                    | 1–2 h  |        |
 
 ## Tasks
 
@@ -114,7 +114,14 @@ already logs per-load timings; the backend logs `withTimedAppOperation` per requ
 
 ### T3 — Stop counting rows per table on the drivers that still do it — HIGH, high confidence
 
-- [ ] Not started (T3b is the quick part)
+- [x] T3b done; T3a not started
+- **T3b (done)**: MySQL/PostgreSQL/SQL Server table lists now answer from the catalog only
+  (`resolveListedRowCount` in `src/backend/useRemoteDriverTools.ts`, used by each driver's
+  `getTableNames`), with `rowCountIsEstimated: true` so the sidebar keeps the `~` marker. Exact
+  counts are still fetched when a table is opened (`readRowCount` → `resolveRowCount`).
+  Verified: MySQL `getTableNames` runs one `information_schema.tables` query and no `COUNT(*)`
+  (unit test `src/mainview/tests/backend/tableListRowCounts.spec.ts`); `getTables` for `wikiferheng`
+  is 27 ms and every listed row is flagged estimated (`open-table.spec.ts`).
 
 Evidence:
 
@@ -223,7 +230,12 @@ and drops well under 1 MB; compare first-paint time.
 
 ### T7 — Remove the duplicate backend from the Electron main bundle — HIGH, high confidence (quick win)
 
-- [ ] Not started
+- [x] Fixed — `import type { app as backendApp }` and the redundant
+  `useAppDb().configureDatabase(userDataDir)` (plus its `DANEVAN_DATA_DIR` resolver) are gone.
+  Verified by building the target with rolldown: `main.cjs` is **11,859 B** (was 2,587,107 B), holds
+  only the `package.json` mention of typeorm/mysql2 and no `configureDatabase` call; the single
+  execution now lives in `backend.cjs`. Guarded by
+  `src/mainview/tests/backend/electronMainEntry.spec.ts`.
 
 Evidence _(measured)_: `src/electron/main.ts:6` `import { app as backendApp } from '../backend/app.ts';`
 is used only in a type position at `:30`; because it is not `import type`, the bundle keeps it —
@@ -268,7 +280,12 @@ Verify: count PowerShell spawns and measure elapsed + peak memory for page 2 of 
 
 ### T9 — SQLFluff: probe the managed runtime instead of always running pip — MEDIUM (quick win)
 
-- [ ] Not started
+- [x] Fixed — `ensureManagedSqlFluffRuntime` probes `<pythonPath> -m sqlfluff --version` after the
+  venv exists and reuses the runtime when it answers, so a provisioned runtime never reaches pip
+  (`src/backend/sqlDiagnostics.ts`). Verified by
+  `src/mainview/tests/backend/sqlDiagnostics.spec.ts` (no `pip` call on the reuse path, one on the
+  broken-runtime path, one probe per process); the developer's managed runtime answers in **0.348 s**
+  with sqlfluff 4.1.0.
 
 Evidence: `src/backend/sqlDiagnostics.ts:172-175` runs
 `python -m pip install --disable-pip-version-check sqlfluff` whenever the managed path is taken; the
@@ -358,7 +375,12 @@ Verify: re-dump asar top-level sizes and the dmg size (target <60 MB).
 
 ### T13 — Clean the orphaned app-DB settings — LOW (quick win)
 
-- [ ] Not started
+- [x] Fixed — `cleanupLegacySettings` (`src/backend/appDbMaintenance.ts`) runs at the end of
+  `configureDatabase`: it deletes the `tableInfo:%` rows, `VACUUM`s and truncates the WAL once, and
+  warns about any remaining settings key this build does not read. Measured on a copy of the live
+  app DB (1,514 rows / 1,823,764 B before): **356 rows / 1,122 B after**, file **4,399,104 B →
+  69,632 B**, with all 8 servers, 28 connections and 4 scripts intact. Covered by
+  `src/mainview/tests/backend/appDbMaintenance.spec.ts`.
 
 Evidence _(measured on the live app DB)_: 1,512 settings rows totalling 1.83 MB, of which **1,158
 rows / ≈1.82 MB are `tableInfo:*` keys that no code reads or writes** (a cache removed from an
