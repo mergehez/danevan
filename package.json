@@ -35,7 +35,7 @@
         "test:ui": "vitest run",
         "test:coverage": "vitest run --coverage",
         "release:audit": "bun do.ts audit",
-        "release:validate": "vitest run && bun run test:e2e && bun run build",
+        "release:validate": "bun run test:coverage && bun run test:e2e && bun run build",
         "release:mac": "bun do.ts release",
         "release:mac:signed": "bun do.ts release --signed",
         "release:mac:notarize": "bun do.ts release --notarize",
