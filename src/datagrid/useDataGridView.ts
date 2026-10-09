@@ -525,6 +525,38 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         _state.isModalEditTextWrap = !_state.isModalEditTextWrap;
     }
 
+    /**
+     * The in-cell editor owns the keyboard while it is open: arrows move the
+     * caret instead of the grid, Enter commits and moves down, Escape cancels,
+     * and Tab commits sideways. None of these keys may reach the viewport.
+     */
+    function handleEditingKeydown(event: KeyboardEvent) {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.stopPropagation();
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            event.stopPropagation();
+            state.commitEditingCellAndMoveDown?.();
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            state.cancelEditingCell?.();
+            return;
+        }
+
+        if (event.key === 'Tab') {
+            event.preventDefault();
+            event.stopPropagation();
+            state.commitEditingCellAndContinue?.(event.shiftKey ? -1 : 1);
+        }
+    }
+
     watch(
         () => [
             _state.viewportWidth,
@@ -659,6 +691,7 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         gridFontFamilyCss: computed(() => _state.gridFontFamilyCss),
         gutterColumnWidth: computed(() => _state.gutterColumnWidth),
         handleEditingInputWheel,
+        handleEditingKeydown,
         headerCanvasElement: toRef(_state, 'headerCanvasElement'),
         headerCursor: computed(() => _state.headerCursor),
         isModalEditTextWrap: computed(() => _state.isModalEditTextWrap),

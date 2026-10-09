@@ -743,6 +743,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         resetViewState: navigation.resetViewState,
         commitEditingCell: navigation.commitEditingCell,
         commitEditingCellAndContinue: navigation.commitEditingCellAndContinue,
+        commitEditingCellAndMoveDown: navigation.commitEditingCellAndMoveDown,
         commitModalEditingCell: navigation.commitModalEditingCell,
         cancelEditingCell: navigation.cancelEditingCell,
         closeModalEditingCell: navigation.closeModalEditingCell,

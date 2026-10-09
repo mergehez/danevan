@@ -669,7 +669,7 @@ describe('DataGrid', () => {
         expect(localStorage.getItem(layoutStorageKey) ?? '').not.toContain('DateLastLogin');
     });
 
-    it('does not swallow keystrokes in the inline cell editor', async () => {
+    it('keeps arrow keys and Enter in the inline cell editor', async () => {
         const { state } = createGridState();
         const wrapper = mount(DataGrid, {
             attachTo: document.body,
@@ -680,16 +680,47 @@ describe('DataGrid', () => {
         state.startEditingCell(0, 1);
         await nextTick();
 
+        const viewport = wrapper.find('[tabindex="0"]').element as HTMLElement;
         const editor = wrapper.find('textarea').element as HTMLTextAreaElement;
 
         const typedEvent = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
         editor.dispatchEvent(typedEvent);
         expect(typedEvent.defaultPrevented).toBe(false);
 
-        const arrowEvent = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
-        editor.dispatchEvent(arrowEvent);
-        expect(arrowEvent.defaultPrevented).toBe(true);
+        const gridKeydown = vi.fn();
+        viewport.addEventListener('keydown', gridKeydown);
 
+        // The arrows belong to the caret: not cancelled (that would break the caret)
+        // and not propagated (that would move the grid's active cell).
+        for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+            const arrowEvent = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+            editor.dispatchEvent(arrowEvent);
+            expect(arrowEvent.defaultPrevented).toBe(false);
+        }
+
+        expect(gridKeydown).not.toHaveBeenCalled();
+        expect(state.activeCell).toMatchObject({ rowIndex: 0, columnIndex: 1 });
+        expect(state.editingCell).toMatchObject({ rowIndex: 0, columnIndex: 1 });
+
+        // Escape abandons the draft without touching the grid.
+        const escapeEvent = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        editor.dispatchEvent(escapeEvent);
+        expect(escapeEvent.defaultPrevented).toBe(true);
+        expect(state.editingCell.rowIndex).toBe(-1);
+        expect(state.activeCell).toMatchObject({ rowIndex: 0, columnIndex: 1 });
+
+        // Enter commits and moves the active cell one row down.
+        state.startEditingCell(0, 1);
+        await nextTick();
+        const reopened = wrapper.find('textarea').element as HTMLTextAreaElement;
+        const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        reopened.dispatchEvent(enterEvent);
+        expect(enterEvent.defaultPrevented).toBe(true);
+        expect(gridKeydown).not.toHaveBeenCalled();
+        expect(state.editingCell.rowIndex).toBe(-1);
+        expect(state.activeCell).toMatchObject({ rowIndex: 1, columnIndex: 1 });
+
+        viewport.removeEventListener('keydown', gridKeydown);
         wrapper.unmount();
     });
 

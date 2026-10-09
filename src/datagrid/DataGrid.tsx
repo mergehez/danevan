@@ -210,7 +210,7 @@ export const DataGrid = component(
                                     onInput={vs.onInput}
                                     onWheel={vs.handleEditingInputWheel}
                                     onBlur={() => props.state.commitEditingCell()}
-                                    onKeydown={preventedKeys(() => {}, ['left'])}
+                                    onKeydown={vs.handleEditingKeydown}
                                     class="absolute bg-x1 outline-none ring-1 ring-blue-300"
                                     style={vs.editingInputStyle}
                                 />

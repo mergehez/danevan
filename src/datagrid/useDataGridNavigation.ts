@@ -445,6 +445,31 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         startEditingCell(nextRowIndex, nextPosition.columnIndex);
     }
 
+    /** Commits the open editor and moves the active cell one row down. */
+    function commitEditingCellAndMoveDown() {
+        if (internalState.editingCell.rowIndex < 0 || internalState.editingCell.columnIndex < 0) {
+            return;
+        }
+
+        const nextPosition = keyboardNavigation.getVerticalTarget(
+            1,
+            getVisualPosition({ rowIndex: internalState.editingCell.rowIndex, columnIndex: internalState.editingCell.columnIndex })
+        );
+        commitEditingCell();
+
+        if (!nextPosition) {
+            return;
+        }
+
+        const nextRowIndex = getSourceRowIndexForVisualRowIndex(nextPosition.rowIndex);
+
+        if (nextRowIndex == null) {
+            return;
+        }
+
+        setActiveCell(nextRowIndex, nextPosition.columnIndex, { focus: true });
+    }
+
     function setEditingValue(value: string) {
         internalState.editingCell.draftValue = value;
     }
@@ -715,6 +740,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         commitModalEditingCell,
         commitEditingCell,
         commitEditingCellAndContinue,
+        commitEditingCellAndMoveDown,
         setEditingValue,
         reorderColumns,
         reorderColumnsAlphabetically,
