@@ -258,25 +258,27 @@ function getCurrentStatementEntities(entities: EntityContext[] | null | undefine
     return (entities || []).filter((entity) => entity.belongStmt.isContainCaret);
 }
 
-function getReferencedTableNames(entities: EntityContext[] | null | undefined) {
-    const tableNames = new Set<string>();
+/** Maps every referenced name (raw table, unquoted table or alias) to the unquoted table name. */
+function getReferencedTables(entities: EntityContext[] | null | undefined) {
+    const tables = new Map<string, string>();
 
     for (const entity of getCurrentStatementEntities(entities)) {
         if (entity.entityContextType !== EntityContextType.TABLE && entity.entityContextType !== EntityContextType.VIEW) {
             continue;
         }
 
-        tableNames.add(entity.text);
-        tableNames.add(unquoteSqlIdentifier(entity.text));
+        const tableName = unquoteSqlIdentifier(entity.text);
+        tables.set(entity.text, tableName);
+        tables.set(tableName, tableName);
         const alias = entity[AttrName.alias]?.text;
 
         if (alias) {
-            tableNames.add(alias);
-            tableNames.add(unquoteSqlIdentifier(alias));
+            tables.set(alias, tableName);
+            tables.set(unquoteSqlIdentifier(alias), tableName);
         }
     }
 
-    return tableNames;
+    return tables;
 }
 
 function getQualifierBeforeCursor(model: MonacoEditorModule.editor.ITextModel, position: MonacoEditorModule.Position) {
@@ -303,8 +305,8 @@ function getSchemaCompletionItems(
         (type) => type === EntityContextType.TABLE || type === EntityContextType.TABLE_CREATE || type === EntityContextType.VIEW || type === EntityContextType.VIEW_CREATE
     );
     const wantsColumns = Array.from(syntaxTypes).some((type) => type === EntityContextType.COLUMN || type === EntityContextType.COLUMN_CREATE);
-    const referencedTables = getReferencedTableNames(entities);
-    const resolvedQualifier = qualifier && referencedTables.has(qualifier) ? qualifier : undefined;
+    const referencedTables = getReferencedTables(entities);
+    const resolvedQualifier = qualifier ? referencedTables.get(qualifier) : undefined;
     const filteredColumns = schema.columns.filter((column) => {
         if (resolvedQualifier) {
             return column.tableName === resolvedQualifier;
