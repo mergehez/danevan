@@ -992,7 +992,7 @@ export const ModifyTableModal = component(
                     <div>
                         <div class={formGridClass}>
                             <div class={getLabelClass(isTableFieldDirty('name'))}>Name</div>
-                            <Input {...vModel(selTable, 'name')} small={true} />
+                            <Input {...vModel(selTable, 'name')} data-testid="modify-table-name" small={true} />
                             <div class={getLabelClass(isTableFieldDirty('comment'))}>Comment</div>
                             <Input {...vModel(selTable, 'comment')} small={true} />
                             <div class={getLabelClass(isTableFieldDirty('engine'))}>Engine</div>
