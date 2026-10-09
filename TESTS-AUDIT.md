@@ -25,6 +25,37 @@ would catch regressions. That is a good foundation — not a stability guarantee
 
 ---
 
+## 1a. Remediation status
+
+The findings below are the original audit. This table tracks what has since been fixed.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | `db-app.spec.ts` mocked the module under test | **Fixed** — rewritten against a real temp SQLite file; 6 tautological tests → 55 real ones, including the legacy `hidden`-column migration, FK cascade and every settings helper |
+| 2 | `app.spec.ts` had an assertion-free test and a conditional no-op | **Fixed** — the add-source test asserts the form swaps its fields with the selected driver; the schema-count test asserts the count against the API |
+| 3 | Nine `test.skip` guards made a missing MySQL a green run | **Fixed** — zero remain; specs call `requireMySqlDatabase` / `requireMySqlExecutable` / `requireFixtureData` from `e2e/helpers.ts`, which fail with an actionable message (`E2E_SKIP_MISSING_DB=1` is the one explicit opt-out) |
+| 4 | A 4-test "integration" spec no runner executed | **Fixed** — deleted (byte-identical to `e2e/mysqldump-export.spec.ts`) |
+| 5 | `release:validate` excluded a file that does not exist and skipped e2e | **Fixed** — now `vitest run && playwright test && build` |
+| 6 | No coverage measurement or threshold | **Fixed** — `@vitest/coverage-v8`, every source file counted, ratchets raised to 23/18/23/24 as coverage grew |
+| 7 | Bare `number \| undefined` types did not match SQLite's `null` | **Fixed** — the app DB client normalises NULL columns to `undefined` at the boundary |
+| 8 | 49.3 % of source LOC in modules no unit test imports | **Partly fixed** — +168 tests covering the comparison inputs, the conflict parser, the TypeORM mappers and the SQL splitter branches. `app.ts` (57 endpoints), the drivers, the directives and the Electron shell are still untested |
+| 9 | Core mutations have no browser coverage (edit/duplicate/delete row, save pipeline, comparison UI, FK peek, table lifecycle, tabs) | **Open** — see §5 and §8; this is now the largest gap |
+| 10 | Correctness-free tests (spy budgets, source-text matching, smoke-only mounts) | **Fixed** — `DataGrid` selection answers and mount branches, `useSqlHistory` ids, `compareSchemas` section counts and `tableListRowCounts` are asserted by value; the two bundling guards now parse the module graph with `@babel/parser` and were mutation-tested to prove they fail on the regression they guard; `bunSubprocess` fails loudly instead of passing vacuously when `pgrep` is missing |
+
+Current state: **370 unit tests in 39 files**, **coverage 25.8 % statements / 20.7 % branches /
+25.2 % functions / 26.3 % lines** measured over every source file. `vue-tsc` is clean.
+
+### Defects the new tests found
+
+| Where | Defect | Reachable today? |
+|---|---|---|
+| `dbColumnDataType.ts:172` | `getDbColumnDataTypeOptions('sqlserver' \| 'msaccess')` returns the **SQLite** type list (29 types incl. `varying character`, `int2`, `clob`), so adding a column to a SQL Server/Access table offers SQLite types | **Yes** — `ModifyTableModal.tsx:936` |
+| `mergeConflicts.ts:23` | The separator group `(^=======\n)` rejects `=======\r\n`, so a CRLF conflict block is never parsed and looks conflict-free | No — the module has no importer yet |
+| `sqlIdentifiers.ts:24-39` | `unquoteSqlIdentifier(quoteSqlIdentifier('app.users','mysql'))` → `` app`.`users ``; the quoting of the first part is not stripped | Only `monacoSqlLanguages.ts:270` could pass a qualified value |
+| `typeOrmMappers.ts:17-31` | `normalizeTypeOrmDefault(() => …)` returns `undefined` although the signature and `TableColumnInfo.defaultValue` say `string \| null` | No — driver loads pass catalog strings |
+
+---
+
 ## 2. Inventory
 
 | Suite | Runner | Files | Tests | Status |
