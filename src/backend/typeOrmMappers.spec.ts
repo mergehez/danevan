@@ -51,6 +51,23 @@ describe('normalizeTypeOrmDefault', () => {
         expect(normalizeTypeOrmDefault({ a: 1, b: null })).toBe('{"a":1,"b":null}');
         expect(normalizeTypeOrmDefault(['a', 'b'])).toBe('["a","b"]');
     });
+
+    it('calls a function default, which TypeORM uses to hold the SQL expression', () => {
+        // Regression: JSON.stringify dropped the function and reported a column with no default.
+        expect(normalizeTypeOrmDefault(() => 'CURRENT_TIMESTAMP')).toBe('CURRENT_TIMESTAMP');
+        expect(normalizeTypeOrmDefault(() => 7)).toBe('7');
+        expect(normalizeTypeOrmDefault(() => null)).toBeNull();
+        expect(normalizeTypeOrmDefault(() => undefined)).toBeNull();
+    });
+
+    it('answers null when a default cannot be represented at all', () => {
+        expect(normalizeTypeOrmDefault({ toJSON: () => undefined })).toBeNull();
+        expect(
+            normalizeTypeOrmDefault(() => {
+                throw new Error('metadata function blew up');
+            })
+        ).toBeNull();
+    });
 });
 
 describe('getTypeOrmIndexType', () => {

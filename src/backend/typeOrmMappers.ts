@@ -14,7 +14,7 @@ function quoteMySqlLiteral(value: string) {
     return `'${value.replaceAll("'", "''")}'`;
 }
 
-export function normalizeTypeOrmDefault(value: unknown) {
+export function normalizeTypeOrmDefault(value: unknown): string | null {
     if (value === undefined || value === null) {
         return null;
     }
@@ -27,7 +27,20 @@ export function normalizeTypeOrmDefault(value: unknown) {
         return String(value);
     }
 
-    return JSON.stringify(value);
+    // TypeORM entity metadata writes `default: () => 'CURRENT_TIMESTAMP'` to mean the expression
+    // itself; serializing it would drop the default entirely.
+    if (typeof value === 'function') {
+        try {
+            return normalizeTypeOrmDefault((value as () => unknown)());
+        } catch {
+            return null;
+        }
+    }
+
+    const serialized = JSON.stringify(value);
+
+    // JSON.stringify answers undefined for values it cannot represent (and for a toJSON that does).
+    return serialized === undefined ? null : serialized;
 }
 
 export function getTypeOrmIndexType(index: { isSpatial?: boolean; isFulltext?: boolean }) {
