@@ -106,7 +106,7 @@ export const DbGridToolbar = component(
                                 {visibleColumnCount.value} of {totalColumnCount.value} columns
                             </button>
                             {isColumnMenuOpen.value ? (
-                                <div ref={columnMenuElement} class="absolute left-0 top-full z-20 mt-1 min-w-40 border border-x4 bg-x1 py-1">
+                                <div ref={columnMenuElement} data-testid="grid-column-menu" class="absolute left-0 top-full z-20 mt-1 min-w-40 border border-x4 bg-x1 py-1">
                                     <div class="px-3 py-1 text-2xs opacity-60">Visible Columns</div>
                                     {(props.gridState.allColumns ?? []).map((columnName) => (
                                         <label class="flex items-center gap-2 px-3 py-1 text-xs hover:bg-white/8" key={columnName}>
@@ -154,7 +154,11 @@ export const DbGridToolbar = component(
                                         <span class="iconify icon-[mdi--chevron-down] h-3.5 w-3.5 opacity-70" />
                                     </button>
                                     {isPageSizeMenuOpen.value ? (
-                                        <div ref={pageSizeMenuElement} class="absolute left-0 right-0 top-full z-20 border-y border-x4 bg-x1 py-1">
+                                        <div
+                                            ref={pageSizeMenuElement}
+                                            data-testid="grid-page-size-menu"
+                                            class="absolute left-0 right-0 top-full z-20 border-y border-x4 bg-x1 py-1"
+                                        >
                                             <div class="px-3 py-1 text-2xs opacity-60">Page Size</div>
                                             {(props.pageSizeMenuOptions ?? []).map((option) => (
                                                 <button
