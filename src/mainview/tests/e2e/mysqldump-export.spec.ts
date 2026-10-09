@@ -1,6 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { existsSync, readFileSync, rmSync } from 'fs';
-import { API, MYSQL, createMySqlServerAndConnection, post, requireFixtureData, requireMySqlDatabase, requireMySqlExecutable } from './helpers';
+import {
+    API,
+    MYSQL,
+    createMySqlServerAndConnection,
+    expandSidebarRow,
+    openSidebarRowMenu,
+    post,
+    requireFixtureData,
+    requireMySqlDatabase,
+    requireMySqlExecutable,
+} from './helpers';
 
 const EXPORT_OPTIONS = {
     addDropTable: true,
@@ -46,7 +56,6 @@ test.describe('Export using mysqldump', () => {
 
             // The dump must contain real mysqldump output for the exported table.
             const content = readFileSync(outputPath, 'utf8');
-            expect(content.length).toBeGreaterThan(0);
             expect(content).toContain('-- MySQL dump');
             expect(content).toMatch(/CREATE TABLE/);
             expect(content).toContain(table);
@@ -55,6 +64,75 @@ test.describe('Export using mysqldump', () => {
                 rmSync(outputPath, { force: true });
             }
             await page.request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
+        }
+    });
+
+    test('exports from the modal with the chosen options', async ({ page, request }) => {
+        await requireMySqlDatabase(MYSQL.database, 'mysqldump-export.spec.ts');
+
+        const { serverId, connectionId } = await createMySqlServerAndConnection(request, MYSQL.database, 'mysqldump-submit');
+        const schemaPath = `/tmp/e2e-mysqldump-schema-${Date.now()}.sql`;
+        const dataPath = `/tmp/e2e-mysqldump-data-${Date.now()}.sql`;
+
+        try {
+            const executable = await requireMySqlExecutable(request, 'mysqldump', connectionId);
+            const tables = await post(request, 'getTables', { connectionId });
+            const table = requireFixtureData(
+                tables.find((entry: { type: string; rowCount: number }) => entry.type === 'table' && Number(entry.rowCount) > 0)?.name,
+                `The MySQL database "${MYSQL.database}" has no table with rows to dump; insert rows into a table before running this spec.`
+            );
+
+            await page.goto('/');
+            await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+            await expandSidebarRow(page.locator(`[data-node-id="server:${serverId}"]`));
+            await openSidebarRowMenu(page.locator(`[data-node-id="connection:${connectionId}"]`));
+            await page.locator('.v-menu-item', { hasText: 'Export using mysqldump...' }).click();
+
+            const modal = page.getByTestId('centered-modal-surface');
+            await expect(modal).toContainText('Export with mysqldump...');
+            // The executable was resolved for this connection, so Run is usable straight away.
+            await expect(modal.getByPlaceholder('/path/to/mysqldump')).toHaveValue(executable);
+            await expect(modal.getByPlaceholder('database_name')).toHaveValue(MYSQL.database);
+
+            await modal.getByPlaceholder('/path/to/dump.sql').fill(schemaPath);
+            await modal.getByPlaceholder('table1 table2').fill(table);
+
+            // Hold the request open so the progress state is observable.
+            await page.route('**/api/exportWithMysqldump', async (route) => {
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                await route.continue();
+            });
+
+            // Schema only: no data in the dump.
+            await modal.getByRole('checkbox', { name: 'Export schema without data' }).check();
+            await modal.getByRole('button', { name: 'Run', exact: true }).click();
+
+            await expect(modal.getByRole('button', { name: 'Running...', exact: true })).toBeVisible();
+            await expect(modal).toContainText(`Export written to ${schemaPath}`, { timeout: 15_000 });
+
+            expect(existsSync(schemaPath)).toBe(true);
+            const schemaDump = readFileSync(schemaPath, 'utf8');
+            expect(schemaDump).toContain(`CREATE TABLE \`${table}\``);
+            expect(schemaDump).not.toContain('INSERT INTO');
+
+            await page.unroute('**/api/exportWithMysqldump');
+
+            // Now the data, with the column names option on.
+            await modal.getByPlaceholder('/path/to/dump.sql').fill(dataPath);
+            await modal.getByRole('checkbox', { name: 'Export schema without data' }).uncheck();
+            await modal.getByRole('checkbox', { name: /Include column names in each INSERT/ }).check();
+            await modal.getByRole('button', { name: 'Run', exact: true }).click();
+
+            await expect(modal).toContainText(`Export written to ${dataPath}`, { timeout: 15_000 });
+
+            expect(existsSync(dataPath)).toBe(true);
+            const dataDump = readFileSync(dataPath, 'utf8');
+            expect(dataDump).toContain(`INSERT INTO \`${table}\` (\``);
+        } finally {
+            rmSync(schemaPath, { force: true });
+            rmSync(dataPath, { force: true });
+            await request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
         }
     });
 
