@@ -1062,7 +1062,7 @@ export const app = {
             username: server.username?.trim(),
         });
 
-        const [stderr, exitCode] = await executeCommandToFile({
+        const [stderr, exitCode, exitSignal] = await executeCommandToFile({
             command: executable,
             args,
             outputPath,
@@ -1070,7 +1070,7 @@ export const app = {
         });
 
         if (exitCode !== 0) {
-            throw new Error(stderr.trim() || `mysqldump exited with code ${exitCode}.`);
+            throw new Error(stderr.trim() || (exitSignal ? `mysqldump was terminated by ${exitSignal}.` : `mysqldump exited with code ${exitCode}.`));
         }
 
         return { outputPath };

@@ -89,7 +89,7 @@ export async function executeBufferCommand(params: CommandParams): Promise<[Buff
 }
 
 /** Spawns a command and streams its stdout directly to a file on disk. */
-export function executeCommandToFile(params: CommandParams & { outputPath: string }): Promise<[string, number | null]> {
+export function executeCommandToFile(params: CommandParams & { outputPath: string }): Promise<[string, number | null, NodeJS.Signals | null]> {
     return new Promise((resolve, reject) => {
         const child = spawn(params.command, params.args, {
             cwd: params.cwd,
@@ -103,18 +103,54 @@ export function executeCommandToFile(params: CommandParams & { outputPath: strin
         child.stdout.pipe(outputStream);
 
         let exitCode: number | null = null;
+        let exitSignal: NodeJS.Signals | null = null;
+        let didExit = false;
+        let didCloseOutput = false;
+        let settled = false;
 
-        child.on('error', (error) => {
+        // The exit code is known only after the process has closed, while the file is
+        // done earlier whenever stdout ends first. Resolving on either event alone can
+        // report a finished command as `exited with code null`, so both must be in.
+        function settle() {
+            if (settled || !didExit || !didCloseOutput) {
+                return;
+            }
+
+            settled = true;
+            stderrPromise.then((stderr) => resolve([stderr.toString(), exitCode, exitSignal]), reject);
+        }
+
+        function fail(error: Error) {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            // The output can never be written, so the command must not be left running
+            // with a stdout pipe nobody reads.
+            child.stdout?.unpipe(outputStream);
+            child.stdout?.resume();
+            child.kill('SIGTERM');
             outputStream.destroy();
             reject(error);
+        }
+
+        child.on('error', (error) => fail(error));
+
+        child.on('close', (code, signal) => {
+            exitCode = code;
+            exitSignal = signal;
+            didExit = true;
+            settle();
         });
 
-        child.on('close', (code) => {
-            exitCode = code;
+        outputStream.on('error', (error) => {
+            fail(new Error(`Could not write the output file ${params.outputPath}: ${error.message}`, { cause: error }));
         });
 
         outputStream.on('close', () => {
-            stderrPromise.then((stderr) => resolve([stderr.toString(), exitCode])).catch(reject);
+            didCloseOutput = true;
+            settle();
         });
     });
 }
