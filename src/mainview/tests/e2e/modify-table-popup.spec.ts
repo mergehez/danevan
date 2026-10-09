@@ -1,13 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-
-const API = 'http://127.0.0.1:3264/api';
-const MYSQL = {
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    password: '',
-    database: 'tirsik3_test',
-};
+import { expect, test, type Page } from '@playwright/test';
+import { API, MYSQL, post } from './helpers';
 
 function tableDdl(tableName: string) {
     return `CREATE TABLE \`${tableName}\` (
@@ -28,39 +20,34 @@ function tableDdl(tableName: string) {
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`;
 }
 
-async function post(request: APIRequestContext, method: string, data: unknown) {
-    const resp = await request.post(`${API}/${method}`, { data });
-    expect(resp.ok()).toBeTruthy();
-    return resp.json();
-}
-
-async function expand(page: Page, locator: ReturnType<Page['locator']>) {
+async function expand(locator: ReturnType<Page['locator']>) {
     await expect(locator).toBeVisible();
     if ((await locator.getAttribute('data-sidebar-collapsed')) === 'true') {
         await locator.click();
-        await page.waitForTimeout(300);
     }
 }
 
 async function openTableModifyPopup(page: Page, connectionId: number, tableName: string, serverId: number) {
-    await expand(page, page.locator(`[data-node-id="server:${serverId}"]`));
-    await expand(page, page.locator(`[data-node-id="connection:${connectionId}"]`));
+    await expand(page.locator(`[data-node-id="server:${serverId}"]`));
+    await expand(page.locator(`[data-node-id="connection:${connectionId}"]`));
 
     // In grouped mode tables sit behind a "tables" collection; in flat mode they are direct children.
     const tablesCollection = page.locator(`[data-testid="modify-collection"][data-collection-kind="tables"]`);
+    const tableRow = page.locator(`[data-node-id="table:${connectionId}:${tableName}"]`);
+
+    // The table list arrives asynchronously once the connection expands.
+    await expect(tablesCollection.or(tableRow).first()).toBeVisible({ timeout: 10_000 });
+
     if ((await tablesCollection.count()) > 0) {
-        await expand(page, tablesCollection);
+        await expand(tablesCollection);
     }
 
-    const tableRow = page.locator(`[data-node-id="table:${connectionId}:${tableName}"]`);
-    await expect(tableRow).toBeVisible({ timeout: 10_000 });
+    await expect(tableRow).toBeVisible();
     await tableRow.click({ button: 'right' });
-    await page.waitForTimeout(300);
 
     const menuItem = page.locator('.v-menu-item', { hasText: 'Modify Table...' });
     await expect(menuItem).toBeVisible();
     await menuItem.click();
-    await page.waitForTimeout(300);
 
     // Wait for the modal to finish loading the table metadata (columns become visible).
     await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"]').first()).toBeVisible({ timeout: 10_000 });
@@ -91,9 +78,10 @@ async function dragColumnOnto(page: Page, sourceName: string, targetName: string
     await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
     await page.mouse.down();
     await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 25 });
-    await page.waitForTimeout(150);
+
+    // The dragover handler marks the drop target; wait for it instead of a fixed pause.
+    await expect(columnItem(page, targetName)).toHaveClass(/ring-1/);
     await page.mouse.up();
-    await page.waitForTimeout(250);
 }
 test.describe('Modify table popup (e2e)', () => {
     let serverId = -1;
@@ -148,7 +136,6 @@ test.describe('Modify table popup (e2e)', () => {
     test('opens the Modify Table popup and shows the columns', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         await openTableModifyPopup(page, connectionId, tableName, serverId);
 
@@ -160,7 +147,6 @@ test.describe('Modify table popup (e2e)', () => {
     test('adds a column through the popup', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         await openTableModifyPopup(page, connectionId, tableName, serverId);
 
@@ -181,7 +167,6 @@ test.describe('Modify table popup (e2e)', () => {
     test('changes a column type through the popup', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         await openTableModifyPopup(page, connectionId, tableName, serverId);
 
@@ -200,7 +185,6 @@ test.describe('Modify table popup (e2e)', () => {
     test('offers undo and redo while a draft change is pending', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         await openTableModifyPopup(page, connectionId, tableName, serverId);
 
@@ -226,7 +210,6 @@ test.describe('Modify table popup (e2e)', () => {
     test('moves a column down once through the popup', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         await openTableModifyPopup(page, connectionId, tableName, serverId);
 
@@ -246,14 +229,20 @@ test.describe('Modify table popup (e2e)', () => {
     test('drags two columns to the front through the popup', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         await openTableModifyPopup(page, connectionId, tableName, serverId);
 
         // Drag `size`, then `height`, above `id`. The second move has to be applied
         // against the order the first one leaves behind.
+        const columnOrder = () =>
+            page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"]').evaluateAll((items) => items.map((item) => item.getAttribute('data-nav-title')));
+
         await dragColumnOnto(page, 'size', 'id');
+        await expect.poll(columnOrder).toEqual(['size', 'id', 'name', 'path', 'description', 'foo_user_id', 'height', 'width', 'last_synced_at', 'created_at', 'created_by']);
+
         await dragColumnOnto(page, 'height', 'id');
+        await expect.poll(columnOrder).toEqual(['size', 'height', 'id', 'name', 'path', 'description', 'foo_user_id', 'width', 'last_synced_at', 'created_at', 'created_by']);
+
         await page.locator('[data-testid="modify-apply"]').click();
 
         await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
@@ -283,7 +272,6 @@ test.describe('Modify table popup (e2e)', () => {
 
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         await openTableModifyPopup(page, connectionId, tableName, serverId);
 

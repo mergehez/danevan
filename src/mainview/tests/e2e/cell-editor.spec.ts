@@ -1,14 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { rmSync } from 'node:fs';
-
-const API = 'http://127.0.0.1:3264/api';
-
-async function post(request: APIRequestContext, method: string, data: unknown) {
-    const resp = await request.post(`${API}/${method}`, { data });
-    expect(resp.ok()).toBeTruthy();
-    return resp.json();
-}
+import { API, post } from './helpers';
 
 /** A SQLite table whose cells cover the value kinds that used to round-trip lossily. */
 async function createNotesSource(request: APIRequestContext) {
@@ -90,7 +83,6 @@ test.describe('In-cell editor keyboard', () => {
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             await openNotesTable(page, source.connectionId, source.serverId);
 
@@ -132,7 +124,6 @@ test.describe('In-cell editor keyboard', () => {
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             await openNotesTable(page, source.connectionId, source.serverId);
 

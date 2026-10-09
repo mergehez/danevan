@@ -1,59 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { rmSync, writeFileSync } from 'fs';
 import { basename } from 'path';
-
-const API = 'http://127.0.0.1:3264/api';
-
-// A real local MySQL database used to verify that scripts actually execute.
-const MYSQL = {
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    password: '',
-    database: 'tirsik3_test',
-};
-
-async function createMySqlServerAndConnection(request: APIRequestContext, database = MYSQL.database) {
-    const suffix = Date.now().toString();
-    const serverName = `e2e-run-script-server-${suffix}`;
-    const connectionName = `e2e-run-script-conn-${suffix}`;
-
-    const serverResp = await request.post(`${API}/createServer`, {
-        data: {
-            name: serverName,
-            kind: 'server',
-            driver: 'mysql',
-            filePath: undefined,
-            host: MYSQL.host,
-            port: MYSQL.port,
-            username: MYSQL.username,
-            password: MYSQL.password,
-        },
-    });
-    expect(serverResp.ok()).toBe(true);
-
-    const serverBootstrap = await serverResp.json();
-    const server = serverBootstrap.servers.find((entry: { name: string }) => entry.name === serverName);
-    expect(server).toBeTruthy();
-
-    const connectionResp = await request.post(`${API}/createConnection`, {
-        data: {
-            serverId: server.id,
-            name: connectionName,
-            host: MYSQL.host,
-            port: MYSQL.port,
-            databaseName: database,
-            readonly: false,
-        },
-    });
-    expect(connectionResp.ok()).toBe(true);
-
-    const connectionBootstrap = await connectionResp.json();
-    const connection = connectionBootstrap.connections.find((entry: { server_id: number }) => entry.server_id === server.id);
-    expect(connection).toBeTruthy();
-
-    return { serverId: server.id, connectionId: connection.id, connectionName };
-}
+import { API, MYSQL, createMySqlServerAndConnection, post, requireMySqlDatabase } from './helpers';
 
 /** Polls a started run until it settles, collecting the streamed output. */
 async function waitForRunToSettle(request: APIRequestContext, runId: string) {
@@ -64,10 +12,7 @@ async function waitForRunToSettle(request: APIRequestContext, runId: string) {
     const deadline = Date.now() + 8_000;
 
     while (status === 'running' && Date.now() < deadline) {
-        const pollResp = await request.post(`${API}/getRunSqlScriptStatus`, { data: { runId, offset } });
-        expect(pollResp.ok()).toBe(true);
-
-        const snapshot = await pollResp.json();
+        const snapshot = await post(request, 'getRunSqlScriptStatus', { runId, offset });
         output += snapshot.outputChunk;
         offset = snapshot.nextOffset;
         status = snapshot.status;
@@ -83,7 +28,9 @@ async function waitForRunToSettle(request: APIRequestContext, runId: string) {
 
 test.describe('Run SQL script', () => {
     test('startRunSqlScript executes a real SQL file and streams its output', async ({ page }) => {
-        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request);
+        await requireMySqlDatabase(MYSQL.database, 'run-sql-script.spec.ts');
+
+        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request, MYSQL.database, 'run-script');
         const suffix = Date.now().toString();
         const tableName = `e2e_run_script_${suffix}`;
         const scriptPath = `/tmp/e2e-run-sql-script-${suffix}.sql`;
@@ -100,22 +47,17 @@ test.describe('Run SQL script', () => {
         );
 
         try {
-            const tablesResp = await page.request.post(`${API}/getTables`, { data: { connectionId } });
-            test.skip(!tablesResp.ok(), `Could not reach the local MySQL database (${MYSQL.database}).`);
-
-            const defaultsResp = await page.request.post(`${API}/getRunSqlScriptDefaults`, { data: { connectionId, filePath: scriptPath } });
-            expect(defaultsResp.ok()).toBe(true);
-            const defaults = await defaultsResp.json();
+            const defaults = await post(page.request, 'getRunSqlScriptDefaults', { connectionId, filePath: scriptPath });
             expect(defaults.scriptName).toBe(basename(scriptPath));
             expect(defaults.scriptSize).toBeGreaterThan(0);
             expect(defaults.database).toBe(MYSQL.database);
             expect(['client', 'driver']).toContain(defaults.runner);
 
-            const startResp = await page.request.post(`${API}/startRunSqlScript`, {
-                data: { connectionId, filePath: scriptPath, executable: defaults.executable },
+            const { runId } = await post(page.request, 'startRunSqlScript', {
+                connectionId,
+                filePath: scriptPath,
+                executable: defaults.executable,
             });
-            expect(startResp.ok()).toBe(true);
-            const { runId } = await startResp.json();
             expect(typeof runId).toBe('string');
 
             const run = await waitForRunToSettle(page.request, runId);
@@ -127,8 +69,7 @@ test.describe('Run SQL script', () => {
             expect(run.output).toContain('ran from a file');
 
             // The script really ran: the table it created is now visible.
-            const afterResp = await page.request.post(`${API}/getTables`, { data: { connectionId } });
-            const tables = await afterResp.json();
+            const tables = await post(page.request, 'getTables', { connectionId });
             expect(tables.some((table: { name: string }) => table.name === tableName)).toBe(true);
 
             await page.request.post(`${API}/stopRunSqlScript`, { data: { runId } });
@@ -142,7 +83,9 @@ test.describe('Run SQL script', () => {
     });
 
     test('connection menu runs a picked SQL file and shows the finished alert', async ({ page }) => {
-        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request);
+        await requireMySqlDatabase(MYSQL.database, 'run-sql-script.spec.ts');
+
+        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request, MYSQL.database, 'run-script');
         const suffix = Date.now().toString();
         const tableName = `e2e_run_script_ui_${suffix}`;
         const scriptPath = `/tmp/e2e-run-sql-script-ui-${suffix}.sql`;
@@ -151,7 +94,7 @@ test.describe('Run SQL script', () => {
 
         // The native open dialog cannot be shown by the browser dev server, so the
         // picker answers with the script we just wrote and everything else goes to the API.
-        await page.addInitScript((pickedPath: string) => {
+        await page.addInitScript(({ api, pickedPath }: { api: string; pickedPath: string }) => {
             window.electronAPI = {
                 invoke: (method: string, ...args: unknown[]) => {
                     if (method === 'pickDatabaseFile') {
@@ -159,7 +102,7 @@ test.describe('Run SQL script', () => {
                     }
 
                     const params = args[0];
-                    return fetch(`http://127.0.0.1:3264/api/${method}`, {
+                    return fetch(`${api}/${method}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: params !== undefined ? JSON.stringify(params) : undefined,
@@ -177,12 +120,9 @@ test.describe('Run SQL script', () => {
                 onNativeCommand: () => () => {},
                 sendDiagnostic: () => undefined,
             };
-        }, scriptPath);
+        }, { api: API, pickedPath: scriptPath });
 
         try {
-            const tablesResp = await page.request.post(`${API}/getTables`, { data: { connectionId } });
-            test.skip(!tablesResp.ok(), `Could not reach the local MySQL database (${MYSQL.database}).`);
-
             await page.goto('/');
 
             const serverRow = page.locator(`[data-node-id="server:${serverId}"]`);

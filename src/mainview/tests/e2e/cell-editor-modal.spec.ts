@@ -1,19 +1,12 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { rmSync } from 'node:fs';
-
-const API = 'http://127.0.0.1:3264/api';
+import { API, post } from './helpers';
 
 /** Column 0 of a one-column table starts here for both the 42px row-number gutter and the compact 18px one. */
 const FIRST_COLUMN_X = 78;
 const FIRST_ROW_Y = 46;
 const ROW_HEIGHT = 25;
-
-async function post(request: APIRequestContext, method: string, data: unknown) {
-    const resp = await request.post(`${API}/${method}`, { data });
-    expect(resp.ok()).toBeTruthy();
-    return resp.json();
-}
 
 async function createDocsSource(request: APIRequestContext) {
     const suffix = Date.now().toString();
@@ -89,7 +82,6 @@ test.describe('Edit cell value dialog', () => {
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             await openDocsTable(page, source.connectionId, source.serverId);
             await openModalEditor(page);
@@ -109,7 +101,6 @@ test.describe('Edit cell value dialog', () => {
             // The preference survives an app restart too.
             await page.reload();
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             await openDocsTable(page, source.connectionId, source.serverId);
             await openModalEditor(page);
@@ -126,7 +117,6 @@ test.describe('Edit cell value dialog', () => {
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             await openDocsTable(page, source.connectionId, source.serverId);
             await openModalEditor(page);

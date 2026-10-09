@@ -1,48 +1,5 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
-
-const API = 'http://127.0.0.1:3264/api';
-const MYSQL = {
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    password: '',
-    database: 'tirsik3_test',
-};
-
-async function post(request: APIRequestContext, method: string, data: unknown) {
-    const resp = await request.post(`${API}/${method}`, { data });
-    expect(resp.ok()).toBeTruthy();
-    return resp.json();
-}
-
-async function createMySqlServerAndConnection(request: APIRequestContext) {
-    const suffix = Date.now().toString();
-    const serverName = `e2e-hide-server-${suffix}`;
-    const serverBootstrap = await post(request, 'createServer', {
-        name: serverName,
-        kind: 'server',
-        driver: 'mysql',
-        filePath: undefined,
-        host: MYSQL.host,
-        port: MYSQL.port,
-        username: MYSQL.username,
-        password: MYSQL.password,
-    });
-    const serverId = serverBootstrap.servers.find((entry: { name: string }) => entry.name === serverName).id;
-
-    const connectionName = `e2e-hide-conn-${suffix}`;
-    const connectionBootstrap = await post(request, 'createConnection', {
-        serverId,
-        name: connectionName,
-        host: MYSQL.host,
-        port: MYSQL.port,
-        databaseName: MYSQL.database,
-        readonly: false,
-    });
-    const connectionId = connectionBootstrap.connections.find((entry: { name: string }) => entry.name === connectionName).id;
-
-    return { serverId, connectionId, connectionName };
-}
+import { API, MYSQL, createMySqlServerAndConnection, post } from './helpers';
 
 // Port 1 refuses immediately, so failures are fast rather than waiting for the connect timeout.
 async function createUnreachableServerAndConnection(request: APIRequestContext) {
@@ -81,12 +38,11 @@ test.describe('Server connections', () => {
         const failures: string[] = [];
         page.on('pageerror', (error) => failures.push(error.message));
 
-        const { serverId } = await createMySqlServerAndConnection(request);
+        const { serverId } = await createMySqlServerAndConnection(request, MYSQL.database, 'hide');
 
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             await page.locator(`[data-node-id="server:${serverId}"]`).click({ button: 'right' });
             await page.locator('.v-menu-item', { hasText: 'Update...' }).click();
@@ -110,7 +66,7 @@ test.describe('Server connections', () => {
     });
 
     test('lists connections alphabetically instead of by insertion order', async ({ page }) => {
-        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request);
+        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request, MYSQL.database, 'hide');
 
         try {
             // Created second, but it sorts before the generated `e2e-hide-conn-…` name.
@@ -127,14 +83,12 @@ test.describe('Server connections', () => {
 
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             const serverRow = page.locator(`[data-node-id="server:${serverId}"]`);
             await expect(serverRow).toBeVisible();
 
             if ((await serverRow.getAttribute('data-sidebar-collapsed')) === 'true') {
                 await serverRow.click();
-                await page.waitForTimeout(500);
             }
 
             const connectionRows = page.locator(`[data-parent-id="server:${serverId}"]`);
@@ -148,7 +102,7 @@ test.describe('Server connections', () => {
     });
 
     test('keeps the saved scripts and can be undone from "Choose databases..."', async ({ request }) => {
-        const { serverId, connectionId } = await createMySqlServerAndConnection(request);
+        const { serverId, connectionId } = await createMySqlServerAndConnection(request, MYSQL.database, 'hide');
 
         try {
             const scriptBootstrap = await post(request, 'createScript', { connectionId, name: 'kept script', sqlText: 'SELECT 1' });
@@ -169,19 +123,17 @@ test.describe('Server connections', () => {
     });
 
     test('the "Choose databases" popover applies a toggle immediately', async ({ page }) => {
-        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request);
+        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request, MYSQL.database, 'hide');
 
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             const serverRow = page.locator(`[data-node-id="server:${serverId}"]`);
             await expect(serverRow).toBeVisible();
 
             if ((await serverRow.getAttribute('data-sidebar-collapsed')) === 'true') {
                 await serverRow.click();
-                await page.waitForTimeout(500);
             }
 
             const connectionRow = page.locator(`[data-node-id="connection:${connectionId}"]`);
@@ -212,14 +164,12 @@ test.describe('Server connections', () => {
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             const serverRow = page.locator(`[data-node-id="server:${serverId}"]`);
             await expect(serverRow).toBeVisible();
 
             if ((await serverRow.getAttribute('data-sidebar-collapsed')) === 'true') {
                 await serverRow.click();
-                await page.waitForTimeout(500);
             }
 
             // Expanding the connection loads its tables, which fails against the dead host.
@@ -239,7 +189,6 @@ test.describe('Server connections', () => {
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             const serverRow = page.locator(`[data-node-id="server:${serverId}"]`);
             await expect(serverRow).toBeVisible();
@@ -256,19 +205,17 @@ test.describe('Server connections', () => {
     });
 
     test('hides from the sidebar without asking for confirmation', async ({ page }) => {
-        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request);
+        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request, MYSQL.database, 'hide');
 
         try {
             await page.goto('/');
             await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-            await page.waitForTimeout(3000);
 
             const serverRow = page.locator(`[data-node-id="server:${serverId}"]`);
             await expect(serverRow).toBeVisible();
 
             if ((await serverRow.getAttribute('data-sidebar-collapsed')) === 'true') {
                 await serverRow.click();
-                await page.waitForTimeout(500);
             }
 
             const connectionRow = page.locator(`[data-node-id="connection:${connectionId}"]`);

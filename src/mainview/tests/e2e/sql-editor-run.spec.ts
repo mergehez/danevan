@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { rmSync } from 'node:fs';
+import { API, post } from './helpers';
 
 /**
  * What the SQL editor shows must be what Run sends. The editor is a controlled
@@ -10,14 +11,6 @@ import { rmSync } from 'node:fs';
  * the visible text and the executed SQL drift apart and Run replays an older
  * script from the same tab.
  */
-
-const API = 'http://127.0.0.1:3264/api';
-
-async function post(request: APIRequestContext, method: string, data: unknown) {
-    const resp = await request.post(`${API}/${method}`, { data });
-    expect(resp.ok()).toBeTruthy();
-    return resp.json();
-}
 
 async function createFileSource(request: APIRequestContext, scriptText: string) {
     const suffix = Date.now().toString();
@@ -43,7 +36,6 @@ async function createFileSource(request: APIRequestContext, scriptText: string) 
 async function openApp(page: Page) {
     await page.goto('/');
     await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-    await page.waitForTimeout(3000);
 }
 
 /** Scripts live in their own sidebar tree: a connection group that has to be
@@ -119,8 +111,8 @@ test.describe('SQL editor run', () => {
             await openScriptTab(page, source.connectionId, source.scriptId, 'old_probe;');
 
             await replaceEditorText(page, 'select 3333 as kept_probe;');
-            // The tab's draft is written on a short timer; reload once it settled.
-            await page.waitForTimeout(1000);
+            // The tab's draft is written on a short timer; reload only once it reached the cache.
+            await expect.poll(() => page.evaluate(() => localStorage.getItem('settings') ?? '')).toContain('kept_probe');
             await openApp(page);
 
             await expect(page.locator('.monaco-editor .view-lines')).toContainText('kept_probe', { timeout: 15_000 });

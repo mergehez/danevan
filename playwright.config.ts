@@ -6,10 +6,12 @@ export default defineConfig({
     testDir: './src/mainview/tests/e2e',
     fullyParallel: false,
     forbidOnly: !!process.env.CI,
-    retries: process.env.CI ? 2 : 0,
+    // No retries: the suite is sleep-free and deterministic, so a retry would only hide
+    // the flake it should be reporting. The slowest test runs in ~3s.
+    retries: 0,
     workers: 1,
     reporter: 'html',
-    timeout: 60_000,
+    timeout: 15_000,
     use: {
         baseURL: `http://127.0.0.1:${FRONTEND_PORT}`,
         trace: 'on-first-retry',

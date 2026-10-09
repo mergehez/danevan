@@ -72,9 +72,12 @@ export async function requireMySqlDatabase(database: string, what = 'this spec')
     }
 }
 
-/** Fails unless `findExecutable` reports a real path, so an export test cannot silently disappear. */
-export async function requireMySqlExecutable(request: APIRequestContext, executable: string) {
-    const defaults = await post(request, 'getMysqldumpExportDefaults', {});
+/**
+ * Fails unless `findExecutable` reports a real path, so an export test cannot silently disappear.
+ * The defaults endpoint resolves the binary for a connection, hence the connection id.
+ */
+export async function requireMySqlExecutable(request: APIRequestContext, executable: string, connectionId: number) {
+    const defaults = await post(request, 'getMysqldumpExportDefaults', { connectionId });
     const resolved = executable === 'mysqldump' ? defaults.executable : undefined;
 
     if (!resolved) {
@@ -82,6 +85,20 @@ export async function requireMySqlExecutable(request: APIRequestContext, executa
     }
 
     return resolved as string;
+}
+
+/** Fails unless the fixture data a spec shapes its assertions around is really there. */
+export function requireFixtureData<T>(value: T, message: string): NonNullable<T> {
+    if (!value) {
+        missingEnvironment(message);
+    }
+
+    return value as NonNullable<T>;
+}
+
+/** The bootstrap response must echo the row that was just created, or the setup is broken. */
+function findCreatedId<T extends { name: string; id: number }>(rows: T[] | undefined, name: string, call: string): number {
+    return requireFixtureData(rows?.find((entry) => entry.name === name), `${call} did not come back with the row "${name}".`).id;
 }
 
 export async function createMySqlServerAndConnection(request: APIRequestContext, database: string, label: string) {
@@ -99,7 +116,7 @@ export async function createMySqlServerAndConnection(request: APIRequestContext,
         username: MYSQL.username,
         password: MYSQL.password,
     });
-    const serverId = serverBootstrap.servers.find((entry: { name: string }) => entry.name === serverName).id;
+    const serverId = findCreatedId(serverBootstrap.servers, serverName, 'POST /api/createServer');
 
     const connectionBootstrap = await post(request, 'createConnection', {
         serverId,
@@ -109,7 +126,7 @@ export async function createMySqlServerAndConnection(request: APIRequestContext,
         databaseName: database,
         readonly: false,
     });
-    const connectionId = connectionBootstrap.connections.find((entry: { name: string }) => entry.name === connectionName).id;
+    const connectionId = findCreatedId(connectionBootstrap.connections, connectionName, 'POST /api/createConnection');
 
     return { serverId, connectionId, serverName, connectionName };
 }
@@ -132,7 +149,7 @@ export async function createFileSource(
 
     const serverName = `e2e-${options.label}-source-${suffix}`;
     const bootstrap = await post(request, 'createServer', { name: serverName, kind: 'file', driver: 'sqlite', filePath: databasePath });
-    const serverId = bootstrap.servers.find((entry: { name: string }) => entry.name === serverName).id;
+    const serverId = findCreatedId(bootstrap.servers, serverName, 'POST /api/createServer');
 
     const connectionName = `${serverName}-conn`;
     const withConnection = await post(request, 'createConnection', {
@@ -143,7 +160,7 @@ export async function createFileSource(
         databaseName: undefined,
         readonly: false,
     });
-    const connectionId = withConnection.connections.find((entry: { name: string }) => entry.name === connectionName).id;
+    const connectionId = findCreatedId(withConnection.connections, connectionName, 'POST /api/createConnection');
 
     return {
         serverId,

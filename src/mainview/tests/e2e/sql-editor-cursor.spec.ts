@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { createFileSource, post } from './helpers';
 
 /**
  * Regression test for the SQL editor cursor-jump bug.
@@ -7,91 +8,93 @@ import { expect, test } from '@playwright/test';
  * delete, type, then press Enter a few times. With the bug, typing triggers a
  * value round-trip: onDidChangeContent -> query.queryText -> draft sync ->
  * setTabs -> the nav-state watcher re-fires activateTab (because its source
- * was a fresh array) -> scripts.selectScript() runs (visible as the
- * "selectScript" busy indicator at the bottom-right) -> and, while that call
- * is pending, the newer typing gets clobbered by the stale draftSql, which
- * makes Monaco call model.setValue() and the cursor jumps back to the start.
+ * was a fresh array) -> scripts.selectScript() runs -> and, while that call is
+ * pending, the newer typing gets clobbered by the stale draftSql, which makes
+ * Monaco call model.setValue() and the cursor jumps back to the start.
  *
  * The fix makes the nav-state watcher key a primitive string, so draft-sync
- * setTabs with unchanged tab hashes no longer re-runs activation. This test
- * asserts the cursor stays at the end of the typed text after several Enter
- * presses and that no "selectScript" call is triggered while typing.
+ * setTabs with unchanged tab hashes no longer re-runs activation.
  */
+const SELECT_ALL = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
+
+function editorText(page: Page) {
+    return page
+        .locator('.view-line')
+        .allTextContents()
+        .then((lines) => lines.join('\n').replace(/\u00A0/g, ' '));
+}
+
 test.describe('SQL editor cursor stability', () => {
-    test('cursor stays at the end while typing and pressing Enter', async ({ page }) => {
-        await page.goto('/');
+    test('cursor stays at the end while typing and pressing Enter', async ({ page, request }) => {
+        // The spec used to pick an existing script out of a developer's app DB; it now
+        // builds its own source, connection and script, so it also runs on a clean database.
+        const source = await createFileSource(request, { label: 'sql-cursor', tableCount: 2 });
+        const bootstrap = await post(request, 'createScript', {
+            connectionId: source.connectionId,
+            name: 'cursor probe',
+            sqlText: 'select 1;',
+        });
+        const scriptId = bootstrap.scripts.find((entry: { name: string }) => entry.name === 'cursor probe').id;
 
-        // Wait for the app to mount and the sidebar scripts tree to render.
-        await page.waitForSelector('[data-node-id^="script:"]', { state: 'attached', timeout: 20_000 });
-        await page.waitForTimeout(1500);
+        try {
+            await page.goto('/');
 
-        // Open the LAST script from the sidebar (single click only selects;
-        // double click activates, per the app's activateOnDoubleClick). This
-        // also makes the tab-bar "New scratch tab" plus button appear.
-        const scriptRows = page.locator('[data-node-id^="script:"]');
-        const scriptCount = await scriptRows.count();
-        expect(scriptCount).toBeGreaterThan(0);
-        const lastScript = scriptRows.nth(scriptCount - 1);
-        await lastScript.dblclick({ timeout: 15_000 });
+            // Single click only selects; double click activates.
+            const scriptRow = page.locator(`[data-node-id="script:${scriptId}"]`);
+            await expect(scriptRow).toBeVisible();
+            await scriptRow.dblclick();
 
-        // Wait for the Monaco editor, then create a scratch tab — the bug
-        // (unconditional scripts.selectScript(undefined) on re-activation)
-        // is most reliably hit there.
-        const editor = page.locator('.monaco-editor').first();
-        await editor.waitFor({ state: 'visible', timeout: 20_000 });
-        await page.waitForTimeout(500);
+            const editor = page.locator('.monaco-editor').first();
+            await expect(editor).toBeVisible();
+            await expect.poll(() => editorText(page)).toContain('select 1;');
 
-        const scratchPlus = page.locator('main button:has(.icon-\\[mdi--plus\\])').first();
-        await scratchPlus.click({ timeout: 10_000 });
-        await page.waitForTimeout(1000);
+            // The bug is most reliably hit on a scratch tab: activation there calls
+            // scripts.selectScript(undefined), and a spurious re-activation clobbers typing.
+            const callsWhileTyping: string[] = [];
+            let typing = false;
+            page.on('request', (outgoing) => {
+                if (typing && outgoing.url().includes('/api/selectScript')) {
+                    callsWhileTyping.push(outgoing.url());
+                }
+            });
 
-        // Focus the editor by clicking its center.
-        const box = await editor.boundingBox();
-        expect(box).not.toBeNull();
-        await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-        await page.waitForTimeout(300);
+            await page.locator('main button:has(.icon-\\[mdi--plus\\])').first().click();
 
-        // select all -> delete -> type -> Enter a few times. Use a string that
-        // won't match any table/column so Monaco's suggest widget stays out of
-        // the way.
-        await page.keyboard.press('Meta+a');
-        await page.keyboard.press('Delete');
-        await page.waitForTimeout(300);
-        await page.keyboard.type('hello world', { delay: 20 });
-        await page.waitForTimeout(300);
+            // The scratch tab is empty; wait for that activation to land before typing.
+            await expect.poll(() => editorText(page)).not.toContain('select 1;');
 
-        for (let i = 0; i < 6; i++) {
-            await page.keyboard.press('Enter');
-            await page.waitForTimeout(250);
+            const box = await editor.boundingBox();
+            expect(box).not.toBeNull();
+            await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+
+            // select all -> delete -> type -> Enter a few times. The text matches no
+            // table or column, so Monaco's suggest widget stays out of the way.
+            typing = true;
+            await page.keyboard.press(SELECT_ALL);
+            await page.keyboard.press('Delete');
+            await page.keyboard.type('hello world', { delay: 20 });
+
+            for (let press = 0; press < 6; press += 1) {
+                await page.keyboard.press('Enter');
+            }
+
+            typing = false;
+
+            // The typed text must survive the draft round-trip.
+            await expect.poll(() => editorText(page)).toContain('hello world');
+
+            // The caret must be below the first line: a jump to the start puts it back on line one.
+            const cursorBox = await page.locator('.monaco-editor .cursor').first().boundingBox();
+            const firstLineBox = await page.locator('.view-line').first().boundingBox();
+
+            expect(cursorBox).not.toBeNull();
+            expect(firstLineBox).not.toBeNull();
+            expect(cursorBox!.y).toBeGreaterThan(firstLineBox!.y + firstLineBox!.height);
+
+            // ...and typing must not have triggered another script activation.
+            expect(callsWhileTyping).toEqual([]);
+        } finally {
+            await source.cleanup();
         }
-
-        // Allow any (wrong) background selectScript/activation to settle.
-        await page.waitForTimeout(800);
-
-        // The typed text must be intact at the start (not clobbered by a stale
-        // draftSql round-trip). Monaco renders spaces as non-breaking and may
-        // split long lines into view-lines, so normalize before comparing.
-        const lines = await page.locator('.view-line').allTextContents();
-        const text = lines.join('\n').replace(/\u00A0/g, ' ');
-        expect(text).toContain('hello world');
-
-        // The cursor must be on the LAST line (i.e. NOT at the start). Monaco
-        // renders the caret as .monaco-editor .cursor with style.top/left.
-        const cursorTop = await page
-            .locator('.monaco-editor .cursor')
-            .first()
-            .evaluate((el) => (el as HTMLElement).style.top);
-        const topPx = parseFloat(cursorTop || '0');
-
-        // With 6 Enter presses the cursor is several lines down; a jump to the
-        // start would put it back at (0px, 0px) on line one.
-        expect(topPx).toBeGreaterThan(18 * 4);
-
-        // While typing/pressing Enter, the app must NOT have triggered the
-        // spurious scripts.selectScript call (visible as the bottom-right busy
-        // indicator). We only assert this when the state is observable.
-        const busyAlert = page.locator('.fixed.right-4.bottom-4', { hasText: 'selectScript' });
-        const busyCount = await busyAlert.count();
-        expect(busyCount).toBe(0);
     });
 });

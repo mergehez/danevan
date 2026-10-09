@@ -1,19 +1,5 @@
-import { expect, test, type APIRequestContext, type APIResponse } from '@playwright/test';
-
-const API = 'http://127.0.0.1:3264/api';
-const MYSQL = {
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    password: '',
-    database: 'tirsik3_test',
-};
-
-async function post(request: APIRequestContext, method: string, data: unknown): Promise<APIResponse & { json(): Promise<any> }> {
-    const resp = await request.post(`${API}/${method}`, { data });
-    expect(resp.ok()).toBeTruthy();
-    return resp;
-}
+import { expect, test, type APIRequestContext } from '@playwright/test';
+import { API, MYSQL, post } from './helpers';
 
 function tableDdl(tableName: string) {
     return `CREATE TABLE \`${tableName}\` (
@@ -119,37 +105,27 @@ test.describe('Modify table popup', () => {
     test.beforeAll(async ({ request }) => {
         const suffix = Date.now().toString();
         const serverName = `e2e-mod-server-${suffix}`;
-        const serverResp = await request.post(`${API}/createServer`, {
-            data: {
-                name: serverName,
-                kind: 'server',
-                driver: 'mysql',
-                filePath: undefined,
-                host: MYSQL.host,
-                port: MYSQL.port,
-                username: MYSQL.username,
-                password: MYSQL.password,
-            },
+        const serverBootstrap = await post(request, 'createServer', {
+            name: serverName,
+            kind: 'server',
+            driver: 'mysql',
+            filePath: undefined,
+            host: MYSQL.host,
+            port: MYSQL.port,
+            username: MYSQL.username,
+            password: MYSQL.password,
         });
-        expect(serverResp.ok()).toBeTruthy();
-        const serverBootstrap = await serverResp.json();
-        const server = serverBootstrap.servers.find((entry: { name: string }) => entry.name === serverName);
-        serverId = server.id;
+        serverId = serverBootstrap.servers.find((entry: { name: string }) => entry.name === serverName).id;
 
-        const connectionResp = await request.post(`${API}/createConnection`, {
-            data: {
-                serverId,
-                name: `e2e-mod-conn-${suffix}`,
-                host: MYSQL.host,
-                port: MYSQL.port,
-                databaseName: MYSQL.database,
-                readonly: false,
-            },
+        const connectionBootstrap = await post(request, 'createConnection', {
+            serverId,
+            name: `e2e-mod-conn-${suffix}`,
+            host: MYSQL.host,
+            port: MYSQL.port,
+            databaseName: MYSQL.database,
+            readonly: false,
         });
-        expect(connectionResp.ok()).toBeTruthy();
-        const connectionBootstrap = await connectionResp.json();
-        const connection = connectionBootstrap.connections.find((entry: { server_id: number }) => entry.server_id === serverId);
-        connectionId = connection.id;
+        connectionId = connectionBootstrap.connections.find((entry: { server_id: number }) => entry.server_id === serverId).id;
     });
 
     test.beforeEach(async ({ request }) => {
@@ -169,17 +145,15 @@ test.describe('Modify table popup', () => {
         }
     });
 
-    async function getInfo(request: APIRequestContext) {
-        const resp = await post(request, 'getTableInfo', { connectionId, tableName });
-        return resp.json();
+    function getInfo(request: APIRequestContext) {
+        return post(request, 'getTableInfo', { connectionId, tableName });
     }
 
     async function applyModify(request: APIRequestContext, mutate: (params: any) => void) {
         const info = await getInfo(request);
         const params = buildParams(info, connectionId, tableName);
         mutate(params);
-        const resp = await post(request, 'modifyTable', params);
-        return resp.json();
+        return post(request, 'modifyTable', params);
     }
 
     test('adds a column (test_column int)', async ({ request }) => {
