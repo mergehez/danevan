@@ -68,7 +68,13 @@ export const DataGrid = component(
                     <div class="flex h-full min-h-0 flex-col px-4 py-4">
                         <div class="mb-3 flex items-center justify-between gap-3 border-b border-x3 pb-3 text-xs opacity-80">
                             <span class="truncate">{vs.getModalEditColumnName() || 'Value'}</span>
-                            <Button severity="secondary" smaller={true} onClick={vs.toggleModalEditTextWrap} class={vs.isModalEditTextWrap ? 'bg-blue-500/15 text-blue-200' : ''}>
+                            <Button
+                                severity="secondary"
+                                smaller={true}
+                                data-testid="modal-edit-text-wrap"
+                                onClick={vs.toggleModalEditTextWrap}
+                                class={vs.isModalEditTextWrap ? 'bg-blue-500/15 text-blue-200' : ''}
+                            >
                                 Text wrap
                             </Button>
                         </div>

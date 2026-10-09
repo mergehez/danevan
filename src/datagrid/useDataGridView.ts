@@ -13,6 +13,7 @@ import {
     DATA_GRID_TEXT_HORIZONTAL_INSET,
 } from './dataGrid';
 import { getDataGridCanvasFont, getDataGridFontFamilyCss, getDataGridThemeCssVariables } from './dataGridAppearance';
+import { dataGridModalPreferences } from './dataGridModalPreferences';
 import type { TDataGridState } from './useDataGrid';
 import { useDataGridCanvasPointerHandlers } from './useDataGridCanvasPointerHandlers';
 import { useDataGridCanvasRuntime } from './useDataGridCanvasRuntime';
@@ -243,7 +244,6 @@ function getSharedState(state: TDataGridState, _hasToolbar: boolean, withCheckbo
         bodyCanvasElement: undefined as undefined | HTMLCanvasElement,
         headerCanvasElement: undefined as undefined | HTMLCanvasElement,
         editingTextareaElement: undefined as undefined | HTMLTextAreaElement,
-        isModalEditTextWrap: false,
         viewportHeight: 0,
         viewportWidth: 0,
         scrollTop: 0,
@@ -522,7 +522,7 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
     }
 
     function toggleModalEditTextWrap() {
-        _state.isModalEditTextWrap = !_state.isModalEditTextWrap;
+        dataGridModalPreferences.state.value.textWrap = !dataGridModalPreferences.state.value.textWrap;
     }
 
     /**
@@ -654,15 +654,6 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         { immediate: true }
     );
 
-    watch(
-        () => stateWithModalEditing.value.modalEditingCell.open,
-        (open) => {
-            if (open) {
-                _state.isModalEditTextWrap = false;
-            }
-        }
-    );
-
     onBeforeUnmount(() => {
         runtime.cancelDraw();
         runtime.stopDragAutoScroll();
@@ -694,7 +685,7 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         handleEditingKeydown,
         headerCanvasElement: toRef(_state, 'headerCanvasElement'),
         headerCursor: computed(() => _state.headerCursor),
-        isModalEditTextWrap: computed(() => _state.isModalEditTextWrap),
+        isModalEditTextWrap: computed(() => dataGridModalPreferences.state.value.textWrap),
         onInput,
         pointerHandlers,
         rowCount: computed(() => _state.rowCount),

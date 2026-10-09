@@ -14,6 +14,8 @@ import {
     type DataGridRow,
     type TDataGridState,
 } from '../../../datagrid';
+import { DATA_GRID_MODAL_PREFERENCES_KEY } from '#datagrid/dataGridModalPreferences.ts';
+import { resetCacheState } from '#shared/utils/useCache.ts';
 
 const writeClipboardText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
 vi.stubGlobal('navigator', { clipboard: { writeText: writeClipboardText } });
@@ -247,6 +249,9 @@ beforeAll(() => {
 afterEach(() => {
     writeClipboardText.mockClear();
     localStorage.clear();
+    // The modal preferences are a module-level singleton; reset it so one test
+    // cannot leak a toggle into the next.
+    resetCacheState(DATA_GRID_MODAL_PREFERENCES_KEY);
     document.body.innerHTML = '';
 });
 
@@ -778,6 +783,29 @@ describe('DataGrid', () => {
         state.commitEditingCell();
 
         expect(rows.value[0]?.board).toBe(binary);
+    });
+
+    it('remembers the modal editor text wrap preference across dialogs', async () => {
+        const { state } = createGridState();
+        const { vm, wrapper } = await mountGridViewHarness(state);
+
+        expect(vm.vs.isModalEditTextWrap).toBe(false);
+
+        vm.vs.toggleModalEditTextWrap();
+        await nextTick();
+
+        state.openModalEditingCell?.(0, 1);
+        await nextTick();
+        expect(vm.vs.isModalEditTextWrap).toBe(true);
+
+        state.closeModalEditingCell?.();
+        state.openModalEditingCell?.(0, 1);
+        await nextTick();
+
+        expect(vm.vs.isModalEditTextWrap).toBe(true);
+        expect(JSON.parse(localStorage.getItem(DATA_GRID_MODAL_PREFERENCES_KEY) ?? 'null')).toEqual({ textWrap: true });
+
+        wrapper.unmount();
     });
 
     it('never sorts by a column the result set does not have', () => {
