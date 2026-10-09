@@ -39,6 +39,18 @@ function applyConnectionPragmas(db: Pick<DatabaseClient, 'exec'>) {
     db.exec('PRAGMA busy_timeout = 5000;');
 }
 
+// SQLite reports NULL columns as `null`, but the row types declare them as `undefined`.
+// Translate at the boundary so consumers only have one "not set" value to handle.
+function normalizeNullColumns<T>(row: T) {
+    for (const [key, value] of Object.entries(row as Record<string, unknown>)) {
+        if (value === null) {
+            (row as Record<string, unknown>)[key] = undefined;
+        }
+    }
+
+    return row;
+}
+
 function createRuntimeDatabaseClient(databasePath: string, options?: { readOnly?: boolean }): DatabaseClient {
     const db = new Database(databasePath, {
         readonly: options?.readOnly === true,
@@ -54,8 +66,11 @@ function createRuntimeDatabaseClient(databasePath: string, options?: { readOnly?
 
             return {
                 run: (...params: SQLInputValue[]) => statement.run(...params),
-                get: <T = Record<string, SQLOutputValue>>(...params: SQLInputValue[]) => (statement.get(...params) ?? undefined) as T | undefined,
-                all: <T = Record<string, SQLOutputValue>>(...params: SQLInputValue[]) => statement.all(...params) as T[],
+                get: <T = Record<string, SQLOutputValue>>(...params: SQLInputValue[]) => {
+                    const row = statement.get(...params);
+                    return row === undefined ? undefined : normalizeNullColumns(row as T);
+                },
+                all: <T = Record<string, SQLOutputValue>>(...params: SQLInputValue[]) => (statement.all(...params) as T[]).map(normalizeNullColumns),
             };
         },
         close: () => {
@@ -645,7 +660,7 @@ export function useAppDb() {
         getSetting<T>(key: string, fallbackValue: T) {
             const row = db.prepare('SELECT value FROM settings WHERE key = ?').get<{ value: string }>(key);
 
-            if (!row) {
+            if (!row?.value) {
                 return fallbackValue;
             }
 

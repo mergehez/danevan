@@ -228,8 +228,8 @@ describe('servers', () => {
         expect(server.host).toBe('db.example.com');
         expect(server.port).toBe(3306);
         expect(server.username).toBe('admin');
-        expect(server.file_path).toBeNull();
-        expect(server.schema_count).toBeNull();
+        expect(server.file_path).toBeUndefined();
+        expect(server.schema_count).toBeUndefined();
         expect(server.sequence).toBe(1);
         expect(server.created_at).toMatch(timestampPattern);
         expect(server.updated_at).toMatch(timestampPattern);
@@ -237,15 +237,17 @@ describe('servers', () => {
 
     it('stores blank optional text as NULL', async () => {
         const appDb = await configureAppDb();
-        // SQL NULL reads back as null through better-sqlite3, although the row
-        // types describe these columns as `string | undefined`.
+        // Blank optionals are stored as SQL NULL; the app DB client normalises the
+        // columns back to `undefined` so they match the `string | undefined` row types.
         const serverId = createServer(appDb, { filePath: '   ', host: '\t', username: '\n ' });
 
         const server = appDb.getServer(serverId)!;
 
-        expect(server.file_path).toBeNull();
-        expect(server.host).toBeNull();
-        expect(server.username).toBeNull();
+        expect(server.file_path).toBeUndefined();
+        expect(server.host).toBeUndefined();
+        expect(server.username).toBeUndefined();
+        // The raw column really is NULL on disk.
+        expect(queryRows<{ file_path: null }>('SELECT file_path FROM servers WHERE id = ?', serverId)[0]?.file_path).toBeNull();
     });
 
     it('assigns an incrementing sequence per server', async () => {
@@ -299,7 +301,7 @@ describe('servers', () => {
         expect(server.file_path).toBe('/tmp/app.sqlite');
         expect(server.host).toBe('new.example.com');
         expect(server.port).toBe(5433);
-        expect(server.username).toBeNull();
+        expect(server.username).toBeUndefined();
     });
 
     it('sets the schema count', async () => {
@@ -414,9 +416,9 @@ describe('connections', () => {
 
         const connection = appDb.getConnection(connectionId)!;
 
-        expect(connection.host).toBeNull();
-        expect(connection.database_name).toBeNull();
-        expect(connection.last_used_at).toBeNull();
+        expect(connection.host).toBeUndefined();
+        expect(connection.database_name).toBeUndefined();
+        expect(connection.last_used_at).toBeUndefined();
     });
 
     it('rejects a blank connection name', async () => {
@@ -495,7 +497,7 @@ describe('connections', () => {
         expect(connection.database_name).toBe('updated_db');
         expect(connection.readonly).toBe(1);
         expect(connection.server_id).toBe(serverId);
-        expect(connection.last_used_at).toBeNull();
+        expect(connection.last_used_at).toBeUndefined();
 
         expect(() => appDb.updateConnection(999, { name: 'Nope' })).toThrow('The selected connection could not be found.');
     });
@@ -603,9 +605,9 @@ describe('connections', () => {
             expect(appDb.getConnection(connectionId)!.port).toBe(5432);
 
             appDb.updateConnection(connectionId, { name: 'Connection', port: undefined });
-            expect(appDb.getConnection(connectionId)!.port).toBeNull();
+            expect(appDb.getConnection(connectionId)!.port).toBeUndefined();
 
-            expect(appDb.getConnection(createConnection(appDb, serverId))!.port).toBeNull();
+            expect(appDb.getConnection(createConnection(appDb, serverId))!.port).toBeUndefined();
         });
     });
 });
@@ -635,10 +637,10 @@ describe('scripts', () => {
 
         const script = appDb.getScript(scriptId)!;
 
-        expect(script.group_name).toBeNull();
+        expect(script.group_name).toBeUndefined();
         expect(script.sql_text).toBe('');
         expect(script.sequence).toBe(1);
-        expect(script.last_run_at).toBeNull();
+        expect(script.last_run_at).toBeUndefined();
     });
 
     it('rejects a blank script name', async () => {
