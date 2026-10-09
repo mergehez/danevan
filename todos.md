@@ -1,8 +1,15 @@
-# Performance audit — findings and fix list
+# todos — findings and fix list
 
-Read-only audit of this app (Electron + Vue 3 + canvas datagrid + TypeORM drivers) run on
-2026-10-09 against the developer's real data sources. **Nothing here is implemented yet.**
-Each task is a proposal: evidence, fix sketch, and a way to verify the fix.
+Pending work for this repo, in two parts:
+
+1. **Performance audit** (sections "Quick wins", "Tasks T1–T14", "Baseline measurements",
+   "Verified clean") — a read-only audit of this app (Electron + Vue 3 + canvas datagrid + TypeORM
+   drivers) run on 2026-10-09 against the developer's real data sources.
+2. **User-reported issues and ideas (`U1`, `U2`, …)** at the end — filed by the developer while
+   using the app. Append new ones there.
+
+**Nothing here is implemented yet.** Each entry has a `- [ ]` checkbox, evidence with `file:line`
+pointers, a fix sketch, and a way to verify the fix.
 
 Evidence comes from four parallel read-only audits (backend DB layer, frontend state/data flow,
 startup/app-DB/packaging, datagrid/rendering) plus direct measurements on this machine. Numbers
@@ -431,3 +438,105 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   `findMysqldumpPath` (`src/backend/app.ts:258`) probes per export-modal open (~4.8 ms, low impact).
 - SQL history is bounded at 100 and not persisted; FK relation grouping runs per context-menu open,
   not per cell; `toIpcCloneable` walks request params only (no large payloads).
+
+## User-reported issues and ideas
+
+Filed by the developer while using the app. Append new entries here as `U<n>`, each with a checkbox,
+what happens, the repro, `file:line` evidence, a fix sketch and a verification step.
+
+### U1 — In-cell editor: arrow keys move the grid cell instead of the text cursor — bug
+
+- [ ] Not started
+- **Repro**: double-click a cell in the data grid to edit it, then press `ArrowRight` (same for
+  `ArrowUp`/`ArrowDown`): the active cell jumps to the neighbouring cell instead of moving the caret
+  inside the editor. `ArrowLeft` is broken the other way — the caret cannot move left at all.
+- **Evidence**: the in-cell editor is a `<textarea>` (`src/datagrid/DataGrid.tsx:200-216`) whose keydown
+  handler only swallows the left arrow — `src/datagrid/DataGrid.tsx:213`
+  `onKeydown={preventedKeys(() => {}, ['left'])}` — and `preventedKeys` calls `preventDefault()` +
+  `stopPropagation()` only for matched keys (`src/shared/utils/tsxHelpers.tsx:244-258`). Every other
+  arrow bubbles up to the viewport handler (`src/datagrid/DataGrid.tsx:167` →
+  `src/datagrid/useDataGridCanvasPointerHandlers.ts:292-303` → `src/datagrid/useDataGridMenus.ts:115-133`
+  → `tryNavigate`, which `preventDefault()`s and moves the active cell:
+  `src/shared/utils/useKeyboardNavigation.ts:150-190`).
+- **Fix sketch**: while the in-cell `textarea` has focus the grid must not navigate. Either stop
+  propagation for all navigation keys in the editor's own `onKeydown` (keep `Enter` = commit,
+  `Escape` = cancel, `Tab` = commit and move right), or make `handleViewportKeydown`/`handleGridKeydown`
+  bail out when the event target is the editor (`(event.target as HTMLElement).closest('[data-editor-key]')`)
+  instead of the current single `'left'` special case.
+- **Verify**: browser spec — open a table, double-click a multi-word text cell, press `ArrowRight` and
+  `ArrowLeft` and assert `selectionStart` changed while the active cell stayed put; then `Enter`
+  commits and moves down.
+
+### U2 — Closing the cell editor without typing marks the cell as changed — bug
+
+- [ ] Not started
+- **Repro (as reported)**: `hetzner (server) → peyvdank_test (db) → games (table) → board (column)`.
+  Double-click the cell (large text), click somewhere else to close the editor: the save bar appears
+  as if a change was made, although nothing was typed.
+- **Evidence / path**: the in-cell editor commits on blur — `src/datagrid/DataGrid.tsx:212`
+  `onBlur={() => props.state.commitEditingCell()}` → `commitEditingCell`
+  (`src/datagrid/useDataGridNavigation.ts:395-420`) parses the draft via `parseEditingValue` and calls
+  `applyCellChange` (`src/datagrid/useDataGrid.ts:530-556`), which returns early only when
+  `gridValuesEqual(previousValue, nextValue)`. A false "changed" means the
+  format → edit → parse round-trip is not identity for that value. Check, in order:
+    1. `src/datagrid/useDataGridCoreUtils.ts:9-25` `formatDefaultEditingValue`: for any **object** it
+       returns `JSON.stringify(value)` (a `Buffer`/`Uint8Array` becomes `{"0":137,…}`) and returns `''`
+       for other non-primitives; `gridValuesEqual` special-cases `Uint8Array` only (`:27-33`), so those
+       round-trips are lossy. Check whether `board` (or a binary sibling) hits this.
+    2. `src/mainview/composables/useDbDataGrid.ts:493-518` `parseEditingValue` coerces by the original
+       value's type (`number` → `Number(draft)`, `bigint` → `BigInt(draft)`) and returns the **original**
+       value when the draft is not a finite number — so a no-op edit of a huge integer, of `1e21`-style
+       floats, of `NaN`/`Infinity`, or of any numeric cell whose draft does not re-parse to the exact
+       same value marks the cell dirty.
+    3. Double-click ordering can commit a stale draft: `handleBodyDoubleClick`
+       (`src/datagrid/useDataGridCanvasPointerHandlers.ts:63-79`) starts editing on the second click,
+       while the first click already focused the viewport and set the active cell;
+       `startEditingCell` (`src/datagrid/useDataGridNavigation.ts:285-316`) refocuses the textarea in
+       `nextTick`. Check whether a blur commits between the two clicks, or whether `draftValue` is
+       replaced after `previousValue` was captured.
+    4. The modal editor shares the same format/parse pair: `startModalEditingCell`
+       (`useDataGridNavigation.ts:355-370`) and `commitModalEditingCell` (`:375-393`) — if large values
+       are routed to the modal, reproduce there too.
+- **Fix sketch**: capture the raw value once when editing starts and compare the parsed draft against
+  that raw value, never against a formatted/coerced one; keep object/binary values intact (or make
+  those cells non-editable inline) instead of `JSON.stringify`; and skip `applyCellChange` entirely
+  when the draft string is unchanged, before parsing.
+- **Verify**: reproduce the exact path above; then a unit test in
+  `src/mainview/tests/dataGrid/DataGrid.spec.ts` — open the editor, commit without typing, assert
+  `pendingChangeCount === 0` / `hasPendingGridChanges === false`. Cover a `longtext`/JSON cell, a
+  binary column and a numeric column.
+
+### U3 — "Text wrap" in the "Edit cell value" dialog is not remembered — bug
+
+- [ ] Not started
+- **Repro**: open "Edit cell value", toggle **Text wrap**, close the dialog, reopen it — wrap is off
+  again (and it is off after every app restart).
+- **Evidence**: the toggle flips `_state.isModalEditTextWrap`
+  (`src/datagrid/useDataGridView.ts:246` and `:524-526`) and a watcher resets it to `false` **every time
+  the dialog opens** (`src/datagrid/useDataGridView.ts:625-632`); nothing persists it. The dialog markup
+  is `src/datagrid/DataGrid.tsx:58-88` (button + `wrap={vs.isModalEditTextWrap ? 'soft' : 'off'}`).
+- **Fix sketch**: drop the reset and persist the flag as a global UI preference — the repo convention
+  for persisted UI state is `useCache` (`src/shared/utils/useCache.ts`); the per-table
+  `src/datagrid/dataGridLayoutStorage.ts` is the wrong scope for it.
+- **Verify**: browser spec — toggle wrap, close and reopen the dialog (and reload), assert the button
+  state and the textarea's `wrap` attribute are preserved.
+
+### U4 — JSON "Prettify" / "Compact" buttons in the "Edit cell value" dialog — feature
+
+- [ ] Not started
+- **Request**: when the dialog opens, check **once** whether the value is JSON (trimmed text starts
+  with `{` and ends with `}`); if yes, show `Prettify` and `Compact` buttons. Explicitly not a
+  watcher/computed on the draft: evaluate it imperatively at open time so typing does not re-evaluate
+  JSON-ness.
+- **Where**: the dialog header next to the Text wrap button (`src/datagrid/DataGrid.tsx:69-74`); the
+  open-time check belongs with the modal editing state in `startModalEditingCell`
+  (`src/datagrid/useDataGridNavigation.ts:355-370`, mirroring where the wrap flag lives in
+  `useDataGridView`); both actions write the draft through `setModalEditingValue`
+  (`src/datagrid/useDataGridNavigation.ts:326-328`).
+- **Behaviour**: `Prettify` → `JSON.stringify(JSON.parse(text), null, 2)`, `Compact` →
+  `JSON.stringify(JSON.parse(text))`. Show the buttons only when the open-time text parses as JSON
+  (`{not json}` therefore shows nothing, or a disabled pair — decide in the PR and keep `Save` working
+  either way). The draft stays freely editable afterwards; the in-cell editor is unchanged.
+- **Verify**: browser spec — open the dialog on `{"a":1,"b":[2,3]}`: both buttons visible, `Prettify`
+  indents, `Compact` collapses to one line; open on `hello` and on `{not json}`: no buttons; `Save`
+  still commits the (possibly prettified) value.
