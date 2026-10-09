@@ -1,7 +1,7 @@
 # Test audit — what to test next
 
-**Status:** 650 unit tests (61 files) · 87 browser tests (23 files) · coverage over every source
-file **35.1 % statements / 28.3 % branches** · floors enforced in `vitest.config.js` ·
+**Status:** 694 unit tests (63 files) · 87 browser tests (23 files) · coverage over every source
+file **37.5 % statements / 29.6 % branches** · floors enforced in `vitest.config.js` ·
 **still a long tail of 0 % files**.
 
 The long survey that drove the last round of fixes is recoverable from git:
@@ -54,13 +54,15 @@ collection filter, SQL history modal)** · **mysqldump export from the modal wit
 and keyboard state machines (`useTree`, `useFileTree`, `useKeyboardNavigation`, sidebar arrows)** ·
 **directives (modifier parsing, tooltip, context menu panel, error, loading)** · **small leaf helpers
 (drag payload, formatter worker, native paths, min lifetime, confirm, toast, client lookup, MS Access
-manifest, SQL script runner)**.
+manifest, SQL script runner)** · **grid context-menu planning (cell peek items, row menu for single
+vs multi selection, header formatter menu, toolbar copy item, and the `useDbDataGrid` wiring)**.
 
 ---
 
 ## Browser tasks (in priority order)
 
 ### e2e-12 · Electron shell (medium)
+
 Everything runs in browser-only dev mode, so the shipped shell is untested. Add a Playwright project
 using `_electron.launch` against `dist-electron/main.cjs`: the window opens, `window.electronAPI` is
 exposed by the preload, and one request/response round-trips through IPC. Needs a second project in
@@ -68,19 +70,9 @@ exposed by the preload, and one request/response round-trips through IPC. Needs 
 
 ---
 
-## Unit tasks
-
-### unit-3 · `useDbDataGrid.ts` menu and action planning (medium)
-493 lines at 0 %; it decides which grid menu items exist and what they do. Unit-test the planning
-function directly (row menu for single vs multi selection, cell menu only with a relation, header menu)
-rather than through the canvas.
-
----
-
-
 ## Everything else still at 0 %
 
-Components exercised only by the browser suite show 0 % *unit* coverage and are fine — do not add unit
+Components exercised only by the browser suite show 0 % _unit_ coverage and are fine — do not add unit
 tests for them; extend the browser spec instead. Genuinely uncovered and not worth a task yet:
 `releaseHelpers.ts` (175), `vite-plugin.ts`, `mainProloadHelpers.ts`, `browserOnlyHelpers.ts`,
 `executeCommand.ts`, `electronConfig.ts`, `handleScripts.ts`, `Splitter*.tsx`, `DataTable.tsx`,
