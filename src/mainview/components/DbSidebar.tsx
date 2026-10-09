@@ -15,6 +15,7 @@ import { useDbSettings } from '../composables/useDbSettings';
 import { useNavState } from '../composables/useNavState';
 import { useQuery } from '../composables/useQuery';
 import { useScriptsDb } from '../composables/useScriptsDb';
+import { useServerTree } from '../composables/useServerTree';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
 import { DbConnectionForm } from './DbConnectionForm.tsx';
@@ -48,6 +49,7 @@ export const DbSidebar = component(
         const dbCaches = useDbCaches();
         const query = useQuery();
         const scripts = useScriptsDb();
+        const serverTree = useServerTree();
         const navState = useNavState();
         const debugResetKey = ref(0);
         const sqlHistoryModalOpen = ref(false);
@@ -467,7 +469,11 @@ export const DbSidebar = component(
                     label: 'Collapse all',
                     iconClass: 'icon-[mdi--arrow-collapse]',
                     action: () => {
+                        // Clearing the stored state restores its default, which is expanded:
+                        // fold the trees first, then drop the stale group state.
                         clearSidebarExpansionState();
+                        serverTree.collapseAllServers();
+                        scriptsTreeState.collapsed = true;
                         debugResetKey.value += 1;
                     },
                 },

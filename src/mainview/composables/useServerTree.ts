@@ -541,6 +541,12 @@ function _useServerTree() {
         scrollPinnedSidebarRowIntoPlace: scrollPinnedSidebarRowIntoPlace,
         getPersistedTreeState: getPersistedTreeState,
         setPersistedTreeState: setPersistedTreeState,
+        /** Folds every source away; clearing the state would expand them again (the default). */
+        collapseAllServers() {
+            for (const server of servers.servers) {
+                setPersistedTreeState(server.id, { ...getPersistedTreeState(server.id), collapsed: true });
+            }
+        },
         loadConnectionTablesSnapshot: loadConnectionTablesSnapshot,
         ensureExpandedConnectionSnapshot: ensureExpandedConnectionSnapshot,
         loadExpandedTableDetailsSnapshot: loadExpandedTableDetailsSnapshot,
