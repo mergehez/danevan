@@ -194,18 +194,6 @@ export function enrichSqliteColumns(columns: TableColumnInfo[], createTableSql: 
     });
 }
 
-export function normalizeCountValue(value: number | bigint | string | null | undefined) {
-    if (typeof value === 'bigint') {
-        return Number(value);
-    }
-
-    if (typeof value === 'string') {
-        return Number(value);
-    }
-
-    return value ?? 0;
-}
-
 export function buildSqliteColumnDefinition(quoteIdentifier: (identifier: string) => string, column: ModifySchemaColumn, inlinePrimaryKey: boolean) {
     const parts = [quoteIdentifier(column.name), inlinePrimaryKey && column.isAutoIncrement ? 'INTEGER' : column.type];
 

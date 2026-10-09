@@ -16,7 +16,8 @@ import type {
 } from '../shared/types';
 import { BunTypeOrmSqliteDriver } from './bunTypeOrmSqliteDriver.ts';
 import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
-import { buildSqliteCreateTableSql, enrichSqliteColumns, normalizeCountValue, normalizeOptionalText } from './sqliteTableDdl.ts';
+import { normalizeCountValue } from './dialectSql.ts';
+import { buildSqliteCreateTableSql, enrichSqliteColumns, normalizeOptionalText } from './sqliteTableDdl.ts';
 import { mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata, mapTypeOrmTableMetadata } from './typeOrmMappers.ts';
 
 export type ModifySchemaColumn = {

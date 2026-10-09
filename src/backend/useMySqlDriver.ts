@@ -1,8 +1,9 @@
 import 'reflect-metadata';
-import { DataSource, TableForeignKey, type QueryRunner, type Table, type View } from 'typeorm';
+import { DataSource, type QueryRunner, type Table, type View } from 'typeorm';
 import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 import { splitSqlStatements } from '../shared/utils/sqlStatements';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
+import { createTypeOrmForeignKey, normalizeCountValue, quoteMySqlIdentifier } from './dialectSql.ts';
 import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import { connectionPoolKey, remoteDataSourcePool, serverPoolKey } from './remoteDataSourcePool.ts';
 import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
@@ -73,25 +74,6 @@ type MySqlDataSourceConfig = {
     username?: string;
     password: string;
 };
-
-function quoteMySqlIdentifier(identifier: string) {
-    return identifier
-        .split('.')
-        .map((part) => `\`${part.replaceAll('`', '``')}\``)
-        .join('.');
-}
-
-function normalizeCountValue(value: number | bigint | string | null | undefined) {
-    if (typeof value === 'bigint') {
-        return Number(value);
-    }
-
-    if (typeof value === 'string') {
-        return Number(value);
-    }
-
-    return value ?? 0;
-}
 
 function createMySqlDataSource(config: MySqlDataSourceConfig) {
     return new DataSource({
@@ -247,40 +229,6 @@ async function getTableOrViewDdl(client: RemoteDriverClient, tableName: string) 
     }
 
     throw new Error(`Table '${tableName}' was not found.`);
-}
-
-function normalizeMySqlReferentialAction(value: string | null | undefined): string | undefined {
-    if (!value) {
-        return undefined;
-    }
-
-    const normalized = value.trim().toLowerCase().replaceAll(' ', '_');
-
-    switch (normalized) {
-        case 'no_action':
-            return 'NO ACTION';
-        case 'restrict':
-            return 'RESTRICT';
-        case 'cascade':
-            return 'CASCADE';
-        case 'set_null':
-            return 'SET NULL';
-        case 'set_default':
-            return 'SET DEFAULT';
-        default:
-            return value;
-    }
-}
-
-function createTypeOrmForeignKey(foreignKey: ModifySchemaForeignKey) {
-    return new TableForeignKey({
-        name: foreignKey.name,
-        columnNames: foreignKey.columns.map((column) => column.columnName),
-        referencedTableName: foreignKey.targetTable,
-        referencedColumnNames: foreignKey.columns.map((column) => column.targetName),
-        onDelete: normalizeMySqlReferentialAction(foreignKey.onDelete),
-        onUpdate: normalizeMySqlReferentialAction(foreignKey.onUpdate),
-    });
 }
 
 async function getMySqlTableRows(client: RemoteDriverClient) {

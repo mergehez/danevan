@@ -2,8 +2,8 @@ import 'reflect-metadata';
 import { DataSource, type QueryRunner, type Table, type View } from 'typeorm';
 import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
-import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
-import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
+import { normalizeCountValue, normalizePostgresTableName, preparePostgresStatement, quotePostgresIdentifier } from './dialectSql.ts';
+import { mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
 import { useMySqlSchemaHelper } from './useMySqlDriver.ts';
 import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import { connectionPoolKey, remoteDataSourcePool, serverPoolKey } from './remoteDataSourcePool.ts';
@@ -14,18 +14,6 @@ type PostgresSchemaHelperDeps = {
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     quoteIdentifier: (identifier: string) => string;
 };
-
-function normalizeCountValue(value: number | bigint | string | null | undefined) {
-    if (typeof value === 'bigint') {
-        return Number(value);
-    }
-
-    if (typeof value === 'string') {
-        return Number(value);
-    }
-
-    return value ?? 0;
-}
 
 type PostgresDataSourceConfig = {
     host: string;
@@ -92,10 +80,6 @@ async function getCurrentSchema(client: RemoteDriverClient) {
     return getPostgresQueryRunnerClient(client).currentSchema;
 }
 
-function normalizePostgresTableName(table: Table | View) {
-    return getTypeOrmObjectBaseName(table);
-}
-
 function getTypeOrmMemoryQueryRunner(queryRunner: QueryRunner) {
     return queryRunner as TypeOrmMemoryQueryRunner;
 }
@@ -117,13 +101,6 @@ async function collectSqlMemoryStatements(queryRunner: QueryRunner, callback: (r
     } finally {
         memoryRunner.disableSqlMemory();
     }
-}
-
-function quotePostgresIdentifier(identifier: string) {
-    return identifier
-        .split('.')
-        .map((part) => `"${part.replaceAll('"', '""')}"`)
-        .join('.');
 }
 
 async function getPostgresNativeViewDdl(client: RemoteDriverClient, tableName: string) {
@@ -199,20 +176,6 @@ function getConnectedDatabaseName(dataSource: DataSource) {
     const databaseName = driver.database?.trim();
 
     return databaseName && databaseName.length > 0 ? databaseName : null;
-}
-
-function preparePostgresStatement(statement: RemoteStatement) {
-    const params = statement.params ?? [];
-    const prepared = prepareTypeOrmParameterizedStatement(statement.sql, (index) => `$${index + 1}`);
-
-    if (prepared.paramCount !== params.length) {
-        throw new Error(`PostgreSQL expected ${prepared.paramCount} parameter(s) but received ${params.length}.`);
-    }
-
-    return {
-        sql: prepared.sql,
-        params,
-    };
 }
 
 export function usePostgresSchemaHelper(deps: PostgresSchemaHelperDeps) {

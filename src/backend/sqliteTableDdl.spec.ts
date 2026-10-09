@@ -8,7 +8,6 @@ import {
     buildSqliteCreateTableSql,
     enrichSqliteColumns,
     extractSqliteColumnDefinition,
-    normalizeCountValue,
     normalizeOptionalText,
     parseSqliteColumnMetadata,
     splitSqliteList,
@@ -176,16 +175,6 @@ describe('enrichSqliteColumns', () => {
         const columns = [columnInfo({ name: 'id', isAutoIncrement: true })];
 
         expect(enrichSqliteColumns(columns, undefined)).toEqual(columns);
-    });
-});
-
-describe('normalizeCountValue', () => {
-    it('converts bigint, string and null counts to numbers', () => {
-        expect(normalizeCountValue(12n)).toBe(12);
-        expect(normalizeCountValue('34')).toBe(34);
-        expect(normalizeCountValue(null)).toBe(0);
-        expect(normalizeCountValue(undefined)).toBe(0);
-        expect(normalizeCountValue(7)).toBe(7);
     });
 });
 
