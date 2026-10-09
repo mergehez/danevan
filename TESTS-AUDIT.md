@@ -35,15 +35,17 @@ The findings below are the original audit. This table tracks what has since been
 | 2 | `app.spec.ts` had an assertion-free test and a conditional no-op | **Fixed** — the add-source test asserts the form swaps its fields with the selected driver; the schema-count test asserts the count against the API |
 | 3 | Nine `test.skip` guards made a missing MySQL a green run | **Fixed** — zero remain; specs call `requireMySqlDatabase` / `requireMySqlExecutable` / `requireFixtureData` from `e2e/helpers.ts`, which fail with an actionable message (`E2E_SKIP_MISSING_DB=1` is the one explicit opt-out) |
 | 4 | A 4-test "integration" spec no runner executed | **Fixed** — deleted (byte-identical to `e2e/mysqldump-export.spec.ts`) |
-| 5 | `release:validate` excluded a file that does not exist and skipped e2e | **Fixed** — now `vitest run && playwright test && build` |
-| 6 | No coverage measurement or threshold | **Fixed** — `@vitest/coverage-v8`, every source file counted, ratchets raised to 23/18/23/24 as coverage grew |
+| 5 | `release:validate` excluded a file that does not exist and skipped e2e | **Fixed** — now `test:coverage && playwright test && build`, so the coverage floors gate a release |
+| 6 | No coverage measurement or threshold | **Fixed** — `@vitest/coverage-v8`, every source file counted, ratchets at 23/18/23/24 |
 | 7 | Bare `number \| undefined` types did not match SQLite's `null` | **Fixed** — the app DB client normalises NULL columns to `undefined` at the boundary |
 | 8 | 49.3 % of source LOC in modules no unit test imports | **Partly fixed** — +168 tests covering the comparison inputs, the conflict parser, the TypeORM mappers and the SQL splitter branches. `app.ts` (57 endpoints), the drivers, the directives and the Electron shell are still untested |
-| 9 | Core mutations have no browser coverage (edit/duplicate/delete row, save pipeline, comparison UI, FK peek, table lifecycle, tabs) | **Open** — see §5 and §8; this is now the largest gap |
+| 9 | Core mutations have no browser coverage | **Partly fixed** — `row-mutations.spec.ts` now covers edit, duplicate, delete and undo/redo with API-level verification, including that nothing is written before Save. Comparison UI, FK peek, table lifecycle, tabs and the grid toolbar still have none |
 | 10 | Correctness-free tests (spy budgets, source-text matching, smoke-only mounts) | **Fixed** — `DataGrid` selection answers and mount branches, `useSqlHistory` ids, `compareSchemas` section counts and `tableListRowCounts` are asserted by value; the two bundling guards now parse the module graph with `@babel/parser` and were mutation-tested to prove they fail on the regression they guard; `bunSubprocess` fails loudly instead of passing vacuously when `pgrep` is missing |
+| 11 | 55 `waitForTimeout` calls (102 s) and a 60 s timeout with CI retries | **Fixed** — sleeps replaced by auto-retrying assertions, timeout 15 s, retries 0. The browser suite went from 2 m 24 s to 41 s |
 
-Current state: **370 unit tests in 39 files**, **coverage 25.8 % statements / 20.7 % branches /
-25.2 % functions / 26.3 % lines** measured over every source file. `vue-tsc` is clean.
+Current state: **370 unit tests in 39 files** (from 202) and **61 browser tests in 15 files**
+(from 57, none skipped), **coverage 25.8 % statements / 20.7 % branches / 25.2 % functions /
+26.3 % lines** measured over every source file. `vue-tsc` is clean.
 
 ### Defects the new tests found
 
