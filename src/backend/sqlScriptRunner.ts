@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import { createReadStream, readFileSync } from 'fs';
 import type { RunSqlScriptRunnerKind, RunSqlScriptStatus } from '../shared/types';
 import { splitSqlStatements } from '../shared/utils/sqlStatements.ts';
-import { findClientExecutable, mysqlClientCandidatePaths } from './clientExecutables.ts';
+import { findClientExecutable, getWindowsMysqlCandidatePaths, mysqlClientCandidatePaths } from './clientExecutables.ts';
 import { dbTools } from './db-tools.ts';
 
 /** Long scripts can print far more than a dialog can show; keep the output bounded. */
@@ -54,8 +54,8 @@ export async function findMysqlClientPath(): Promise<string | undefined> {
         mysqlClientPathCache =
             (await findClientExecutable({
                 commandName: 'mysql',
-                candidatePaths: mysqlClientCandidatePaths,
-                scanDir: { dir: '/usr/local', prefix: 'mysql' },
+                candidatePaths: process.platform === 'win32' ? getWindowsMysqlCandidatePaths('mysql.exe') : mysqlClientCandidatePaths,
+                scanDir: process.platform === 'win32' ? { dir: process.env.ProgramFiles || 'C:\\Program Files', prefix: 'MySQL' } : { dir: '/usr/local', prefix: 'mysql' },
                 versionArgs: ['--version'],
             })) ?? null;
     }

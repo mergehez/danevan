@@ -3,9 +3,9 @@
 // real executable scripts in a temp dir rather than mocked fs/spawn calls.
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { basename, join } from 'path';
+import { basename, join, win32 } from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { findClientExecutable } from './clientExecutables.ts';
+import { findClientExecutable, getWindowsMysqlCandidatePaths, type ClientExecutableDeps } from './clientExecutables.ts';
 
 const hasPosixShell = process.platform !== 'win32' && existsSync('/bin/sh');
 const missingBinary = 'danegeh-client-that-does-not-exist-9f3c';
@@ -91,5 +91,109 @@ describe.skipIf(!hasPosixShell)('findClientExecutable', () => {
         });
 
         expect(resolved).toBeUndefined();
+    });
+});
+
+/**
+ * The Windows branch runs on every platform: the lookup injects the process/fs boundary, so
+ * `where.exe`, the `Program Files` candidates and the `.exe` suffix are asserted here even though
+ * the real spawn can only happen on Windows.
+ */
+describe('findClientExecutable on Windows', () => {
+    const whereResult = (stdout: string): [string, string, number | null] => [stdout, '', 0];
+
+    function windowsDeps(overrides: Partial<ClientExecutableDeps> = {}): ClientExecutableDeps {
+        return {
+            platform: 'win32',
+            exists: () => false,
+            readdir: () => [],
+            run: async () => ['', '', 0],
+            ...overrides,
+        };
+    }
+
+    it('asks where.exe instead of a POSIX shell', async () => {
+        const commands: Array<{ command: string; args: string[] }> = [];
+        const found = 'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe';
+
+        const resolved = await findClientExecutable(
+            { commandName: 'mysqldump', candidatePaths: [], versionArgs: ['--version'] },
+            windowsDeps({
+                exists: (path) => path === found,
+                run: async (command, args) => {
+                    commands.push({ command, args });
+                    return whereResult(`${found}\r\n`);
+                },
+            })
+        );
+
+        expect(resolved).toBe(found);
+        expect(commands).toEqual([
+            { command: 'where.exe', args: ['mysqldump'] },
+            { command: found, args: ['--version'] },
+        ]);
+    });
+
+    it('falls through to the Program Files candidates when where.exe finds nothing', async () => {
+        const existing = 'C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin\\mysqldump.exe';
+
+        const resolved = await findClientExecutable(
+            { commandName: 'mysqldump', candidatePaths: getWindowsMysqlCandidatePaths('mysqldump.exe'), versionArgs: ['--version'] },
+            windowsDeps({
+                exists: (path) => path === existing,
+                run: async (command) => (command === 'where.exe' ? whereResult('INFO: Could not find files.\r\n') : ['', '', 0]),
+            })
+        );
+
+        expect(resolved).toBe(existing);
+    });
+
+    it('scans a versioned install directory for bin/<command>.exe', async () => {
+        const installRoot = process.env.ProgramFiles || 'C:\\Program Files';
+        const scanned = win32.join(installRoot, 'MySQL Server 9.1', 'bin', 'mysqldump.exe');
+
+        const resolved = await findClientExecutable(
+            {
+                commandName: 'mysqldump',
+                candidatePaths: [],
+                scanDir: { dir: installRoot, prefix: 'MySQL' },
+                versionArgs: ['--version'],
+            },
+            windowsDeps({
+                exists: (path) => path === scanned || path === installRoot,
+                readdir: () => ['MySQL Server 9.1', 'Notepad'],
+                run: async (command) => (command === 'where.exe' ? whereResult('') : ['', '', 0]),
+            })
+        );
+
+        expect(resolved).toBe(scanned);
+    });
+
+    it('skips a candidate that cannot run', async () => {
+        const broken = 'C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe';
+
+        const resolved = await findClientExecutable(
+            { commandName: 'mysqldump', candidatePaths: getWindowsMysqlCandidatePaths('mysqldump.exe'), versionArgs: ['--version'] },
+            windowsDeps({
+                exists: (path) => path === broken,
+                run: async (command) => {
+                    if (command === 'where.exe') {
+                        return whereResult('');
+                    }
+
+                    throw new Error('EACCES');
+                },
+            })
+        );
+
+        expect(resolved).toBeUndefined();
+    });
+
+    it('names the Windows candidates and their executable suffix', () => {
+        const candidates = getWindowsMysqlCandidatePaths('mysql.exe');
+
+        expect(candidates.every((path) => path.endsWith('mysql.exe'))).toBe(true);
+        expect(candidates.some((path) => path.includes('MySQL Server 8.0'))).toBe(true);
+        expect(candidates.some((path) => path.includes('MariaDB'))).toBe(true);
     });
 });

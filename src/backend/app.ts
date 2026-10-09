@@ -50,7 +50,7 @@ import type {
 } from '../shared/types';
 import { deleteServerPassword, readServerPassword, storeServerPassword } from './auth.ts';
 import { executeCommandToFile } from './bunSubprocess.ts';
-import { findClientExecutable, mysqldumpCandidatePaths } from './clientExecutables.ts';
+import { findClientExecutable, getWindowsMysqlCandidatePaths, mysqldumpCandidatePaths } from './clientExecutables.ts';
 import { useAppDb } from './db-app.ts';
 import { dbTools, type SortOrder } from './db-tools.ts';
 import { findMysqlClientPath, getSqlScriptRunStatus, startSqlScriptRun, stopSqlScriptRun } from './sqlScriptRunner.ts';
@@ -256,10 +256,13 @@ function normalizeTestConnectionPayload(params: AppTestConnectionParams) {
 }
 
 async function findMysqldumpPath(): Promise<string | undefined> {
+    const isWindows = process.platform === 'win32';
+
     return findClientExecutable({
         commandName: 'mysqldump',
-        candidatePaths: mysqldumpCandidatePaths,
-        scanDir: { dir: '/usr/local', prefix: 'mysql' },
+        candidatePaths: isWindows ? getWindowsMysqlCandidatePaths('mysqldump.exe') : mysqldumpCandidatePaths,
+        // Versioned installs live directly under these directories on each platform.
+        scanDir: isWindows ? { dir: process.env.ProgramFiles || 'C:\\Program Files', prefix: 'MySQL' } : { dir: '/usr/local', prefix: 'mysql' },
         versionArgs: ['--version'],
     });
 }
