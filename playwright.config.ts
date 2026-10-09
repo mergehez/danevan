@@ -10,7 +10,9 @@ export default defineConfig({
     // the flake it should be reporting. The slowest test runs in ~3s.
     retries: 0,
     workers: 1,
-    reporter: 'html',
+    // The skip guard fails a run that skipped a precondition, so green cannot mean "the
+    // database specs did not execute".
+    reporter: [['html'], ['./src/mainview/tests/e2e/failOnSkipReporter.ts']],
     timeout: 15_000,
     use: {
         baseURL: `http://127.0.0.1:${FRONTEND_PORT}`,
