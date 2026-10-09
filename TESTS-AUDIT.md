@@ -81,6 +81,9 @@ either. Add a spec that edits, inserts and deletes a row, saves, and re-reads th
 `post(request, 'getTableData', …)` for both dialects, behind a `require*` precondition that fails
 loudly — the dialect where wrong SQL silently corrupts data is the one with no write coverage.
 
+- _depends on_: a reachable PostgreSQL and SQL Server — the Docker and Podman CLIs are installed here
+  but no daemon is running, so the images, credentials and seeded test databases are missing too.
+
 ### e2e-14 · Startup and export failure modes (small)
 
 The failed save and the rejected credentials are covered (`failure-modes.spec.ts`); two failure modes
@@ -88,7 +91,9 @@ still have no spec. An unwritable app data directory makes the backend throw `Sq
 write a readonly database`, never listen on the API port, and leave every screen dead with no message
 — the shell must say so instead of showing an empty window. And a `mysqldump` executable that
 disappears between opening the export modal and submitting it must show its error in the modal (the
-API-level guard is covered in `appApi.spec.ts`, the screen is not).
+API-level guard is covered in `appApi.spec.ts`, the screen is not). Both are implementable here: the
+read-only case only needs `APP_DATA_DIR` pointed at an unwritable directory, and the export modal lets
+the spec type a bogus executable path itself.
 
 ---
 
@@ -113,13 +118,21 @@ for MEMO/OLEOBJECT/CURRENCY/DATETIME, and the `ps-probe` PowerShell lookup in
 `useMsAccessWindowsDriver.ts`. Cover the frames, the mapping tables and the manifest/`clientExecutables`
 interaction as units, injecting the process boundary for the Java and PowerShell spawns.
 
+- _depends on_: a Windows runner for the `ps-probe` PowerShell path. The macOS side needs nothing
+  missing: Java 17 is installed, the `msaccess-runtime` jars are already cached under the app data
+  directory, and `assets/test-access-db.mdb` is the fixture.
+
 ### unit-10 · Windows process boundary (small)
 
 `clientExecutables.spec.ts`, `sqlScriptRunner.spec.ts` and `bunSubprocess.spec.ts` are wrapped in
 `describe.skipIf(!hasPosixShell)`, so they disappear on Windows — exactly where client discovery,
 `MYSQL_PWD`, exit handling and the PowerShell probes differ. Inject the spawn/fs boundary so both the
 POSIX and win32 branches run on every platform, and keep one POSIX-only integration test for the real
-shell behaviour.
+shell behaviour. Note the finding that motivates this: `findClientExecutable` is POSIX-only (`sh -c
+command -v` plus POSIX candidate paths), so on Windows the app cannot locate `mysql`/`mysqldump` at all.
+
+- _depends on_: a Windows runner to prove the real `where.exe` and process behaviour; the
+  injected-boundary tests themselves run on any platform.
 
 ---
 
