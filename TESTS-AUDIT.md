@@ -43,18 +43,21 @@ The findings below are the original audit. This table tracks what has since been
 | 10 | Correctness-free tests (spy budgets, source-text matching, smoke-only mounts) | **Fixed** — `DataGrid` selection answers and mount branches, `useSqlHistory` ids, `compareSchemas` section counts and `tableListRowCounts` are asserted by value; the two bundling guards now parse the module graph with `@babel/parser` and were mutation-tested to prove they fail on the regression they guard; `bunSubprocess` fails loudly instead of passing vacuously when `pgrep` is missing |
 | 11 | 55 `waitForTimeout` calls (102 s) and a 60 s timeout with CI retries | **Fixed** — sleeps replaced by auto-retrying assertions, timeout 15 s, retries 0. The browser suite went from 2 m 24 s to 41 s |
 
-Current state: **370 unit tests in 39 files** (from 202) and **61 browser tests in 15 files**
-(from 57, none skipped), **coverage 25.8 % statements / 20.7 % branches / 25.2 % functions /
-26.3 % lines** measured over every source file. `vue-tsc` is clean.
+Current state: **379 unit tests in 39 files** (from 202) and **61 browser tests in 15 files**
+(from 57, none skipped), **coverage 26.0 % statements / 20.8 % branches / 25.3 % functions /
+26.4 % lines** measured over every source file. `vue-tsc` is clean.
 
-### Defects the new tests found
+### Defects the new tests found — all fixed
 
-| Where | Defect | Reachable today? |
+| Where | Defect | Fix |
 |---|---|---|
-| `dbColumnDataType.ts:172` | `getDbColumnDataTypeOptions('sqlserver' \| 'msaccess')` returns the **SQLite** type list (29 types incl. `varying character`, `int2`, `clob`), so adding a column to a SQL Server/Access table offers SQLite types | **Yes** — `ModifyTableModal.tsx:936` |
-| `mergeConflicts.ts:23` | The separator group `(^=======\n)` rejects `=======\r\n`, so a CRLF conflict block is never parsed and looks conflict-free | No — the module has no importer yet |
-| `sqlIdentifiers.ts:24-39` | `unquoteSqlIdentifier(quoteSqlIdentifier('app.users','mysql'))` → `` app`.`users ``; the quoting of the first part is not stripped | Only `monacoSqlLanguages.ts:270` could pass a qualified value |
-| `typeOrmMappers.ts:17-31` | `normalizeTypeOrmDefault(() => …)` returns `undefined` although the signature and `TableColumnInfo.defaultValue` say `string \| null` | No — driver loads pass catalog strings |
+| `dbColumnDataType.ts` | `getDbColumnDataTypeOptions('sqlserver' \| 'msaccess')` returned the **SQLite** type list (`varying character`, `int2`, `clob`), so adding a column to a SQL Server/Access table offered SQLite types — user-visible via `ModifyTableModal.tsx:936` | Both engines have their own list; Access uses the uppercase names its driver reports. Only an undefined driver falls back to SQLite (`d1ca2dd`) |
+| `mergeConflicts.ts:23` | The separator group `(^=======\n)` rejected `=======\r\n`, so a CRLF block was never parsed and the file looked conflict-free (Windows, `core.autocrlf`) | The separator tolerates `\r\n`; offsets, line numbers and resolution keep the carriage returns (`1f341e9`) |
+| `sqlIdentifiers.ts:24-39` | `unquoteSqlIdentifier` stripped one outer pair while `quoteSqlIdentifier` quotes each part, so `unquote(quote('app.users'))` → `` app`.`users `` | Splits on the dots between parts (ignoring dots the quoting protects), unquotes each and rejoins (`9d6ca41`) |
+| `typeOrmMappers.ts:17-31` | `normalizeTypeOrmDefault(() => 'CURRENT_TIMESTAMP')` returned `undefined` — TypeORM's way of holding a SQL expression was dropped and the column looked default-less | Function defaults are called (a throwing one yields null); the JSON path maps an unrepresentable value to null; the return type is explicit (`5556a46`) |
+
+Each fix was verified against the test that pins it; the CRLF and bundling-guard fixes were
+additionally confirmed by reverting the fix and watching the new tests fail.
 
 ---
 
