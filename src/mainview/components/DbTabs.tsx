@@ -105,7 +105,9 @@ export const DbTabs = component(
         return () => (
             <div class="flex min-w-0 flex-col gap-0.5 bg-x2">
                 {states.value.map((tabs, i) =>
-                    i != 0 || tabs.length ? (
+                    // The script row stays for its "new scratch tab" button, which is the only way to
+                    // start a scratch tab and used to disappear exactly when the workspace was empty.
+                    i != 0 || tabs.length || connections.connections.length ? (
                         <div class="flex min-w-0 items-center gap-2" key={i}>
                             <DragTabs
                                 items={tabs}
@@ -139,6 +141,7 @@ export const DbTabs = component(
                             {i == 0 ? (
                                 <IconButton
                                     icon="icon-[mdi--plus]"
+                                    data-testid="new-scratch-tab"
                                     v-tooltip={{ value: 'New scratch tab', xs: true, nowrap: true }}
                                     smaller={true}
                                     disabled={!connections.connections.length}
