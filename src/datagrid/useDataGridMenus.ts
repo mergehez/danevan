@@ -1,6 +1,6 @@
 import type { ContextMenuEntry } from '../directives/contextMenuTypes';
 import { writeClipboardText } from '../shared/utils/clipboard';
-import { type DataGridInternalState, type DataGridTransposedState, getCellKey } from './useDataGrid';
+import type { DataGridInternalState, DataGridTransposedState } from './useDataGrid';
 import { createDataGridClipboard } from './useDataGridClipboard';
 import { formatDefaultEditingValue } from './useDataGridCoreUtils';
 import type { DataGridUpdateLayoutState } from './useDataGridHelperTypes';
@@ -451,32 +451,87 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
         internalState.tableElement = target instanceof HTMLElement ? target : undefined;
     }
 
+    // The draw pass asks for these per visible cell, so pending/saved changes are
+    // indexed by row once per change instead of scanned (and string-keyed) per cell.
+    let dirtyIndexCache: { changes: Record<string, DataGridPendingChange>; byRow: Map<number, Set<string>>; rows: Set<number> } | undefined;
+    let savedIndexCache: { cellKeys: string[]; rowIndexes: number[]; byRow: Map<number, Set<string>>; rows: Set<number> } | undefined;
+
+    function getDirtyIndex() {
+        const changes = internalState.pendingChanges;
+
+        if (dirtyIndexCache?.changes !== changes) {
+            const byRow = new Map<number, Set<string>>();
+            const rows = new Set<number>();
+
+            for (const change of Object.values(changes)) {
+                rows.add(change.rowIndex);
+                const columns = byRow.get(change.rowIndex) ?? new Set<string>();
+                columns.add(change.columnName);
+                byRow.set(change.rowIndex, columns);
+            }
+
+            dirtyIndexCache = { changes, byRow, rows };
+        }
+
+        return dirtyIndexCache;
+    }
+
+    function getSavedIndex() {
+        const cellKeys = internalState.savedCellKeys;
+        const rowIndexes = internalState.savedRowIndexes;
+
+        if (savedIndexCache?.cellKeys !== cellKeys || savedIndexCache.rowIndexes !== rowIndexes) {
+            const byRow = new Map<number, Set<string>>();
+
+            for (const cellKey of cellKeys) {
+                const separatorIndex = cellKey.indexOf(':');
+                const rowIndex = Number(cellKey.slice(0, separatorIndex));
+                const columnName = cellKey.slice(separatorIndex + 1);
+                const columns = byRow.get(rowIndex) ?? new Set<string>();
+                columns.add(columnName);
+                byRow.set(rowIndex, columns);
+            }
+
+            savedIndexCache = { cellKeys, rowIndexes, byRow, rows: new Set(rowIndexes) };
+        }
+
+        return savedIndexCache;
+    }
+
     function isDirtyCell(rowIndex: number, columnName: string) {
+        // Non-transposed grids address cells directly: no resolveCell object needed.
+        if (!internalState.isTransposed) {
+            return options.editable && (getDirtyIndex().byRow.get(rowIndex)?.has(columnName) ?? false);
+        }
+
         const resolvedCell = trState.resolveCell(rowIndex, columnName);
-        return !!(resolvedCell.editable && resolvedCell.sourceColumnName && internalState.pendingChanges[getCellKey(resolvedCell.sourceRowIndex, resolvedCell.sourceColumnName)]);
+
+        return !!(resolvedCell.editable && resolvedCell.sourceColumnName && getDirtyIndex().byRow.get(resolvedCell.sourceRowIndex)?.has(resolvedCell.sourceColumnName));
     }
 
     function isDirtyRow(rowIndex: number) {
         const sourceColumnName = trState.getSourceColumnNameForRow(rowIndex);
-        return sourceColumnName
-            ? internalState.dirtyChanges.some((change: DataGridPendingChange) => change.columnName === sourceColumnName)
-            : internalState.dirtyChanges.some((change: DataGridPendingChange) => change.rowIndex === rowIndex);
+        const index = getDirtyIndex();
+
+        return sourceColumnName ? internalState.dirtyChanges.some((change: DataGridPendingChange) => change.columnName === sourceColumnName) : index.rows.has(rowIndex);
     }
 
     function isSavedCell(rowIndex: number, columnName: string) {
+        if (!internalState.isTransposed) {
+            return options.editable && (getSavedIndex().byRow.get(rowIndex)?.has(columnName) ?? false);
+        }
+
         const resolvedCell = trState.resolveCell(rowIndex, columnName);
-        return !!(
-            resolvedCell.editable &&
-            resolvedCell.sourceColumnName &&
-            internalState.savedCellKeys.includes(getCellKey(resolvedCell.sourceRowIndex, resolvedCell.sourceColumnName))
-        );
+
+        return !!(resolvedCell.editable && resolvedCell.sourceColumnName && getSavedIndex().byRow.get(resolvedCell.sourceRowIndex)?.has(resolvedCell.sourceColumnName));
     }
 
     function isSavedRow(rowIndex: number) {
         const sourceColumnName = trState.getSourceColumnNameForRow(rowIndex);
+
         return sourceColumnName
             ? internalState.savedCellKeys.some((cellKey: string) => cellKey.endsWith(`:${sourceColumnName}`))
-            : internalState.savedRowIndexes.includes(rowIndex);
+            : getSavedIndex().rows.has(rowIndex);
     }
 
     return {

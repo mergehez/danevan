@@ -23,6 +23,35 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
     const { internalState, transposedState: trState, options } = args;
     let searchCommitTimer: ReturnType<typeof setTimeout> | undefined;
 
+    // The draw pass asks for these per visible cell, so the row list and the row
+    // selection are indexed once per change instead of scanned per cell.
+    let visualRowIndexCache: { rowIndexes: number[]; bySourceRowIndex: Map<number, number> } | undefined;
+    let selectedRowSetCache: { rowIndexes: number[]; set: Set<number> } | undefined;
+    let allRowsSelectedCache: { rowIndexes: number[]; selectedRowIndexes: number[]; value: boolean } | undefined;
+
+    function getVisualRowIndexBySourceRowIndex() {
+        const rowIndexes = args.sortedRowIndexes.value;
+
+        if (visualRowIndexCache?.rowIndexes !== rowIndexes) {
+            visualRowIndexCache = {
+                rowIndexes,
+                bySourceRowIndex: new Map(rowIndexes.map((rowIndex, visualRowIndex) => [rowIndex, visualRowIndex])),
+            };
+        }
+
+        return visualRowIndexCache.bySourceRowIndex;
+    }
+
+    function getSelectedRowSet() {
+        const rowIndexes = internalState.selectedRowIndexes;
+
+        if (selectedRowSetCache?.rowIndexes !== rowIndexes) {
+            selectedRowSetCache = { rowIndexes, set: new Set(rowIndexes) };
+        }
+
+        return selectedRowSetCache.set;
+    }
+
     function getSourceRowIndexForVisualRowIndex(visualRowIndex: number) {
         const rowIndexes = args.sortedRowIndexes.value;
 
@@ -35,8 +64,14 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
     }
 
     function getVisualRowIndexForSourceRowIndex(sourceRowIndex: number) {
-        const visualRowIndex = args.sortedRowIndexes.value.indexOf(sourceRowIndex);
-        return visualRowIndex >= 0 ? visualRowIndex : Math.max(0, Math.min(sourceRowIndex, Math.max(args.sortedRowIndexes.value.length - 1, 0)));
+        const rowIndexes = args.sortedRowIndexes.value;
+        const visualRowIndex = getVisualRowIndexBySourceRowIndex().get(sourceRowIndex);
+
+        if (visualRowIndex !== undefined) {
+            return visualRowIndex;
+        }
+
+        return Math.max(0, Math.min(sourceRowIndex, Math.max(rowIndexes.length - 1, 0)));
     }
 
     function getVisualPosition(position?: { rowIndex: number; columnIndex: number }): KeyboardNavigationPosition {
@@ -245,7 +280,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
     }
 
     function isSelectedRow(rowIndex: number) {
-        return internalState.selectedRowIndexes.includes(rowIndex);
+        return getSelectedRowSet().has(rowIndex);
     }
 
     function isSelectedColumn(columnName: string) {
@@ -262,19 +297,31 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
             return true;
         }
 
+        // No cell range means no further work: the visual row index is only needed
+        // for the range test, and it is the expensive part of this call.
         const range = normalizeSelectedCellRange(internalState.selectedCellRange);
+
+        if (!range) {
+            return false;
+        }
+
         const visualRowIndex = getVisualRowIndexForSourceRowIndex(rowIndex);
-        return (
-            !!range &&
-            visualRowIndex >= range.topRowIndex &&
-            visualRowIndex <= range.bottomRowIndex &&
-            columnIndex >= range.leftColumnIndex &&
-            columnIndex <= range.rightColumnIndex
-        );
+        return visualRowIndex >= range.topRowIndex && visualRowIndex <= range.bottomRowIndex && columnIndex >= range.leftColumnIndex && columnIndex <= range.rightColumnIndex;
     }
 
     function areAllRowsSelected() {
-        return args.sortedRowIndexes.value.length > 0 && args.sortedRowIndexes.value.every((rowIndex: number) => internalState.selectedRowIndexes.includes(rowIndex));
+        const rowIndexes = args.sortedRowIndexes.value;
+        const selectedRowIndexes = internalState.selectedRowIndexes;
+
+        if (allRowsSelectedCache?.rowIndexes === rowIndexes && allRowsSelectedCache.selectedRowIndexes === selectedRowIndexes) {
+            return allRowsSelectedCache.value;
+        }
+
+        const selectedRowSet = getSelectedRowSet();
+        const value = rowIndexes.length > 0 && rowIndexes.every((rowIndex: number) => selectedRowSet.has(rowIndex));
+        allRowsSelectedCache = { rowIndexes, selectedRowIndexes, value };
+
+        return value;
     }
 
     function isActiveCell(rowIndex: number, columnIndex: number) {

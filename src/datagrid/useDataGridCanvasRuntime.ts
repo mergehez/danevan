@@ -10,6 +10,33 @@ import {
 } from './dataGrid';
 import type { DataGridRuntimeArgs } from './useDataGridView';
 
+/**
+ * Canvas text measurement is a per-cell cost on every frame; the same short
+ * strings (and the same ellipsized candidates) repeat across frames, so widths
+ * are cached per font. Bounded so a page of long values cannot grow it forever.
+ */
+const TEXT_WIDTH_CACHE_LIMIT = 20_000;
+const textWidthCache = new Map<string, number>();
+
+function measureTextWidth(context: CanvasRenderingContext2D, text: string) {
+    const cacheKey = `${context.font}\u0000${text}`;
+    const cached = textWidthCache.get(cacheKey);
+
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const width = context.measureText(text).width;
+
+    if (textWidthCache.size >= TEXT_WIDTH_CACHE_LIMIT) {
+        textWidthCache.clear();
+    }
+
+    textWidthCache.set(cacheKey, width);
+
+    return width;
+}
+
 export type DataGridTextRun = {
     text: string;
     isMarker: boolean;
@@ -105,16 +132,40 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
         return result;
     }
 
+    // Formatting a cell runs the column formatter and truncates the value; doing it
+    // for every visible cell on every frame was the bulk of a draw. The cache is
+    // dropped whenever the render version changes (formatters, transposition,
+    // pending changes) and each entry also checks the displayed value itself, so an
+    // in-place edit can never show stale text.
+    let formattedTextCache = new Map<string, { value: unknown; text: string }>();
+    let formattedTextCacheVersion: string | undefined;
+
     function getDisplayedText(rowIndex: number, columnName: string) {
+        const renderVersion = String(gridState.value.renderVersion);
+
+        if (formattedTextCacheVersion !== renderVersion) {
+            formattedTextCacheVersion = renderVersion;
+            formattedTextCache = new Map();
+        }
+
+        const cacheKey = `${rowIndex}:${columnName}`;
+        const displayedValue = gridState.value.getDisplayedCellValue(rowIndex, columnName);
+        const cached = formattedTextCache.get(cacheKey);
+
+        if (cached && cached.value === displayedValue) {
+            return cached.text;
+        }
+
         const raw = gridState.value.getFormattedCellValue(rowIndex, columnName);
 
         // Truncate very long text to prevent expensive canvas measureText() calls
         // that would otherwise process multi-MB strings (e.g. large text/blob fields).
-        if (raw.length > DATA_GRID_MAX_DISPLAY_TEXT_LENGTH) {
-            return replaceDataGridNewlines(raw.slice(0, DATA_GRID_MAX_DISPLAY_TEXT_LENGTH) + '…');
-        }
+        const text =
+            raw.length > DATA_GRID_MAX_DISPLAY_TEXT_LENGTH ? replaceDataGridNewlines(raw.slice(0, DATA_GRID_MAX_DISPLAY_TEXT_LENGTH) + '…') : replaceDataGridNewlines(raw);
 
-        return replaceDataGridNewlines(raw);
+        formattedTextCache.set(cacheKey, { value: displayedValue, text });
+
+        return text;
     }
 
     function getThemeColors() {
@@ -250,7 +301,7 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
     }
 
     function ellipsizeText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
-        if (context.measureText(text).width <= maxWidth) {
+        if (measureTextWidth(context, text) <= maxWidth) {
             return text;
         }
 
@@ -262,7 +313,7 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
             const middle = Math.floor((low + high) / 2);
             const candidate = `${text.slice(0, middle)}${ellipsis}`;
 
-            if (context.measureText(candidate).width <= maxWidth) {
+            if (measureTextWidth(context, candidate) <= maxWidth) {
                 low = middle + 1;
             } else {
                 high = middle;
@@ -492,14 +543,14 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
                 }
 
                 drawTextSegment(run.text, cursorX, baseTextColor, run.isMarker);
-                cursorX += context.measureText(run.text).width;
+                cursorX += measureTextWidth(context, run.text);
             }
         };
 
         if (!matches.length) {
             drawPlainRuns(visibleText, textX);
             if (options.strikethrough && visibleText) {
-                const lineWidth = context.measureText(visibleText).width;
+                const lineWidth = measureTextWidth(context, visibleText);
                 context.strokeStyle = baseTextColor;
                 context.beginPath();
                 context.moveTo(textX, options.rowTop + DATA_GRID_ROW_HEIGHT / 2 + 0.5);
@@ -517,7 +568,7 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
 
             if (prefix) {
                 drawPlainRuns(prefix, cursorX);
-                cursorX += context.measureText(prefix).width;
+                cursorX += measureTextWidth(context, prefix);
             }
 
             const matchedText = visibleText.slice(match.start, match.end);
@@ -527,7 +578,7 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
                 continue;
             }
 
-            const matchWidth = context.measureText(matchedText).width;
+            const matchWidth = measureTextWidth(context, matchedText);
             context.fillStyle = colors.searchHighlight;
             context.fillRect(cursorX - 1, options.rowTop + 4, matchWidth + 2, DATA_GRID_ROW_HEIGHT - 8);
             context.fillStyle = colors.searchHighlightText;
@@ -543,7 +594,7 @@ export function useDataGridCanvasRuntime(args: DataGridRuntimeArgs) {
         }
 
         if (options.strikethrough && visibleText) {
-            const lineWidth = context.measureText(visibleText).width;
+            const lineWidth = measureTextWidth(context, visibleText);
             context.strokeStyle = baseTextColor;
             context.beginPath();
             context.moveTo(textX, options.rowTop + DATA_GRID_ROW_HEIGHT / 2 + 0.5);

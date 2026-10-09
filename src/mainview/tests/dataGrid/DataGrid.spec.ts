@@ -43,6 +43,7 @@ type GridStateOptions = {
 
 type MockCanvasContext = CanvasRenderingContext2D & {
     fillTextCalls: Array<{ text: string; x: number; y: number }>;
+    measureTextCalls: string[];
 };
 
 type GridViewHarnessVm = {
@@ -58,13 +59,17 @@ const PointerEventCtor = window.PointerEvent ?? MouseEvent;
 function createMockCanvasContext(): MockCanvasContext {
     const context = {
         fillTextCalls: [] as Array<{ text: string; x: number; y: number }>,
+        measureTextCalls: [] as string[],
         beginPath: () => {},
         clearRect: () => {},
         clip: () => {},
         fill: () => {},
         fillRect: () => {},
         lineTo: () => {},
-        measureText: (text: string) => ({ width: String(text).length * 7 }),
+        measureText(text: string) {
+            context.measureTextCalls.push(String(text));
+            return { width: String(text).length * 7 };
+        },
         moveTo: () => {},
         rect: () => {},
         restore: () => {},
@@ -997,5 +1002,112 @@ describe('DataGrid', () => {
 
         expect(state.sortState).toBeNull();
         expect(localStorage.getItem(layoutStorageKey) ?? '').not.toContain('DateLastLogin');
+    });
+
+    // The draw pass asks these per visible cell, so they must not walk the row
+    // list or the selection arrays on every call.
+    it('answers selection queries without scanning the rows per cell', () => {
+        const rowCount = 2000;
+        const { state } = createGridState({
+            columns: ['id', 'name', 'city'],
+            rows: Array.from({ length: rowCount }, (_, index) => ({ id: index + 1, name: `Row ${index}`, city: `City ${index}` })),
+        });
+
+        state.selectCellRange(10, 0, 20, 2);
+
+        const indexOf = vi.spyOn(Array.prototype, 'indexOf');
+        const includes = vi.spyOn(Array.prototype, 'includes');
+
+        for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+            state.isSelectedCell(rowIndex, 1);
+        }
+
+        // One index build, not one scan per row.
+        expect(indexOf.mock.calls.length).toBeLessThanOrEqual(2);
+        expect(includes.mock.calls.length).toBeLessThanOrEqual(2);
+
+        indexOf.mockRestore();
+        includes.mockRestore();
+    });
+
+    it('keeps the all-rows-selected answer cached across frames', () => {
+        const { state } = createGridState({
+            columns: ['id', 'name'],
+            rows: Array.from({ length: 2000 }, (_, index) => ({ id: index + 1, name: `Row ${index}` })),
+        });
+
+        state.selectAllRows();
+        expect(state.areAllRowsSelected()).toBe(true);
+
+        const every = vi.spyOn(Array.prototype, 'every');
+
+        for (let frame = 0; frame < 50; frame += 1) {
+            expect(state.areAllRowsSelected()).toBe(true);
+        }
+
+        // The 2000-row `every` runs once, not once per frame.
+        expect(every.mock.calls.length).toBeLessThanOrEqual(1);
+        every.mockRestore();
+    });
+
+    it('does not re-measure the same text on every frame', async () => {
+        const suffix = `unique-${Date.now()}`;
+        const { state } = createGridState({
+            columns: ['id', 'name', 'city'],
+            rows: Array.from({ length: 12 }, (_, index) => ({ id: index + 1, name: `${suffix}-${index}`, city: `${suffix}-city-${index}` })),
+        });
+        const { vm, bodyCanvas, wrapper } = await mountGridViewHarness(state);
+        const context = canvasContexts.get(bodyCanvas)!;
+
+        // Column widths are measured once; the body text is what repeats per frame.
+        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+        context.measureTextCalls.length = 0;
+        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+        const warmFrameMeasurements = context.measureTextCalls.length;
+
+        context.measureTextCalls.length = 0;
+        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+        const secondWarmFrameMeasurements = context.measureTextCalls.length;
+
+        expect(warmFrameMeasurements).toBe(0);
+        expect(secondWarmFrameMeasurements).toBe(0);
+
+        wrapper.unmount();
+    });
+
+    it('formats each cell once and still shows an edited value', async () => {
+        const suffix = `fmt-${Date.now()}`;
+        const values: Record<string, string[]> = {
+            id: Array.from({ length: 12 }, (_, index) => String(index + 1)),
+            name: Array.from({ length: 12 }, (_, index) => `${suffix}-${index}`),
+            city: Array.from({ length: 12 }, (_, index) => `${suffix}-city-${index}`),
+        };
+        const formatCell = vi.fn((rowIndex: number, columnName: string) => values[columnName]?.[rowIndex] ?? '');
+        const { state } = createGridState({
+            columns: ['id', 'name', 'city'],
+            rows: Array.from({ length: 12 }, (_, index) => ({ id: index + 1, name: values.name?.[index], city: values.city?.[index] })),
+            getFormattedCellValue: formatCell,
+        });
+        const { vm, wrapper } = await mountGridViewHarness(state);
+
+        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+        formatCell.mockClear();
+        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+
+        expect(formatCell).not.toHaveBeenCalled();
+
+        // Editing the cell must invalidate its cached text.
+        state.startEditingCell(0, 1);
+        state.setEditingValue('EDITED-VALUE');
+        state.commitEditingCell();
+        if (values.name) {
+            values.name[0] = 'EDITED-VALUE';
+        }
+
+        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+
+        expect(formatCell).toHaveBeenCalledWith(0, 'name');
+
+        wrapper.unmount();
     });
 });
