@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, statSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import type {
     ApplyTableChangesParams as AppApplyTableChangesParams,
     AppBootstrapApi,
@@ -31,10 +31,15 @@ import type {
     PeekFkUsagesResult,
     PeekFkUsageSummary,
     QueryExecutionResult,
+    RunSqlScriptDefaults,
+    RunSqlScriptRunnerKind,
+    RunSqlScriptStatus,
     ServerRow,
     ServerSchemaRecord,
     SqlDiagnosticsResult,
     SqlValue,
+    StartRunSqlScriptParams,
+    StartRunSqlScriptResult,
     TableData,
     TableInfo,
     TableSummary,
@@ -44,9 +49,11 @@ import type {
     UpdateServerParams,
 } from '../shared/types';
 import { deleteServerPassword, readServerPassword, storeServerPassword } from './auth.ts';
-import { executeCommandToFile, executeTextCommand } from './bunSubprocess.ts';
+import { executeCommandToFile } from './bunSubprocess.ts';
+import { findClientExecutable, mysqldumpCandidatePaths } from './clientExecutables.ts';
 import { useAppDb } from './db-app.ts';
 import { dbTools, type SortOrder } from './db-tools.ts';
+import { findMysqlClientPath, getSqlScriptRunStatus, startSqlScriptRun, stopSqlScriptRun } from './sqlScriptRunner.ts';
 import { formatSql as formatSqlResult, getSqlDiagnostics as getSqlDiagnosticsResult } from './sqlDiagnostics.ts';
 import { inspectMsAccessRuntime } from './useMsAccessDriver.ts';
 
@@ -248,61 +255,32 @@ function normalizeTestConnectionPayload(params: AppTestConnectionParams) {
     } satisfies AppTestConnectionParams;
 }
 
-const mysqldumpCandidatePaths = [
-    '/usr/local/mysql/bin/mysqldump',
-    '/usr/local/bin/mysqldump',
-    '/usr/bin/mysqldump',
-    '/opt/homebrew/bin/mysqldump',
-    '/opt/local/bin/mysqldump',
-    '/usr/local/mariadb/bin/mysqldump',
-    join(homedir(), 'bin/mysqldump'),
-];
-
 async function findMysqldumpPath(): Promise<string | undefined> {
-    const candidates: string[] = [];
+    return findClientExecutable({
+        commandName: 'mysqldump',
+        candidatePaths: mysqldumpCandidatePaths,
+        scanDir: { dir: '/usr/local', prefix: 'mysql' },
+        versionArgs: ['--version'],
+    });
+}
 
-    // Add whatever `command -v mysqldump` resolves to, then the common install dirs.
-    try {
-        const [stdout] = await executeTextCommand({ command: 'sh', args: ['-c', 'command -v mysqldump'] });
-        const resolved = stdout.trim();
+/** A script run needs the file on disk; both the confirmation dialog and the run validate it. */
+function resolveScriptFilePath(filePath: string | undefined) {
+    const normalizedPath = filePath?.trim();
 
-        if (resolved) {
-            candidates.push(resolved);
-        }
-    } catch {
-        // PATH lookup failed; fall through to scanning common install directories.
+    if (!normalizedPath) {
+        throw new Error('A SQL script file is required.');
     }
 
-    candidates.push(...mysqldumpCandidatePaths);
-
-    if (existsSync('/usr/local')) {
-        try {
-            for (const entry of readdirSync('/usr/local')) {
-                if (entry.startsWith('mysql')) {
-                    candidates.push(join('/usr/local', entry, 'bin', 'mysqldump'));
-                }
-            }
-        } catch {
-            // ignore directory scan errors.
-        }
+    if (!existsSync(normalizedPath)) {
+        throw new Error(`The SQL script file was not found at: ${normalizedPath}`);
     }
 
-    // A candidate on PATH can be a broken Finder alias or a non-executable file, so
-    // only accept a path that actually runs (e.g. `mysqldump --version`).
-    for (const candidate of new Set(candidates)) {
-        if (!existsSync(candidate)) {
-            continue;
-        }
-
-        try {
-            await executeTextCommand({ command: candidate, args: ['--version'] });
-            return candidate;
-        } catch {
-            // Not runnable as a real binary; keep probing the next candidate.
-        }
+    if (!statSync(normalizedPath).isFile()) {
+        throw new Error('The selected SQL script path is not a file.');
     }
 
-    return undefined;
+    return normalizedPath;
 }
 
 function formatMysqldumpTimestamp(date = new Date()) {
@@ -1096,6 +1074,89 @@ export const app = {
         }
 
         return { outputPath };
+    },
+    getRunSqlScriptDefaults: async (ps: { connectionId: number; filePath: string }): Promise<RunSqlScriptDefaults> => {
+        const connection = appDb.getConnection(ps.connectionId);
+
+        if (!connection) {
+            throw new Error('The selected connection could not be found.');
+        }
+
+        const server = appDb.getServer(connection.server_id);
+
+        if (!server) {
+            throw new Error('The server for the selected connection could not be found.');
+        }
+
+        const filePath = resolveScriptFilePath(ps.filePath);
+        const executable = server.driver === 'mysql' ? await findMysqlClientPath() : undefined;
+
+        return {
+            connectionId: ps.connectionId,
+            driver: server.driver,
+            database: connection.database_name || connection.name,
+            dataSource: connection.name || server.name,
+            runner: executable ? 'client' : 'driver',
+            executable,
+            scriptName: basename(filePath),
+            scriptPath: filePath,
+            scriptSize: statSync(filePath).size,
+        };
+    },
+    startRunSqlScript: async (ps: StartRunSqlScriptParams): Promise<StartRunSqlScriptResult> => {
+        const connection = appDb.getConnection(ps.connectionId);
+
+        if (!connection) {
+            throw new Error('The selected connection could not be found.');
+        }
+
+        const server = appDb.getServer(connection.server_id);
+
+        if (!server) {
+            throw new Error('The server for the selected connection could not be found.');
+        }
+
+        const filePath = resolveScriptFilePath(ps.filePath);
+        const requestedExecutable = ps.executable?.trim();
+        const executable = server.driver === 'mysql' ? requestedExecutable || (await findMysqlClientPath()) : undefined;
+        const runnerKind: RunSqlScriptRunnerKind = executable ? 'client' : 'driver';
+        const host = connection.host?.trim() || server.host?.trim();
+
+        if (runnerKind === 'client' && !host) {
+            throw new Error('The selected connection is missing its host.');
+        }
+
+        let password = '';
+
+        if (runnerKind === 'client') {
+            try {
+                password = (await readServerPassword(connection.server_id)) ?? '';
+            } catch {
+                // Keychain is unavailable on non-macOS; proceed without a stored password.
+            }
+        }
+
+        appDb.touchConnectionLastUsed(ps.connectionId);
+
+        return {
+            runId: startSqlScriptRun({
+                connectionId: ps.connectionId,
+                database: connection.database_name || connection.name,
+                filePath,
+                runnerKind,
+                executable,
+                host,
+                port: connection.port ?? server.port,
+                username: server.username?.trim(),
+                password,
+            }),
+        };
+    },
+    getRunSqlScriptStatus: async (ps: { runId: string; offset?: number }): Promise<RunSqlScriptStatus> => {
+        return getSqlScriptRunStatus(ps.runId, ps.offset ?? 0);
+    },
+    stopRunSqlScript: async (ps: { runId: string }): Promise<void> => {
+        stopSqlScriptRun(ps.runId);
     },
     createScript: async (ps: CreateScriptParams) => {
         ensureConnectionExists(ps.connectionId);

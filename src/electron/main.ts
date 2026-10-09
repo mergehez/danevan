@@ -29,10 +29,11 @@ function getVsCodePath(): string | undefined {
 const helpers = createElectronHelpers({
     apiMethods: apiMethods as unknown as typeof backendApp,
     getNativeMethods: (_mainWindow, _apiPost) => ({
-        pickDatabaseFile: async (ps?: { defaultPath?: string }) => {
+        pickDatabaseFile: async (ps?: { defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => {
             const result = await dialog.showOpenDialog({
                 defaultPath: ps?.defaultPath || homedir(),
                 properties: ['openFile'],
+                ...(ps?.filters?.length ? { filters: ps.filters } : {}),
             });
 
             return result.filePaths.map((value) => value.trim()).find(Boolean);

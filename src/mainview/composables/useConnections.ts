@@ -29,6 +29,11 @@ export function _useConnections() {
             visible: false,
             connectionId: -1,
         },
+        runSqlScriptModal: {
+            visible: false,
+            connectionId: -1,
+            scriptPath: '',
+        },
         get connections() {
             return [..._dbCoreState.connections].sort((left, right) => left.name.localeCompare(right.name) || left.id - right.id);
         },
@@ -213,6 +218,28 @@ export function _useConnections() {
         closeMysqldumpExport() {
             state.mysqldumpExportModal.visible = false;
             state.mysqldumpExportModal.connectionId = -1;
+        },
+        /** Picks a SQL file for the connection and opens the run confirmation with it. */
+        async openRunSqlScript(connectionId: number) {
+            const scriptPath = await tasks.pickDatabaseFile.run({
+                filters: [
+                    { name: 'SQL scripts', extensions: ['sql'] },
+                    { name: 'All files', extensions: ['*'] },
+                ],
+            });
+
+            if (!scriptPath) {
+                return;
+            }
+
+            state.runSqlScriptModal.connectionId = connectionId;
+            state.runSqlScriptModal.scriptPath = scriptPath;
+            state.runSqlScriptModal.visible = true;
+        },
+        closeRunSqlScript() {
+            state.runSqlScriptModal.visible = false;
+            state.runSqlScriptModal.connectionId = -1;
+            state.runSqlScriptModal.scriptPath = '';
         },
         async createConnection(connection: CreateConnectionParams) {
             _dbCoreState.applyBootstrap(await tasks.createConnection.run(connection));

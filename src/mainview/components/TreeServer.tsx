@@ -15,6 +15,7 @@ import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
 import { DbCreateDatabaseModal } from './DbCreateDatabaseModal.tsx';
 import { DbMysqldumpExportModal } from './DbMysqldumpExportModal.tsx';
+import { DbRunSqlScriptModal } from './DbRunSqlScriptModal.tsx';
 import { DbServerFormModal } from './DbServerFormModal.tsx';
 import { DbServerSchemasModal } from './DbServerSchemasModal.tsx';
 import { FileTreeButton } from './FileTreeButton.tsx';
@@ -340,6 +341,14 @@ export const TreeServer = component(
                         await comparison.openDatabaseComparison({ connectionId: connection.id });
                     },
                 },
+                {
+                    id: `connection-run-sql-script:${connection.id}`,
+                    label: 'Run SQL script...',
+                    iconClass: 'icon-[mdi--script-text-play-outline]',
+                    action: async () => {
+                        await connections.openRunSqlScript(connection.id);
+                    },
+                },
             ];
 
             if (servers.servers.find((server) => server.id === connection.server_id)?.driver === 'mysql') {
@@ -518,6 +527,12 @@ export const TreeServer = component(
                     open={connections.mysqldumpExportModal.visible}
                     connectionId={connections.mysqldumpExportModal.connectionId}
                     onClose={connections.closeMysqldumpExport}
+                />
+                <DbRunSqlScriptModal
+                    open={connections.runSqlScriptModal.visible}
+                    connectionId={connections.runSqlScriptModal.connectionId}
+                    scriptPath={connections.runSqlScriptModal.scriptPath}
+                    onClose={connections.closeRunSqlScript}
                 />
             </>
         );

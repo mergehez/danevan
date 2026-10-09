@@ -507,6 +507,48 @@ export type MysqldumpExportDefaults = {
     dataSource: string;
 };
 
+/** `client` runs a local CLI (e.g. mysql); `driver` runs the statements through the app's own driver. */
+export type RunSqlScriptRunnerKind = 'client' | 'driver';
+
+export type RunSqlScriptRunStatus = 'running' | 'succeeded' | 'failed';
+
+export type RunSqlScriptDefaults = {
+    connectionId: number;
+    driver: DbType;
+    database: string;
+    dataSource: string;
+    runner: RunSqlScriptRunnerKind;
+    executable: string | undefined;
+    scriptName: string;
+    scriptPath: string;
+    scriptSize: number;
+};
+
+export type StartRunSqlScriptParams = {
+    connectionId: number;
+    filePath: string;
+    executable?: string;
+};
+
+export type StartRunSqlScriptResult = {
+    runId: string;
+};
+
+/** One poll of a running script. `outputChunk` carries only what the caller has not seen yet. */
+export type RunSqlScriptStatus = {
+    runId: string;
+    status: RunSqlScriptRunStatus;
+    runnerKind: RunSqlScriptRunnerKind;
+    runnerLabel: string;
+    outputChunk: string;
+    nextOffset: number;
+    durationMs: number;
+    error?: string;
+    exitCode?: number | null;
+    statementCount?: number;
+    completedStatements?: number;
+};
+
 export type ScriptRow = {
     id: number;
     connection_id: number;
