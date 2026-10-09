@@ -61,11 +61,14 @@ vs multi selection, header formatter menu, toolbar copy item, and the `useDbData
 
 ## Browser tasks (in priority order)
 
-- nothing left
+### e2e-12 · Electron shell (medium)
 
-## Unit tasks
+Everything runs in browser-only dev mode, so the shipped shell is untested. Add a Playwright project
+using `_electron.launch` against `dist-electron/main.cjs`: the window opens, `window.electronAPI` is
+exposed by the preload, and one request/response round-trips through IPC. Needs a second project in
+`playwright.config.ts` and a build step.
 
-- nothing left
+---
 
 ## Everything else still at 0 %
 
@@ -73,4 +76,4 @@ Components exercised only by the browser suite show 0 % _unit_ coverage and are 
 tests for them; extend the browser spec instead. Genuinely uncovered and not worth a task yet:
 `releaseHelpers.ts` (175), `vite-plugin.ts`, `mainProloadHelpers.ts`, `browserOnlyHelpers.ts`,
 `executeCommand.ts`, `electronConfig.ts`, `handleScripts.ts`, `Splitter*.tsx`, `DataTable.tsx`,
-`Select.tsx`, `SettingsModal.tsx` (a stub), `loadingIndicatorState.ts`, `appDirectives.ts`, `Electron shell`.
+`Select.tsx`, `SettingsModal.tsx` (a stub), `loadingIndicatorState.ts`, `appDirectives.ts`.
