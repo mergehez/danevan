@@ -27,7 +27,44 @@ describe('getDbColumnDataTypeOptions', () => {
         expect(options.at(-1)).toEqual({ value: 'halfvec', label: 'halfvec' });
     });
 
-    it('de-duplicates the SQLite list and reuses it for drivers without their own list', () => {
+    it('lists the SQL Server data types in declaration order', () => {
+        const options = getDbColumnDataTypeOptions('sqlserver');
+
+        expect(options).toHaveLength(36);
+        expect(options.slice(0, 4)).toEqual([
+            { value: 'bit', label: 'bit' },
+            { value: 'tinyint', label: 'tinyint' },
+            { value: 'smallint', label: 'smallint' },
+            { value: 'int', label: 'int' },
+        ]);
+        expect(options).toContainEqual({ value: 'nvarchar', label: 'nvarchar' });
+        expect(options).toContainEqual({ value: 'datetimeoffset', label: 'datetimeoffset' });
+        expect(options.at(-1)).toEqual({ value: 'vector', label: 'vector' });
+
+        // Regression: SQL Server used to be offered the SQLite types.
+        expect(options).not.toContainEqual({ value: 'varying character', label: 'varying character' });
+        expect(options).not.toContainEqual({ value: 'clob', label: 'clob' });
+    });
+
+    it('lists the MS Access data types in the uppercase names the driver reports', () => {
+        const options = getDbColumnDataTypeOptions('msaccess');
+
+        expect(options).toHaveLength(38);
+        expect(options.slice(0, 4)).toEqual([
+            { value: 'TEXT', label: 'TEXT' },
+            { value: 'CHAR', label: 'CHAR' },
+            { value: 'VARCHAR', label: 'VARCHAR' },
+            { value: 'LONGCHAR', label: 'LONGCHAR' },
+        ]);
+        expect(options).toContainEqual({ value: 'MEMO', label: 'MEMO' });
+        expect(options).toContainEqual({ value: 'COUNTER', label: 'COUNTER' });
+
+        // Regression: MS Access used to be offered the SQLite types.
+        expect(options).not.toContainEqual({ value: 'varying character', label: 'varying character' });
+        expect(options).not.toContainEqual({ value: 'clob', label: 'clob' });
+    });
+
+    it('de-duplicates the SQLite list and uses it only when there is no driver', () => {
         const options = getDbColumnDataTypeOptions('sqlite');
 
         expect(options).toHaveLength(29);
@@ -35,8 +72,6 @@ describe('getDbColumnDataTypeOptions', () => {
         expect(options.filter((option) => option.value === 'text')).toHaveLength(1);
         expect(options.filter((option) => option.value === 'real')).toHaveLength(1);
         expect(getDbColumnDataTypeOptions(undefined)).toEqual(options);
-        expect(getDbColumnDataTypeOptions('sqlserver')).toEqual(options);
-        expect(getDbColumnDataTypeOptions('msaccess')).toEqual(options);
     });
 
     it('moves a known current value to the front without duplicating it', () => {

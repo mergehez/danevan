@@ -168,8 +168,109 @@ const SQLITE_DATA_TYPES = [
     'json',
 ];
 
+const SQLSERVER_DATA_TYPES = [
+    // Numerics
+    'bit',
+    'tinyint',
+    'smallint',
+    'int',
+    'bigint',
+    'decimal',
+    'numeric',
+    'money',
+    'smallmoney',
+    'float',
+    'real',
+    // Character and Unicode strings
+    'char',
+    'varchar',
+    'text',
+    'nchar',
+    'nvarchar',
+    'ntext',
+    // Date and time
+    'date',
+    'time',
+    'datetime',
+    'datetime2',
+    'smalldatetime',
+    'datetimeoffset',
+    // Binary
+    'binary',
+    'varbinary',
+    'image',
+    // Other
+    'uniqueidentifier',
+    'xml',
+    'sql_variant',
+    'rowversion',
+    'timestamp',
+    'hierarchyid',
+    'geometry',
+    'geography',
+    'json',
+    'vector',
+];
+
+// Uppercase because the MS Access driver reports and generates these names in uppercase.
+const MSACCESS_DATA_TYPES = [
+    // Text
+    'TEXT',
+    'CHAR',
+    'VARCHAR',
+    'LONGCHAR',
+    'MEMO',
+    'NCHAR',
+    'NVARCHAR',
+    'NTEXT',
+    // Numeric
+    'BIT',
+    'BYTE',
+    'TINYINT',
+    'SMALLINT',
+    'INTEGER',
+    'LONG',
+    'BIGINT',
+    'REAL',
+    'SINGLE',
+    'DOUBLE',
+    'FLOAT',
+    'DECIMAL',
+    'NUMERIC',
+    'MONEY',
+    'COUNTER',
+    // Date and time
+    'DATE',
+    'TIME',
+    'DATETIME',
+    'SMALLDATETIME',
+    'TIMESTAMP',
+    // Logical
+    'YESNO',
+    'BOOLEAN',
+    // Binary and large objects
+    'BINARY',
+    'VARBINARY',
+    'LONGBINARY',
+    'IMAGE',
+    'OLEOBJECT',
+    // Other
+    'GUID',
+    'UNIQUEIDENTIFIER',
+    'HYPERLINK',
+];
+
+const DATA_TYPES_BY_DRIVER: Record<DbType, string[]> = {
+    mysql: MYSQL_DATA_TYPES,
+    postgresql: POSTGRES_DATA_TYPES,
+    sqlite: SQLITE_DATA_TYPES,
+    sqlserver: SQLSERVER_DATA_TYPES,
+    msaccess: MSACCESS_DATA_TYPES,
+};
+
 export function getDbColumnDataTypeOptions(driver: DbType | undefined, currentValue?: string | null) {
-    const baseOptions = driver === 'mysql' ? MYSQL_DATA_TYPES : driver === 'postgresql' ? POSTGRES_DATA_TYPES : SQLITE_DATA_TYPES;
+    // An unknown driver falls back to the SQLite list, which is the closest to a generic SQL set.
+    const baseOptions = (driver ? DATA_TYPES_BY_DRIVER[driver] : undefined) ?? SQLITE_DATA_TYPES;
     const normalizedCurrentValue = currentValue?.trim();
 
     const opts = [...new Set([...(normalizedCurrentValue ? [normalizedCurrentValue] : []), ...baseOptions])];
