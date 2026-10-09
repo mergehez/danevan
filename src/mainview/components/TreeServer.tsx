@@ -4,13 +4,13 @@ import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import { Button } from '../../shared/components/Button.tsx';
 import { dbTypeIcons, type ServerRecord } from '../../shared/types';
 import { withMinLifetime } from '../../shared/utils/useMinLifetime';
-import { formatNumber, tryCatch } from '../../shared/utils/utils.ts';
+import { formatNumber } from '../../shared/utils/utils.ts';
 import { useConnections } from '../composables/useConnections';
 import { useComparison } from '../composables/useComparison';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useModifyTable } from '../composables/useModifyTable';
 import { useServers } from '../composables/useServers';
-import type { ConnectionTreeItem, PersistedTreeState, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
+import type { ConnectionTreeItem, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
 import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
 import { DbCreateDatabaseModal } from './DbCreateDatabaseModal.tsx';
@@ -84,24 +84,10 @@ export const TreeServer = component(
             return state.isConnectionLoading(getFileServerConnection(serverId)?.id);
         }
 
-        function getPersistedTreeState(serverId: number): PersistedTreeState {
-            const storageKey = state.getServerTreeStorageKey(serverId);
-            const rawValue = (state.collapseStateVersion, localStorage.getItem(storageKey));
-
-            if (!rawValue) {
-                return {};
-            }
-
-            return tryCatch(
-                () => JSON.parse(rawValue) as PersistedTreeState,
-                () => ({})
-            );
-        }
-
         function toggleServerCollapsed(serverId: number) {
             const nextCollapsed = !state.isServerCollapsed(serverId);
             state.setPersistedTreeState(serverId, {
-                ...getPersistedTreeState(serverId),
+                ...state.getPersistedTreeState(serverId),
                 collapsed: nextCollapsed,
             });
             return !nextCollapsed;

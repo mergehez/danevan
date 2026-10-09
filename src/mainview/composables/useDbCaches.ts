@@ -87,19 +87,33 @@ export function _useDbCaches() {
 
     const getServerTreeStorageKey = (serverId: number) => `db-sidebar-tree:${serverId}`;
 
+    // Every sidebar row asks for this on render. The parsed object is kept per
+    // server and re-parsed only when the stored string actually changed, so one
+    // toggle costs one JSON.parse instead of one per row.
+    const treeStateCache = new Map<number, { rawValue: string | null; parsed: PersistedTreeState }>();
+
     function getPersistedTreeState(serverId: number): PersistedTreeState {
         const storageKey = getServerTreeStorageKey(serverId);
+        // Reading the version keeps this reactive for the callers (a toggle redraws the tree).
         const rawValue = (collapseStateVersion.value, localStorage.getItem(storageKey));
+        const cached = treeStateCache.get(serverId);
 
-        if (!rawValue) {
-            return {};
+        if (cached && cached.rawValue === rawValue) {
+            return cached.parsed;
         }
 
-        try {
-            return JSON.parse(rawValue) as PersistedTreeState;
-        } catch {
-            return {};
+        let parsed: PersistedTreeState = {};
+
+        if (rawValue) {
+            try {
+                parsed = JSON.parse(rawValue) as PersistedTreeState;
+            } catch {
+                parsed = {};
+            }
         }
+
+        treeStateCache.set(serverId, { rawValue, parsed });
+        return parsed;
     }
 
     function setPersistedTreeState(serverId: number, nextState: PersistedTreeState) {
