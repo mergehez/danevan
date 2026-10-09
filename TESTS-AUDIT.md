@@ -1,8 +1,9 @@
 # Test audit — what to test next
 
-**Status:** 694 unit tests (63 files) · 87 browser tests (23 files) · coverage over every source
-file **37.5 % statements / 29.6 % branches** · floors enforced in `vitest.config.js` ·
-**still a long tail of 0 % files**.
+**Status:** 694 unit tests (63 files) · 87 browser tests (23 files) · 1 Electron shell test ·
+coverage over every source file **37.5 % statements / 29.6 % branches** · aggregate and per-area
+floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
+of 0 % files**.
 
 The long survey that drove the last round of fixes is recoverable from git:
 `git show 7e54f4c:TESTS-AUDIT.md`. This file is the work list.
@@ -24,7 +25,8 @@ The long survey that drove the last round of fixes is recoverable from git:
 - Never `test.skip` — call a `require*` precondition so a missing dependency fails loudly.
 - No `waitForTimeout`, no inline timeouts. Use `await expect(locator)…` or `await expect.poll(…)`.
 - Assert the exact value the user sees. Never `length > 0`, `toBeTruthy()` or a screenshot alone.
-- Verify: `bun x playwright test src/mainview/tests/e2e/<file>.spec.ts`, then `bun run test:e2e`.
+- Verify: `bun x playwright test src/mainview/tests/e2e/<file>.spec.ts`, then `bun run test:e2e`. A run
+  that skips a spec (a missing database downgraded to a skip) fails: fix the environment instead.
 
 **Unit** — pure logic:
 
@@ -55,18 +57,13 @@ and keyboard state machines (`useTree`, `useFileTree`, `useKeyboardNavigation`, 
 **directives (modifier parsing, tooltip, context menu panel, error, loading)** · **small leaf helpers
 (drag payload, formatter worker, native paths, min lifetime, confirm, toast, client lookup, MS Access
 manifest, SQL script runner)** · **grid context-menu planning (cell peek items, row menu for single
-vs multi selection, header formatter menu, toolbar copy item, and the `useDbDataGrid` wiring)**.
+vs multi selection, header formatter menu, toolbar copy item, and the `useDbDataGrid` wiring)** ·
+**the Electron shell (`src/mainview/tests/electron/shell.spec.ts` launches the built
+`dist-electron/main.cjs`: window, preload bridge, IPC round trip, `App.tsx` window title)**.
 
 ---
 
 ## Browser tasks (in priority order)
-
-### e2e-12 · Electron shell (medium)
-
-Everything runs in browser-only dev mode, so the shipped shell is untested. Add a Playwright project
-using `_electron.launch` against `dist-electron/main.cjs`: the window opens, `window.electronAPI` is
-exposed by the preload, and one request/response round-trips through IPC. Needs a second project in
-`playwright.config.ts` and a build step.
 
 ### e2e-13 · PostgreSQL and SQL Server write paths (medium)
 
@@ -86,13 +83,15 @@ added but is gone when a save runs must keep the pending change and show the fai
 would appear. Bad credentials and a missing `mysqldump` binary (`requireMySqlExecutable`) must each
 name the problem on screen. Assert the message, not that the app stayed up.
 
-### e2e-15 · Packaged build smoke (small)
+### e2e-15 · Packaged application smoke (small)
 
-The `bun run build` output (`dist-electron/main.cjs`, `preload.cjs`, `backend.cjs`) is never executed
-by a test — `electronMainEntry.spec.ts` only reads imports — so a broken preload or a backend pulled
-into `main.cjs` ships green. Once e2e-12 boots the dev shell, add a CI job that builds first and
-launches the built entry (or runs `backend.cjs` and talks to it), asserting the window and one
-request/response against the artifact the users actually install.
+The built entry points are now launched for real (`bun run test:e2e:electron`), but the artifact users
+install is the electron-builder bundle in `build/mac-arm64/`, and its `files: ['dist/**/*',
+'dist-electron/**/*']` list excludes `node_modules` while `main.cjs` and `backend.cjs` externalise
+`better-sqlite3`. Nothing asserts that the packaged `.app` still starts, so a missing native module or
+an asar layout problem ships green. Add a job that runs `electron-builder` and launches the built
+`.app`, asserting the window and one IPC round trip — or, if packaging in CI is too slow, at least
+`unzip` the asar and assert `backend.cjs`, `preload.cjs` and `better-sqlite3` are reachable.
 
 ---
 
@@ -128,19 +127,12 @@ shell behaviour.
 
 ## Test infrastructure
 
-### infra-1 · A green run must prove the database specs ran (small)
-
-`E2E_SKIP_MISSING_DB=1` downgrades `requireMySqlDatabase`/`requireMySqlExecutable` to `test.skip`, and
-7 of the 23 browser specs need MySQL, so a CI run with that flag (or without a reachable server) is
-green while testing connection forms, dumps, row mutations and table lifecycle not at all. Fail the
-run when `skipped > 0`, or unset the flag in CI, so the precondition cannot be silently downgraded.
-
-### infra-2 · Floors that bite (small)
-
-The `vitest.config.js` ratchets sit 2–2.5 points below the measured numbers (35/27/33/36 against
-37.45/29.56/35.65/38.22) and are aggregate only, so a new uncovered module dilutes the average
-instead of failing. Tighten them to at most one point below and add per-area floors (`src/backend`,
-`src/datagrid`, `src/mainview/composables`) so a gap cannot hide behind well-covered code.
+- A skipped precondition fails the run (`playwright.config.ts` → `failOnSkipReporter.ts`), so
+  `E2E_SKIP_MISSING_DB=1` can no longer produce a green run that proves less.
+- Coverage floors are one point below the measured numbers and per-area (`src/backend`, `src/datagrid`,
+  `src/shared`, `src/directives`), so a gap cannot hide in the aggregate.
+- `bun run test:e2e:electron` builds the shell (`build:shell`) and launches it; the browser suite and
+  the shell suite need separate configs because `appConfig` hard-codes the API port they both bind.
 
 ---
 
