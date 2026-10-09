@@ -68,12 +68,89 @@ using `_electron.launch` against `dist-electron/main.cjs`: the window opens, `wi
 exposed by the preload, and one request/response round-trips through IPC. Needs a second project in
 `playwright.config.ts` and a build step.
 
+### e2e-13 · PostgreSQL and SQL Server write paths (medium)
+
+Every spec that writes builds its source with `createFileSource` (SQLite) or
+`createMySqlServerAndConnection` (MySQL); PostgreSQL and SQL Server only appear in the schema-helper
+and table-list specs, so no test edits a row, saves a pending change or applies a DDL change on
+either. Add a spec that edits, inserts and deletes a row, saves, and re-reads the value through
+`post(request, 'getTableData', …)` for both dialects, behind a `require*` precondition that fails
+loudly — the dialect where wrong SQL silently corrupts data is the one with no write coverage.
+
+### e2e-14 · Environment and connection failure modes (medium)
+
+Three real failures have no spec. An unwritable app data directory (backend throws `SqliteError:
+attempt to write a readonly database`, never listens on the API port, and every screen is dead with
+no message) must surface an error the user can read. A connection that worked when the source was
+added but is gone when a save runs must keep the pending change and show the failure where the result
+would appear. Bad credentials and a missing `mysqldump` binary (`requireMySqlExecutable`) must each
+name the problem on screen. Assert the message, not that the app stayed up.
+
+### e2e-15 · Packaged build smoke (small)
+
+The `bun run build` output (`dist-electron/main.cjs`, `preload.cjs`, `backend.cjs`) is never executed
+by a test — `electronMainEntry.spec.ts` only reads imports — so a broken preload or a backend pulled
+into `main.cjs` ships green. Once e2e-12 boots the dev shell, add a CI job that builds first and
+launches the built entry (or runs `backend.cjs` and talks to it), asserting the window and one
+request/response against the artifact the users actually install.
+
+---
+
+## Unit tasks
+
+### unit-8 · Driver SQL builders and value mapping (medium)
+
+The drivers are the largest uncovered code in the backend: `useMsAccessDriver.ts` (654 statements,
+0.6 %), `useMySqlDriver.ts` (417, 6.5 %), `useSqliteDriver.ts` (368, 10.3 %), `usePostgresDriver.ts`
+(297, 11.8 %) and `useMsAccessWindowsDriver.ts` (213, 4.2 %). Extract the parts that decide what
+reaches the database — identifier quoting, WHERE/LIMIT/OFFSET building per dialect, INSERT/UPDATE/
+DELETE and DDL generation, value coercion (dates, binary, bigint, NULL versus empty string) and error
+mapping — into pure helpers and cover them directly, the way the grid menus were extracted. No server
+is needed, and this is the code where a wrong string corrupts data.
+
+### unit-9 · MS Access driver and bridge (medium)
+
+`useMsAccessDriver.ts` runs only through the Java bridge, which no spec drives: worker mode versus
+direct mode, the JSON protocol frames, the JAR/runtime manifest and download path, the type mapping
+for MEMO/OLEOBJECT/CURRENCY/DATETIME, and the `ps-probe` PowerShell lookup in
+`useMsAccessWindowsDriver.ts`. Cover the frames, the mapping tables and the manifest/`clientExecutables`
+interaction as units, injecting the process boundary for the Java and PowerShell spawns.
+
+### unit-10 · Windows process boundary (small)
+
+`clientExecutables.spec.ts`, `sqlScriptRunner.spec.ts` and `bunSubprocess.spec.ts` are wrapped in
+`describe.skipIf(!hasPosixShell)`, so they disappear on Windows — exactly where client discovery,
+`MYSQL_PWD`, exit handling and the PowerShell probes differ. Inject the spawn/fs boundary so both the
+POSIX and win32 branches run on every platform, and keep one POSIX-only integration test for the real
+shell behaviour.
+
+---
+
+## Test infrastructure
+
+### infra-1 · A green run must prove the database specs ran (small)
+
+`E2E_SKIP_MISSING_DB=1` downgrades `requireMySqlDatabase`/`requireMySqlExecutable` to `test.skip`, and
+7 of the 23 browser specs need MySQL, so a CI run with that flag (or without a reachable server) is
+green while testing connection forms, dumps, row mutations and table lifecycle not at all. Fail the
+run when `skipped > 0`, or unset the flag in CI, so the precondition cannot be silently downgraded.
+
+### infra-2 · Floors that bite (small)
+
+The `vitest.config.js` ratchets sit 2–2.5 points below the measured numbers (35/27/33/36 against
+37.45/29.56/35.65/38.22) and are aggregate only, so a new uncovered module dilutes the average
+instead of failing. Tighten them to at most one point below and add per-area floors (`src/backend`,
+`src/datagrid`, `src/mainview/composables`) so a gap cannot hide behind well-covered code.
+
 ---
 
 ## Everything else still at 0 %
 
 Components exercised only by the browser suite show 0 % _unit_ coverage and are fine — do not add unit
 tests for them; extend the browser spec instead. Genuinely uncovered and not worth a task yet:
-`releaseHelpers.ts` (175), `vite-plugin.ts`, `mainProloadHelpers.ts`, `browserOnlyHelpers.ts`,
-`executeCommand.ts`, `electronConfig.ts`, `handleScripts.ts`, `Splitter*.tsx`, `DataTable.tsx`,
-`Select.tsx`, `SettingsModal.tsx` (a stub), `loadingIndicatorState.ts`, `appDirectives.ts`.
+`releaseHelpers.ts` (175), `vite-plugin.ts`, `executeCommand.ts`, `electronConfig.ts`,
+`handleScripts.ts`, `Splitter*.tsx`, `DataTable.tsx`, `Select.tsx`, `SettingsModal.tsx` (a stub),
+`loadingIndicatorState.ts`, `appDirectives.ts`.
+
+The Electron entry points (`src/electron/*`, `mainProloadHelpers.ts`, `useDatabase.ts`) are deliberately
+not in that bucket: they ship to users and are tracked by e2e-12 and e2e-15.
