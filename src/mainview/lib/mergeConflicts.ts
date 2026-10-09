@@ -20,7 +20,9 @@ export type MergeConflictBlock = {
     endLine: number;
 };
 
-const conflictPattern = /^(<<<<<<<[^\n]*\n)([\s\S]*?)(^=======\n)([\s\S]*?)(^>>>>>>>[^\n]*(?:\n|$))/gm;
+// `\r?` before the separator's newline: without it a conflict block written with CRLF
+// endings (Windows, core.autocrlf) is never matched and silently looks conflict-free.
+const conflictPattern = /^(<<<<<<<[^\n]*\n)([\s\S]*?)(^=======\r?\n)([\s\S]*?)(^>>>>>>>[^\n]*(?:\n|$))/gm;
 
 function countLines(input: string) {
     if (!input) {

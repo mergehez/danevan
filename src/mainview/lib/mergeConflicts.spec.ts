@@ -7,6 +7,11 @@ const twoConflicts = ['<<<<<<< a', 'x', '=======', 'y', '>>>>>>> b', '<<<<<<< c'
 
 const lastLineConflict = ['<<<<<<< a', 'ours', '=======', 'theirs', '>>>>>>> x'].join('\n');
 
+// A checkout with core.autocrlf (or any Windows editor) writes the same block with CRLF endings.
+const crlfConflict = ['line1', '<<<<<<< HEAD', 'ours-1', 'ours-2', '=======', 'theirs-1', '>>>>>>> feature/x', 'line2', ''].join('\r\n');
+
+const crlfTwoConflicts = ['<<<<<<< a', 'x', '=======', 'y', '>>>>>>> b', '<<<<<<< c', 'z', '=======', 'w', '>>>>>>> d', ''].join('\r\n');
+
 describe('parseMergeConflictBlocks', () => {
     it('returns no blocks for content without markers', () => {
         expect(parseMergeConflictBlocks('SELECT 1 FROM users\n')).toEqual([]);
@@ -154,6 +159,37 @@ describe('parseMergeConflictBlocks', () => {
         expect(blocks[0]?.incoming).toBe('y\n<<<<<<< b\np\n=======\nq\n');
         expect(blocks[0]?.incomingHeader).toBe('>>>>>>> c\n');
     });
+
+    it('parses a conflict block written with CRLF endings', () => {
+        const blocks = parseMergeConflictBlocks(crlfConflict);
+
+        expect(blocks).toHaveLength(1);
+
+        const [block] = blocks;
+        expect(block?.currentHeader).toBe('<<<<<<< HEAD\r\n');
+        expect(block?.separator).toBe('=======\r\n');
+        expect(block?.incomingHeader).toBe('>>>>>>> feature/x\r\n');
+        expect(block?.current).toBe('ours-1\r\nours-2\r\n');
+        expect(block?.incoming).toBe('theirs-1\r\n');
+        expect(block?.startLine).toBe(2);
+        expect(block?.endLine).toBe(8);
+
+        // The offsets must slice the original text exactly, carriage returns included.
+        expect(crlfConflict.slice(block!.startOffset, block!.endOffset)).toBe(block!.fullMatch);
+        expect(crlfConflict.slice(block!.currentStartOffset, block!.currentEndOffset)).toBe(block!.current);
+        expect(crlfConflict.slice(block!.incomingStartOffset, block!.incomingEndOffset)).toBe(block!.incoming);
+    });
+
+    it('parses several CRLF conflict blocks in document order', () => {
+        const blocks = parseMergeConflictBlocks(crlfTwoConflicts);
+
+        expect(blocks.map((block) => [block.current, block.incoming])).toEqual([
+            ['x\r\n', 'y\r\n'],
+            ['z\r\n', 'w\r\n'],
+        ]);
+        expect(crlfTwoConflicts.slice(blocks[0]!.startOffset, blocks[0]!.endOffset)).toBe(blocks[0]!.fullMatch);
+        expect(crlfTwoConflicts.slice(blocks[1]!.startOffset, blocks[1]!.endOffset)).toBe(blocks[1]!.fullMatch);
+    });
 });
 
 describe('resolveMergeConflictBlock', () => {
@@ -207,5 +243,12 @@ describe('resolveMergeConflictBlock', () => {
 
         expect(resolveMergeConflictBlock(content, block!, 'current')).toBe('');
         expect(resolveMergeConflictBlock(content, block!, 'incoming')).toBe('y\n');
+    });
+
+    it('resolves a CRLF block without disturbing the line endings around it', () => {
+        const [block] = parseMergeConflictBlocks(crlfConflict);
+
+        expect(resolveMergeConflictBlock(crlfConflict, block!, 'current')).toBe('line1\r\nours-1\r\nours-2\r\nline2\r\n');
+        expect(resolveMergeConflictBlock(crlfConflict, block!, 'incoming')).toBe('line1\r\ntheirs-1\r\nline2\r\n');
     });
 });
