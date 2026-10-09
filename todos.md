@@ -8,9 +8,10 @@ Pending work for this repo, in two parts:
 2. **User-reported issues and ideas (`U1`, `U2`, …)** at the end — filed by the developer while
    using the app. Append new ones there.
 
-**Nothing in the performance audit is implemented yet.** Each entry has a `- [ ]` checkbox, evidence
-with `file:line` pointers, a fix sketch, and a way to verify the fix. The `U` entries record their
-status inline.
+Most of the audit is now implemented: **T1, T4, T5, T6, T7, T9, T10, T13 and T3b are done**, and
+the entries that are not worth doing carry an explicit `NOT_PLANNED` status with the reasoning.
+Each entry keeps its evidence with `file:line` pointers, its fix sketch and a way to verify the fix;
+the `U` entries record their status inline.
 
 Evidence comes from four parallel read-only audits (backend DB layer, frontend state/data flow,
 startup/app-DB/packaging, datagrid/rendering) plus direct measurements on this machine. Numbers
@@ -53,7 +54,12 @@ connections, grid page sizes up to 2000 rows.
 
 ### T1 — Reuse one connection and one keychain read per backend call — CRITICAL, high confidence
 
-- [ ] Not started
+- [x] Fixed — `remoteDataSourcePool` keeps one `DataSource` per target and hands each request its
+  own query runner; keychain secrets are cached in `auth.ts` and dropped on store/delete;
+  `updateServer`/`updateConnection`/`deleteServer`/`hideConnection`/`disconnectConnection` dispose the
+  stale pool entries. Measured on local MySQL: `runQuery "SELECT 1"` **17.7 ms → 0.3 ms** median and
+  the keychain read **17.2 ms → 0 ms**. Covered by
+  `src/mainview/tests/backend/remoteDataSourcePool.spec.ts` and `auth.spec.ts`.
 
 Evidence: `src/backend/useMySqlDriver.ts:1051-1071` (`withMySqlClient`) creates a `DataSource`
 (`connectionLimit: 1`), `await dataSource.initialize()`, then `queryRunner.release();
@@ -79,7 +85,11 @@ call) and re-measure `runQuery "SELECT 1"` for local MySQL (target <5 ms) and fo
 
 ### T2 — Replace metadata N+1 fan-outs with one batched call — CRITICAL, high confidence
 
-- [ ] Not started
+- [ ] Open (deferred) — T1 removed the multiplier that made this hurt (one connection and one
+  keychain spawn per `getTableInfo` instead of 163 of each), so the remaining cost is the fan-out
+  itself: 163 backend round trips and ~650 `information_schema` queries for an FK peek on `etwp`.
+  Fixing it properly means a batched `getTableInfos` per driver plus a session metadata cache, which
+  is a larger change than the rest of this list and was left out of this pass deliberately.
 
 Evidence (each site issues one request per table, and each request is a full T1 connection):
 
@@ -114,7 +124,7 @@ already logs per-load timings; the backend logs `withTimedAppOperation` per requ
 
 ### T3 — Stop counting rows per table on the drivers that still do it — HIGH, high confidence
 
-- [x] T3b done; T3a not started
+- [x] T3b done; T3a NOT_PLANNED
 - **T3b (done)**: MySQL/PostgreSQL/SQL Server table lists now answer from the catalog only
   (`resolveListedRowCount` in `src/backend/useRemoteDriverTools.ts`, used by each driver's
   `getTableNames`), with `rowCountIsEstimated: true` so the sidebar keeps the `~` marker. Exact
@@ -157,7 +167,13 @@ opened table still shows an exact count for small tables.
 
 ### T4 — Make the canvas draw viewport-bounded in data work — HIGH (grid jank), high confidence
 
-- [ ] Not started
+- [x] Fixed — the visual row index and the row selection are indexed once per change, the
+  all-selected answer and the dirty/saved-cell lookups are cached per change, `isSelectedCell`
+  returns early when no range exists, formatted text is memoised per render version (validated
+  against the displayed value, so edits still show), and text widths are cached per font. Covered by
+  "answers selection queries without scanning the rows per cell", "keeps the all-rows-selected answer
+  cached across frames", "does not re-measure the same text on every frame" and "formats each cell
+  once and still shows an edited value" in `src/mainview/tests/dataGrid/DataGrid.spec.ts`.
 
 Evidence _(audit, spot-checked)_:
 
@@ -268,7 +284,11 @@ Verify: `main.cjs` drops to well under 100 kB; count `configureDatabase` executi
 
 ### T8 — MS Access: do not materialise whole tables, and batch metadata — HIGH for Access sources
 
-- [ ] Not started
+- [ ] NOT_PLANNED — the measured half of this is Windows-only (`useMsAccessWindowsDriver.ts`): four
+  PowerShell spawns per table info and a `Fill`-then-slice page read. It cannot be written or
+  verified from this repository (macOS, no PowerShell, no `.accdb`), and shipping it blind would be
+  speculative. The macOS bridge's per-table `COUNT(*)` is the same trade-off as T3a, which is also
+  not planned.
 
 Evidence: Windows driver `src/backend/useMsAccessWindowsDriver.ts:626-657`: `topClause` is only used
 when `offset === 0`, and `$adapter.Fill($dt)` fills a `DataTable` from `SELECT * FROM ...` with no
@@ -318,12 +338,17 @@ processes spawned while typing.
 
 ### T10 — Stop persisting everything on every keystroke and pointer move — MEDIUM, high confidence
 
-- [~] Partly fixed — the grid layout is no longer written on every pointermove: `setColumnWidth`
+- [x] Fixed — (a) the grid layout is no longer written on every pointermove: `setColumnWidth`
   updates the reactive layout and persists through a 200 ms trailing timer
   (`DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS`, `applyLayoutUpdate({ deferSave: true })`), flushed
-  immediately on unmount or a storage-key change; every other layout change still writes at once.
-  Covered by "writes the grid layout once at the end of a column resize". The settings blob
-  (drafts) and the modify-table JSON snapshot are unchanged.
+  immediately on unmount or a storage-key change, while every other layout change still writes at
+  once ("writes the grid layout once at the end of a column resize"); (b) the modify-table history
+  serialises its snapshot once per change instead of cloning it for the capture plus serialising it
+  twice for the comparison, `applyHistorySnapshot` clones twice instead of five times, and the clone
+  uses `structuredClone` (browser spec "offers undo and redo while a draft change is pending").
+  The settings blob (tab drafts) was **NOT_PLANNED**: the existing 150 ms debounce already bounds
+  those writes, drafts must survive a crash or a close, and the audit gave no measurement showing
+  this path (rather than the resize path) was the problem.
 
 Evidence: typing path `src/mainview/composables/useNavState.ts:97-107` (150 ms debounce) →
 `replaceTab`/`setTabs` → `src/mainview/composables/useSettings.ts:16-34` (cache key `settings`,
@@ -347,7 +372,12 @@ border (target: 0 during typing, ≤1 per drag); Performance trace of the modify
 
 ### T11 — Stop shipping the full bootstrap on every tab click — MEDIUM, high confidence
 
-- [ ] Not started
+- [ ] NOT_PLANNED — the payload half only bites with hundreds of scripts (344 kB at 300 scripts; the
+  developer has 4, so ~11 kB), and it cannot be made safe by itself: `selectScript` writes the
+  selection back and `buildBootstrap` re-defaults `selectedScriptId` to the first script, so the
+  suggested `selectedScriptId !== undefined` guard does not actually skip the call. The remaining
+  per-table calls (`getTables`, `getTableInfo`, `getTableData`, `selectConnection`) are real work,
+  not overhead. Revisit if the script count grows or if a profile still shows the tab switch.
 
 Evidence: `src/backend/app.ts:475-514` builds the bootstrap from `appDb.listScripts()`
 (`src/backend/db-app.ts:429` selects `sql_text`), and **20** handlers `return buildBootstrap()`
@@ -373,7 +403,10 @@ instead of 7; log response bytes of `selectScript` with N scripts.
 
 ### T12 — Prune the packaged app — MEDIUM (quick win, packaging only)
 
-- [ ] Not started
+- [ ] NOT_PLANNED — the change is `electron-builder` config and buys disk size only (no runtime
+  effect), and its stated verification needs a full packaged build plus dmg (a 525 MB `.app`) that
+  cannot be produced and measured in a reasonable pass here. It belongs with a release/packaging
+  pass, where the dmg size can actually be checked.
 
 Evidence _(measured sizes, audit breakdown)_: `.app` **525 MB**, dmg **176 MB**
 (`build/mac-arm64/Danevan.app`, `build/danevan-0.1.0-macos-arm64.dmg`). The asar holds ~190 MB of
@@ -412,13 +445,15 @@ Verify: `SELECT COUNT(*), SUM(LENGTH(value)) FROM settings` before/after, and th
 
 ### T14 — Sidebar: cache collapse state, and window very large schemas — LOW–MEDIUM
 
-- [~] Partly fixed — `getPersistedTreeState` keeps one parsed object per server and re-parses only
-  when the stored string changed (still reading `collapseStateVersion` so callers stay reactive), and
-  `TreeServer` now shares that cache instead of re-implementing it. Virtualization, the lazy tooltip
-  DOM and the watcher-source change are not done: keying that watcher on the table count instead of
-  the names stopped expanded table details from loading (the sidebar went from seconds to minutes in
-  `connections.spec.ts`), so it was reverted. Covered by
-  `src/mainview/tests/composables/useDbCaches.spec.ts` (50 row reads → 1 `JSON.parse`).
+- [x] Cache fixed; the rest NOT_PLANNED — `getPersistedTreeState` keeps one parsed object per server
+  and re-parses only when the stored string changed (still reading `collapseStateVersion` so callers
+  stay reactive), and `TreeServer` shares that cache instead of re-implementing it
+  (`src/mainview/tests/composables/useDbCaches.spec.ts`: 50 row reads → 1 `JSON.parse`).
+  The watcher-source idea was **tried and reverted**: keying it on the table count instead of the
+  names stopped expanded table details from loading and took `connections.spec.ts` from 22 s to
+  15 min, so the "ids/flags" sketch is wrong as written. Tree virtualization and lazy tooltip DOM are
+  NOT_PLANNED: the same audit measures 163 rendered sidebar rows at 5 ms and calls it minor today, so
+  windowing the tree and rebuilding the tooltip directive is not worth the risk yet.
 
 Evidence: `src/mainview/composables/useDbCaches.ts:90-103` reads and `JSON.parse`s the persisted
 tree state on **every** accessor call, reached per row from `src/mainview/components/TreeTableRow.tsx:333`,
@@ -600,3 +635,20 @@ what happens, the repro, `file:line` evidence, a fix sketch and a verification s
 - **Verify**: browser spec — open the dialog on `{"a":1,"b":[2,3]}`: both buttons visible, `Prettify`
   indents, `Compact` collapses to one line; open on `hello` and on `{not json}`: no buttons; `Save`
   still commits the (possibly prettified) value.
+
+### U5 — Modify Table: "Undo" does not restore a changed column type — bug
+
+- [ ] Open (found 2026-10-09 while working on T10)
+- **Repro**: open a table's "Modify Table..." popup → **columns** → select `name` → change its type
+  to `varchar(500)` → press **Undo**. The type input still shows `varchar(500)`.
+- **Evidence**: reproduced on the pre-T10 code too, so it predates the history-snapshot rewrite
+  (`src/mainview/composables/useModifyTable.ts`, watcher around `captureHistorySnapshot` /
+  `applyHistorySnapshot`). The Undo button is enabled and the click runs; only the column-type draft
+  does not come back. The browser spec "offers undo and redo while a draft change is pending"
+  (`src/mainview/tests/e2e/modify-table-popup.spec.ts`) deliberately stops short of asserting the
+  revert because of this.
+- **Fix sketch**: check whether the type input keeps its own local copy of the value (the popup binds
+  it through a component that may not re-read the draft after the columns array is replaced), or
+  whether the type change is committed to a draft the snapshot does not carry.
+- **Verify**: browser spec — change the type, Undo, assert the input and the generated preview SQL
+  show the original type; Redo brings the change back.
