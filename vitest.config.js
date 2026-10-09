@@ -22,13 +22,18 @@ export default defineConfig({
             // percentage reflects the app rather than the tested subset.
             include: ['src/**/*.{ts,tsx}'],
             exclude: ['src/**/*.spec.{ts,tsx}', 'src/**/*.d.ts', 'src/mainview/tests/**'],
-            // Ratchets two points below today's numbers: they exist to catch a regression,
-            // not to look good. Raise them as the gaps in TESTS-AUDIT.md get specs.
+            // Ratchets at most one point below today's numbers: they exist to catch a
+            // regression, not to look good. The per-area floors keep a gap from hiding behind
+            // well-covered code once the aggregate average swallows it.
             thresholds: {
-                statements: 35,
-                branches: 27,
-                functions: 33,
-                lines: 36,
+                statements: 37,
+                branches: 29,
+                functions: 35,
+                lines: 38,
+                'src/backend/**': { statements: 34, branches: 25, functions: 33, lines: 35 },
+                'src/datagrid/**': { statements: 56, branches: 47, functions: 62, lines: 56 },
+                'src/shared/**': { statements: 66, branches: 49, functions: 61, lines: 66 },
+                'src/directives/**': { statements: 87, branches: 78, functions: 94, lines: 88 },
             },
         },
     },
