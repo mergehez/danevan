@@ -124,10 +124,19 @@ test.describe('Opening a table from the sidebar', () => {
 
             test.skip(!tablesResponse.ok(), `Could not reach the local MySQL database (${LARGE_DATABASE}).`);
             const tableList = await tablesResponse.json();
-            const estimatedTable = tableList.find((entry: { rowCountIsEstimated?: boolean }) => entry.rowCountIsEstimated === true);
+            // Every listed table is an estimate now, so pick an actually huge one:
+            // only above the exact-count limit does an opened table keep the estimate.
+            const estimatedTable = tableList.find(
+                (entry: { rowCountIsEstimated?: boolean; rowCount: number }) => entry.rowCountIsEstimated === true && Number(entry.rowCount) > 100_000
+            );
             test.skip(!estimatedTable, `The ${LARGE_DATABASE} database has no table large enough to need an estimate.`);
 
             expect(listDurationMs).toBeLessThan(10_000);
+
+            // The list must never run a COUNT(*) per table: every row reports the
+            // catalog estimate, and only an opened table pays for an exact count.
+            expect(tableList.length).toBeGreaterThan(0);
+            expect(tableList.every((entry: { rowCountIsEstimated?: boolean }) => entry.rowCountIsEstimated === true)).toBe(true);
 
             const rowsResponse = await page.request.post(`${API}/getTableData`, {
                 data: { connectionId, tableName: estimatedTable.name, limit: 100, offset: 0 },

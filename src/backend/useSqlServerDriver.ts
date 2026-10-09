@@ -4,7 +4,7 @@ import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
 import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
 import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
-import { resolveRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import type { ModifySchemaPlan } from './useSqliteDriver.ts';
 
 type SqlServerDataSourceConfig = {
@@ -269,19 +269,17 @@ export function useSqlServerSchemaHelper(deps: { normalizeOptionalText: SqlServe
             }),
         ]);
         const estimateByName = new Map(estimates.map((row) => [String(row.name ?? ''), normalizeCountValue(row.count)]));
-        const tableRows = await Promise.all(
-            tables.map(async (table) => {
-                const name = normalizeSqlServerObjectName(table);
-                const count = await resolveRowCount(estimateByName.get(name), () => queryRowCount(client, name));
+        const tableRows = tables.map((table) => {
+            const name = normalizeSqlServerObjectName(table);
+            const count = resolveListedRowCount(estimateByName.get(name));
 
-                return {
-                    name,
-                    type: 'table' as const,
-                    rowCount: count.rowCount,
-                    rowCountIsEstimated: count.rowCountIsEstimated,
-                } satisfies TableSummary;
-            })
-        );
+            return {
+                name,
+                type: 'table' as const,
+                rowCount: count.rowCount,
+                rowCountIsEstimated: count.rowCountIsEstimated,
+            } satisfies TableSummary;
+        });
         const viewRows = views.map((view) => ({
             name: normalizeSqlServerObjectName(view),
             type: 'view' as const,

@@ -5,7 +5,7 @@ import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.
 import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
 import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
 import { useMySqlSchemaHelper } from './useMySqlDriver.ts';
-import { resolveRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import type { ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type PostgresSchemaHelperDeps = {
@@ -368,19 +368,17 @@ export function usePostgresSchemaHelper(deps: PostgresSchemaHelperDeps) {
         const schemaTables = tables.filter((table) => table.schema === currentSchema);
         const schemaViews = views.filter((view) => view.schema === currentSchema);
         const estimateByName = new Map(estimates.map((row) => [String(row.name ?? ''), normalizeCountValue(row.count)]));
-        const tableRows = await Promise.all(
-            schemaTables.map(async (table) => {
-                const name = normalizePostgresTableName(table);
-                const count = await resolveRowCount(estimateByName.get(name), () => queryRowCount(client, name));
+        const tableRows = schemaTables.map((table) => {
+            const name = normalizePostgresTableName(table);
+            const count = resolveListedRowCount(estimateByName.get(name));
 
-                return {
-                    name,
-                    type: 'table' as const,
-                    rowCount: count.rowCount,
-                    rowCountIsEstimated: count.rowCountIsEstimated,
-                } satisfies TableSummary;
-            })
-        );
+            return {
+                name,
+                type: 'table' as const,
+                rowCount: count.rowCount,
+                rowCountIsEstimated: count.rowCountIsEstimated,
+            } satisfies TableSummary;
+        });
         const viewRows = schemaViews.map((view) => ({
             name: normalizePostgresTableName(view),
             type: 'view' as const,

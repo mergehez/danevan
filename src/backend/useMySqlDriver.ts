@@ -3,7 +3,7 @@ import { DataSource, TableForeignKey, type QueryRunner, type Table, type View } 
 import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 import { splitSqlStatements } from '../shared/utils/sqlStatements';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
-import { resolveRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type MySqlSchemaHelperDeps = {
@@ -681,22 +681,20 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
 
     async function getTableNames(client: RemoteDriverClient): Promise<TableSummary[]> {
         const rows = await getMySqlTableRows(client);
-        const tableSummaries = await Promise.all(
-            rows
-                .filter((row) => String(row.type ?? '').toUpperCase() === 'BASE TABLE')
-                .map((row) => ({ name: String(row.name ?? '').trim(), estimate: normalizeCountValue(row.tableRows) }))
-                .filter((table, index, values) => table.name.length > 0 && values.findIndex((candidate) => candidate.name === table.name) === index)
-                .map(async (table) => {
-                    const count = await resolveRowCount(table.estimate, () => queryRowCount(client, table.name));
+        const tableSummaries = rows
+            .filter((row) => String(row.type ?? '').toUpperCase() === 'BASE TABLE')
+            .map((row) => ({ name: String(row.name ?? '').trim(), estimate: normalizeCountValue(row.tableRows) }))
+            .filter((table, index, values) => table.name.length > 0 && values.findIndex((candidate) => candidate.name === table.name) === index)
+            .map((table) => {
+                const count = resolveListedRowCount(table.estimate);
 
-                    return {
-                        name: table.name,
-                        type: 'table' as const,
-                        rowCount: count.rowCount,
-                        rowCountIsEstimated: count.rowCountIsEstimated,
-                    } satisfies TableSummary;
-                })
-        );
+                return {
+                    name: table.name,
+                    type: 'table' as const,
+                    rowCount: count.rowCount,
+                    rowCountIsEstimated: count.rowCountIsEstimated,
+                } satisfies TableSummary;
+            });
         const seenNames = new Set(tableSummaries.map((table) => table.name.toLowerCase()));
         const viewSummaries = rows
             .filter((row) => String(row.type ?? '').toUpperCase() === 'VIEW')

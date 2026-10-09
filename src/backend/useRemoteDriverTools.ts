@@ -51,6 +51,15 @@ export async function resolveRowCount(estimate: number | undefined, countExactly
     return { rowCount: await countExactly(), rowCountIsEstimated: false };
 }
 
+/**
+ * A table *list* never pays for a COUNT(*): enumerating a schema with many tables
+ * used to run one full count per table. The list reports the catalog estimate
+ * (flagged as such) and the exact count is fetched when a table is opened.
+ */
+export function resolveListedRowCount(estimate: number | undefined): { rowCount: number; rowCountIsEstimated: boolean } {
+    return { rowCount: estimate ?? 0, rowCountIsEstimated: true };
+}
+
 export type RemoteDriverHelper = {
     queryRowCount: (client: RemoteDriverClient, tableName: string) => Promise<number>;
     /** Approximate row count from the database catalog. An exact COUNT(*) is a full
