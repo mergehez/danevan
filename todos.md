@@ -47,7 +47,7 @@ connections, grid page sizes up to 2000 rows.
 | T9  | Probe the managed SQLFluff venv before running `pip install`                            | 15 min | done   |
 | T13 | One-time cleanup of orphaned `tableInfo:*` settings rows                                | 15 min | done   |
 | T3b | Always use catalog estimates for table _lists_ (keep exact counts for the opened table) | 30 min | done   |
-| T5  | Debounce the grid search + cache formatted cell text                                    | 1–2 h  |        |
+| T5  | Debounce the grid search + cache formatted cell text                                    | 1–2 h  | done   |
 
 ## Tasks
 
@@ -190,7 +190,12 @@ record a Performance trace while scrolling a 2000-row page with Select All appli
 
 ### T5 — Grid search must not reformat the whole result set per keystroke — HIGH, high confidence
 
-- [ ] Not started
+- [x] Fixed — the input still updates `searchQuery` per keystroke, but matching runs against a
+  200 ms debounced `committedSearchQuery` (`DATA_GRID_SEARCH_DEBOUNCE_MS`) over a per-page index of
+  lowercase cell texts (`searchIndex`), so a keystroke is a row-wide `includes` plus a cell scan on
+  candidate rows. Clearing is immediate. Verified by "formats each cell once for a search instead of
+  on every keystroke" (9 format calls once, unchanged across keystrokes) and
+  `src/mainview/tests/e2e/grid-search.spec.ts`.
 
 Evidence: `src/datagrid/DataGrid.tsx:110` → `src/datagrid/useDataGridNavigation.ts:569-571` sets
 `searchQuery` and synchronously forces `args.searchMatches.value` (no debounce exists anywhere in
@@ -208,7 +213,13 @@ today, 0 afterwards); count `formatValue` calls per keystroke.
 
 ### T6 — Keep the SQL-editor stack out of the boot chunk — HIGH, high confidence
 
-- [ ] Not started
+- [x] Fixed — the parsers, grammars, snippet lists and completion provider moved to
+  `src/mainview/lib/monacoSqlLanguages.ts`; `monaco.ts` no longer imports any of them and
+  `configureMonaco` (now async, idempotent) loads that module dynamically. `MonacoEditor` awaits it
+  before creating its model. The parser-based `getSqlDiagnosticMarkers` was dead code and is gone.
+  Measured with `vite build`: entry chunk **7,027.58 kB → 567.74 kB**, and the entry no longer
+  contains `MySqlParser`/`PostgreSqlParser`/`monaco-aria-container` (the parsers live in the
+  3,794.87 kB `monacoSqlLanguages-*.js` chunk). Guarded by `src/mainview/lib/monacoBootChunk.spec.ts`.
 
 Evidence _(measured sizes, audit analysis)_: the entry chunk is `dist/assets/index-*.js`
 **7,024 kB**; `src/mainview/lib/monaco.ts:2-11` statically imports `dt-sql-parser` deep parsers and
@@ -307,7 +318,12 @@ processes spawned while typing.
 
 ### T10 — Stop persisting everything on every keystroke and pointer move — MEDIUM, high confidence
 
-- [ ] Not started
+- [~] Partly fixed — the grid layout is no longer written on every pointermove: `setColumnWidth`
+  updates the reactive layout and persists through a 200 ms trailing timer
+  (`DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS`, `applyLayoutUpdate({ deferSave: true })`), flushed
+  immediately on unmount or a storage-key change; every other layout change still writes at once.
+  Covered by "writes the grid layout once at the end of a column resize". The settings blob
+  (drafts) and the modify-table JSON snapshot are unchanged.
 
 Evidence: typing path `src/mainview/composables/useNavState.ts:97-107` (150 ms debounce) →
 `replaceTab`/`setTabs` → `src/mainview/composables/useSettings.ts:16-34` (cache key `settings`,
@@ -396,7 +412,13 @@ Verify: `SELECT COUNT(*), SUM(LENGTH(value)) FROM settings` before/after, and th
 
 ### T14 — Sidebar: cache collapse state, and window very large schemas — LOW–MEDIUM
 
-- [ ] Not started
+- [~] Partly fixed — `getPersistedTreeState` keeps one parsed object per server and re-parses only
+  when the stored string changed (still reading `collapseStateVersion` so callers stay reactive), and
+  `TreeServer` now shares that cache instead of re-implementing it. Virtualization, the lazy tooltip
+  DOM and the watcher-source change are not done: keying that watcher on the table count instead of
+  the names stopped expanded table details from loading (the sidebar went from seconds to minutes in
+  `connections.spec.ts`), so it was reverted. Covered by
+  `src/mainview/tests/composables/useDbCaches.spec.ts` (50 row reads → 1 `JSON.parse`).
 
 Evidence: `src/mainview/composables/useDbCaches.ts:90-103` reads and `JSON.parse`s the persisted
 tree state on **every** accessor call, reached per row from `src/mainview/components/TreeTableRow.tsx:333`,
