@@ -1,103 +1,111 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { API, MYSQL, createFileSource, createMySqlServerAndConnection, post, requireMySqlDatabase } from './helpers';
+
+const ADD_SOURCE_BUTTON = 'aside button:has(i[class*="database-plus-outline"])';
+
+function addSourceButton(page: Page) {
+    return page.locator(ADD_SOURCE_BUTTON);
+}
+
+function serverRow(page: Page, serverId: number) {
+    return page.locator(`[data-node-id="server:${serverId}"]`);
+}
+
+async function expandRow(row: ReturnType<Page['locator']>) {
+    await expect(row).toBeVisible();
+
+    if ((await row.getAttribute('data-sidebar-collapsed')) === 'true') {
+        await row.click();
+    }
+}
 
 test.describe('Danevan App', () => {
-    test('loads the app and shows the main UI', async ({ page }) => {
-        // Navigate to the app
+    test('renders the shell with its sidebar controls', async ({ page }) => {
         await page.goto('/');
 
-        // Wait for the Vue app to mount — the #app div should contain content
-        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-
-        // Give Vue time to render after bridge init
-        await page.waitForTimeout(2000);
-
-        // The page should have some text content (app loaded)
-        const bodyText = await page.locator('body').innerText();
-        expect(bodyText.length).toBeGreaterThan(0);
-
-        // Take a screenshot for visual reference
-        await page.screenshot({ path: 'test-results/app-loaded.png', fullPage: true });
+        await expect(page.locator('#app')).toBeAttached();
+        await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible();
+        await expect(addSourceButton(page)).toBeVisible();
+        await expect(page.locator('aside button:has(i[class*="mdi--history"])')).toBeVisible();
+        await expect(page.getByTestId('sidebar-settings')).toBeVisible();
     });
 
-    test('sidebar shows servers and connections after bootstrap', async ({ page }) => {
-        await page.goto('/');
-        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+    test('shows a stored file source with its tables after bootstrap', async ({ page, request }) => {
+        const source = await createFileSource(request, { label: 'bootstrap', tableCount: 2 });
 
-        // Wait for the bootstrap to complete and render
-        await page.waitForTimeout(3000);
+        try {
+            await page.goto('/');
 
-        // The app should have rendered some server/connection entries
-        // Look for text indicators that bootstrap loaded successfully
-        const pageContent = await page.locator('#app').innerText();
-
-        // Should have rendered something meaningful
-        expect(pageContent.length).toBeGreaterThan(50);
-
-        await page.screenshot({ path: 'test-results/app-bootstrap.png', fullPage: true });
-    });
-
-    test('can open add connection dialog', async ({ page }) => {
-        await page.goto('/');
-        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-
-        // Wait for app to initialize
-        await page.waitForTimeout(3000);
-
-        // Look for a button or element that triggers the add connection form
-        // The sidebar typically has server entries with context menus
-        // Try finding the "Add connection" or "Add source" button
-        const addButton = page.locator('button', { hasText: /Add|add|New|new|Plus|\+/ }).first();
-
-        if (await addButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await addButton.click();
-            await page.waitForTimeout(500);
-
-            // Check if a modal or form appeared
-            await page.screenshot({ path: 'test-results/add-dialog.png', fullPage: true });
-        } else {
-            // Just take a screenshot showing the current state
-            await page.screenshot({ path: 'test-results/no-add-button.png', fullPage: true });
+            const row = serverRow(page, source.serverId);
+            await expandRow(row);
+            await expect(row).toContainText(source.serverName);
+            await expect(page.locator(`[data-node-id="table:${source.connectionId}:table_00"]`)).toBeAttached();
+            await expect(page.locator(`[data-node-id="table:${source.connectionId}:table_01"]`)).toBeAttached();
+        } finally {
+            await source.cleanup();
         }
     });
 
-    test('backend API is reachable', async ({ page }) => {
-        // Test the backend directly via the browser's fetch
-        const response = await page.request.post('http://127.0.0.1:3264/api/getEditorSettings', {
-            headers: { 'Content-Type': 'application/json' },
-        });
+    test('the add source form swaps its fields with the selected driver', async ({ page }) => {
+        await page.goto('/');
 
+        await addSourceButton(page).click();
+
+        // "Add source" opens on the first driver, SQLite, which needs a file path instead of host/port.
+        await expect(page.getByRole('dialog')).toContainText('Add SQLite connection');
+        await expect(page.locator('#form-connectionName')).toHaveValue('local');
+        await expect(page.locator('#form-sourceName')).toBeVisible();
+        await expect(page.locator('#form-databaseFilePath')).toBeVisible();
+        await expect(page.locator('#form-connectionHost')).toHaveCount(0);
+        await expect(page.locator('#form-connectionPassword')).toHaveCount(0);
+
+        await page.locator('label').filter({ hasText: /^MySQL$/ }).click();
+
+        await expect(page.getByRole('dialog')).toContainText('Add MySQL connection');
+        await expect(page.locator('#form-connectionHost')).toBeVisible();
+        await expect(page.locator('#form-connectionPort')).toHaveValue('3306');
+        await expect(page.locator('#form-connectionUsername')).toBeVisible();
+        await expect(page.locator('#form-connectionPassword')).toHaveAttribute('type', 'password');
+        await expect(page.locator('#form-databaseName')).toBeVisible();
+        await expect(page.locator('#form-databaseFilePath')).toHaveCount(0);
+        await expect(page.locator('#form-sourceName')).toHaveCount(0);
+    });
+
+    test('the schema selection button counts the databases the server exposes', async ({ page, request }) => {
+        await requireMySqlDatabase(MYSQL.database, 'the schema selection button spec');
+
+        const source = await createMySqlServerAndConnection(request, MYSQL.database, 'schema-count');
+
+        try {
+            await page.goto('/');
+
+            const row = serverRow(page, source.serverId);
+            await expandRow(row);
+            await expect(page.locator(`[data-node-id="connection:${source.connectionId}"]`)).toBeVisible();
+
+            const schemas = await post(request, 'getServerSchemas', { serverId: source.serverId });
+
+            // "<visible connections> of <databases on the server>" — '?' means the count never loaded.
+            const schemaButton = row.locator('#server-schema-selection-button');
+            await expect(schemaButton).toHaveText(`1 of ${schemas.length}`);
+        } finally {
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => undefined);
+        }
+    });
+
+    test('backend API answers the editor settings endpoint', async ({ request }) => {
+        const response = await request.post(`${API}/getEditorSettings`, { headers: { 'Content-Type': 'application/json' } });
         expect(response.ok()).toBe(true);
 
         const body = await response.json();
         expect(body).toHaveProperty('activeView');
         expect(body).toHaveProperty('queryRowLimit');
     });
-    test('schema selection button shows correct count', async ({ page }) => {
-        await page.goto('/');
-        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-
-        // Wait for the bootstrap to complete and the tree to render
-        await page.waitForTimeout(3000);
-
-        // Find all server-schema-selection-button elements
-        const buttons = page.locator('#server-schema-selection-button');
-        const count = await buttons.count();
-
-        if (count > 0) {
-            for (let i = 0; i < count; i++) {
-                const textContent = await buttons.nth(i).textContent();
-                // The text should never show " of 1" — that means the schema count wasn't loaded
-                expect(textContent).not.toContain(' of 1');
-            }
-        }
-    });
 
     test('sidebar settings button keeps its menu and tooltip modifiers', async ({ page }) => {
         // `v-menu.button` opens the menu on a plain click, `v-tooltip.xs.nowrap` styles the tooltip;
         // both modifiers used to be dropped by the vue-to-tsx conversion.
         await page.goto('/');
-        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
-        await page.waitForTimeout(3000);
 
         const tooltip = page.locator('.tooltip', { hasText: 'Open settings' });
         await expect(tooltip).toHaveClass(/tooltip-xs/);
