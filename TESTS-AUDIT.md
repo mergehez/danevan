@@ -1,7 +1,7 @@
 # Test audit — what to test next
 
-**Status:** 429 unit tests (42 files) · 87 browser tests (23 files) · coverage over every source
-file **29.1 % statements / 22.8 % branches** · floors enforced in `vitest.config.js` ·
+**Status:** 650 unit tests (61 files) · 87 browser tests (23 files) · coverage over every source
+file **35.1 % statements / 28.3 % branches** · floors enforced in `vitest.config.js` ·
 **still a long tail of 0 % files**.
 
 The long survey that drove the last round of fixes is recoverable from git:
@@ -49,7 +49,12 @@ contract (all 54 backend handlers, their input guards and the server/connection/
 trips)** · **PostgreSQL and SQL Server table lists and row counts** · **tabs (neighbour close, reopen,
 close all, drag reorder)** · **SQL editor panels (save modal create/rename, Problems, per-script
 History, Format)** · **sidebar management (script create/delete, Collapse all, Clear metadata caches,
-collection filter, SQL history modal)** · **mysqldump export from the modal with chosen options**.
+collection filter, SQL history modal)** · **mysqldump export from the modal with chosen options** ·
+**Monaco SQL completion (tables, columns, qualifiers, dialect quoting, keywords, snippets)** · **tree
+and keyboard state machines (`useTree`, `useFileTree`, `useKeyboardNavigation`, sidebar arrows)** ·
+**directives (modifier parsing, tooltip, context menu panel, error, loading)** · **small leaf helpers
+(drag payload, formatter worker, native paths, min lifetime, confirm, toast, client lookup, MS Access
+manifest, SQL script runner)**.
 
 ---
 
@@ -70,25 +75,8 @@ exposed by the preload, and one request/response round-trips through IPC. Needs 
 function directly (row menu for single vs multi selection, cell menu only with a relation, header menu)
 rather than through the canvas.
 
-### unit-4 · Directives (medium)
-`VTooltip.ts`, `VContextMenu.ts`, `ContextMenuPanel.tsx`, `VError.ts`, `VLoading.ts`,
-`directiveModifiers.ts` (~450 lines) are stubbed as `{}` in every component test, so nothing verifies
-modifier parsing or positioning. Unit-test modifier parsing against the real directive.
-
-### unit-5 · Tree and keyboard state machines (medium)
-`useTree.ts`, `useFileTree.ts`, `useKeyboardNavigation.ts`, `useSidebarKeyboardNavigation.ts`
-(~350 lines at 0 %): expand/collapse, keyboard traversal, selection after a delete.
-
-### unit-6 · Monaco SQL completion (medium)
-`monacoSqlLanguages.ts` (97 lines at 0 %) resolves referenced tables and qualifiers through
-`unquoteSqlIdentifier` — the helper just fixed. Test its table/alias collection and qualifier parsing.
-
-### unit-7 · Small leaf helpers (low, quick)
-`sqlEditorDnd.ts` (12), `gridFormatter.worker.ts` (26), `nativePaths.ts` (22), `useMinLifetime.ts` (6),
-`confirmAction.ts` (2), `useToast.ts`, `clientExecutables.ts` (22), `msAccessRuntimeManifest.ts` (12),
-`sqlScriptRunner.ts` (112).
-
 ---
+
 
 ## Everything else still at 0 %
 
