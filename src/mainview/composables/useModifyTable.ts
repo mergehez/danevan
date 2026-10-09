@@ -2124,6 +2124,12 @@ function createNewIndex(indexes: ModifyTableIndexDraft[], columnNames: string[])
 }
 
 function cloneModifyTableHistorySnapshot(snapshot: ModifyTableHistorySnapshot) {
+    // structuredClone is far cheaper than a JSON round-trip, and this runs on every
+    // change to the table definition.
+    if (typeof structuredClone === 'function') {
+        return structuredClone(snapshot);
+    }
+
     return JSON.parse(JSON.stringify(snapshot)) as ModifyTableHistorySnapshot;
 }
 
@@ -2135,6 +2141,7 @@ export function _useModifyTable() {
     const undoStack: ModifyTableHistorySnapshot[] = [];
     const redoStack: ModifyTableHistorySnapshot[] = [];
     let currentHistorySnapshot: ModifyTableHistorySnapshot | undefined;
+    let currentHistorySerialized: string | undefined;
     let suppressHistory = false;
 
     const state = reactive({
@@ -3061,7 +3068,7 @@ export function _useModifyTable() {
                 return;
             }
 
-            redoStack.push(cloneModifyTableHistorySnapshot(currentHistorySnapshot));
+            redoStack.push(currentHistorySnapshot);
             applyHistorySnapshot(previousSnapshot);
         },
         redoChanges() {
@@ -3071,7 +3078,7 @@ export function _useModifyTable() {
                 return;
             }
 
-            undoStack.push(cloneModifyTableHistorySnapshot(currentHistorySnapshot));
+            undoStack.push(currentHistorySnapshot);
             applyHistorySnapshot(nextSnapshot);
         },
         async applyChanges() {
@@ -3283,8 +3290,8 @@ export function _useModifyTable() {
         },
     });
 
-    function captureHistorySnapshot(): ModifyTableHistorySnapshot {
-        return cloneModifyTableHistorySnapshot({
+    function buildHistorySnapshotState(): ModifyTableHistorySnapshot {
+        return {
             allowTableRebuild: state.allowTableRebuild,
             table: state.table,
             columns: state.columns,
@@ -3295,40 +3302,42 @@ export function _useModifyTable() {
             selectedKeyColumnId: state.selectedKeyColumnId ?? null,
             selectedForeignKeyColumnId: state.selectedForeignKeyColumnId ?? null,
             selectedIndexColumnId: state.selectedIndexColumnId ?? null,
-        });
+        };
+    }
+
+    /** The serialised form is also the change signal: serialise once per change. */
+    function serializeHistorySnapshot() {
+        return JSON.stringify(buildHistorySnapshotState());
+    }
+
+    function captureHistorySnapshot(): ModifyTableHistorySnapshot {
+        return JSON.parse(serializeHistorySnapshot()) as ModifyTableHistorySnapshot;
     }
 
     function resetHistory() {
         undoStack.length = 0;
         redoStack.length = 0;
         currentHistorySnapshot = state.open && !state.loading ? captureHistorySnapshot() : undefined;
+        currentHistorySerialized = currentHistorySnapshot ? serializeHistorySnapshot() : undefined;
     }
 
     function applyHistorySnapshot(snapshot: ModifyTableHistorySnapshot) {
         suppressHistory = true;
+        // One clone for the reactive state, one detached copy for the history.
+        const nextState = cloneModifyTableHistorySnapshot(snapshot);
         state.allowTableRebuild = snapshot.allowTableRebuild;
-        state.table = cloneModifyTableHistorySnapshot({
-            ...snapshot,
-            table: snapshot.table,
-            columns: [],
-            keys: [],
-            foreignKeys: [],
-            indexes: [],
-            selectedNodeId: null,
-            selectedKeyColumnId: null,
-            selectedForeignKeyColumnId: null,
-            selectedIndexColumnId: null,
-            allowTableRebuild: snapshot.allowTableRebuild,
-        }).table;
-        state.columns = cloneModifyTableHistorySnapshot(snapshot).columns;
-        state.keys = cloneModifyTableHistorySnapshot(snapshot).keys;
-        state.foreignKeys = cloneModifyTableHistorySnapshot(snapshot).foreignKeys;
-        state.indexes = cloneModifyTableHistorySnapshot(snapshot).indexes;
+        state.table = nextState.table;
+        state.columns = nextState.columns;
+        state.keys = nextState.keys;
+        state.foreignKeys = nextState.foreignKeys;
+        state.indexes = nextState.indexes;
         state.selectedNodeId = snapshot.selectedNodeId ?? undefined;
         state.selectedKeyColumnId = snapshot.selectedKeyColumnId ?? undefined;
         state.selectedForeignKeyColumnId = snapshot.selectedForeignKeyColumnId ?? undefined;
         state.selectedIndexColumnId = snapshot.selectedIndexColumnId ?? undefined;
         currentHistorySnapshot = cloneModifyTableHistorySnapshot(snapshot);
+        // Serialise what the watcher will see, so undoing does not register as a change.
+        currentHistorySerialized = serializeHistorySnapshot();
         suppressHistory = false;
     }
 
@@ -3374,21 +3383,24 @@ export function _useModifyTable() {
                 return;
             }
 
-            const nextSnapshot = captureHistorySnapshot();
+            const nextSerialized = serializeHistorySnapshot();
 
             if (!currentHistorySnapshot) {
-                currentHistorySnapshot = nextSnapshot;
+                currentHistorySnapshot = JSON.parse(nextSerialized) as ModifyTableHistorySnapshot;
+                currentHistorySerialized = nextSerialized;
                 undoStack.length = 0;
                 redoStack.length = 0;
                 return;
             }
 
-            if (JSON.stringify(nextSnapshot) === JSON.stringify(currentHistorySnapshot)) {
+            if (nextSerialized === currentHistorySerialized) {
                 return;
             }
 
-            undoStack.push(cloneModifyTableHistorySnapshot(currentHistorySnapshot));
-            currentHistorySnapshot = nextSnapshot;
+            // The stored snapshot is already detached and never mutated in place.
+            undoStack.push(currentHistorySnapshot);
+            currentHistorySnapshot = JSON.parse(nextSerialized) as ModifyTableHistorySnapshot;
+            currentHistorySerialized = nextSerialized;
             redoStack.length = 0;
         },
         { deep: true }

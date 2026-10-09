@@ -197,6 +197,32 @@ test.describe('Modify table popup (e2e)', () => {
         expect(name.type.toLowerCase()).toContain('varchar(500)');
     });
 
+    test('offers undo and redo while a draft change is pending', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+        await page.waitForTimeout(3000);
+
+        await openTableModifyPopup(page, connectionId, tableName, serverId);
+
+        await columnsGroup(page).click();
+        await columnItem(page, 'name').click();
+
+        const originalType = await columnTypeInput(page).inputValue();
+        await setColumnType(page, 'varchar(500)');
+        await expect(columnTypeInput(page)).toHaveValue('varchar(500)');
+
+        // Both buttons are offered while there is history to walk.
+        await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+
+        // Undo/redo revisit the draft; nothing reaches the database until Apply.
+        await page.getByRole('button', { name: 'Undo' }).click();
+        await page.getByRole('button', { name: 'Redo' }).click();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.columns.find((c: any) => c.name === 'name').type.toLowerCase()).toContain('varchar(200)');
+        expect(originalType).toBe('varchar(200)');
+    });
+
     test('moves a column down once through the popup', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
