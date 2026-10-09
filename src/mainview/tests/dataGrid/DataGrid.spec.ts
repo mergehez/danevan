@@ -1018,11 +1018,22 @@ describe('DataGrid', () => {
         const indexOf = vi.spyOn(Array.prototype, 'indexOf');
         const includes = vi.spyOn(Array.prototype, 'includes');
 
+        // A real answer first: the range, its edges, and the columns outside it.
+        expect(state.isSelectedCell(10, 0)).toBe(true);
+        expect(state.isSelectedCell(15, 1)).toBe(true);
+        expect(state.isSelectedCell(20, 2)).toBe(true);
+        expect(state.isSelectedCell(9, 1)).toBe(false);
+        expect(state.isSelectedCell(21, 1)).toBe(false);
+        expect(state.isSelectedCell(15, 3)).toBe(false);
+
+        // Then the cost: one index build, not one scan per row.
+        indexOf.mockClear();
+        includes.mockClear();
+
         for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
             state.isSelectedCell(rowIndex, 1);
         }
 
-        // One index build, not one scan per row.
         expect(indexOf.mock.calls.length).toBeLessThanOrEqual(2);
         expect(includes.mock.calls.length).toBeLessThanOrEqual(2);
 
@@ -1048,6 +1059,16 @@ describe('DataGrid', () => {
         // The 2000-row `every` runs once, not once per frame.
         expect(every.mock.calls.length).toBeLessThanOrEqual(1);
         every.mockRestore();
+
+        // ...and it is a real answer, not a constant: dropping one row flips it back.
+        state.selectRow(0, { mode: 'toggle' });
+        expect(state.areAllRowsSelected()).toBe(false);
+
+        state.selectAllRows();
+        expect(state.areAllRowsSelected()).toBe(true);
+
+        state.clearSelectedRows();
+        expect(state.areAllRowsSelected()).toBe(false);
     });
 
     it('does not re-measure the same text on every frame', async () => {
