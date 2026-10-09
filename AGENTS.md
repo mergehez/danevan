@@ -38,20 +38,18 @@ To efficiently build this compact email client;
 
 - Never pass the same prop twice on one element, such as a `{...vModel(state, 'text')}` spread plus an explicit `onChange`. The JSX transform compiles spreads into `mergeProps`, which turns two same-named handlers into an array: the component then throws `props.onChange is not a function` on every change, and the state it was supposed to update silently keeps its old value.
 
-## 🛠️ The Tooling & QA Optimizer (Oxlint, Oxfmt, Vitest)
+## Tests
 
-**Role:** Ensures code quality, fast build times, and continuous reliability through strict CLI adherence.
-**Responsibilities:**
-
-- Configure Vite for optimal, minified production builds.
-
-- Set up and enforce extremely fast linting and formatting using `oxlint` and `oxfmt`.
-
-- Write unit tests for database logic and Vue components using `vitest`.
-
-- Enforce the execution of `vp build` and `vp check --fix` after any boundary or UI refactors to guarantee app integrity. If a Vue component is changed, run 'vp run lint' to check for any type errors.
-
-- Monitor bundle sizes and memory footprint to maintain the "compact app" goal.
+- Never set timeouts for tests greater than 10 seconds. If something takes longer, that means it is a bug:
+  instead of increasing the timeout, investigate and fix the issue causing the test to take longer than expected.
+  Setting huge timeouts makes your work slower and the whole test suite less reliable.
+    - Try to use the least possible timeout necessary for the test to pass.
+    - When something times out, first check if you added a visibility check for the element you are interacting with.
+    - If a really large test really requires a longer timeout, do not blindly set a huge value. Just increase it to the minimum necessary.
+- Never blindly add inline timeouts (e.g. `toBeVisible({timeout: 10_000})`). This almost never fixes the real issue.
+- Never create temporary tests if a test can be used later. We need to integrate it properly into the test suite
+  rather than leaving it as a throwaway or provisional test.
+- Every user-facing feature gets a browser spec under `src/mainview/tests/e2e`, however small it is — a new control, a dialog, a field, a public page's behaviour. A server test says the endpoint answers; only the browser says the screen actually draws the control, wires it to that endpoint and shows what came back.
 
 ## Git
 
