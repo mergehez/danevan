@@ -4,7 +4,7 @@ import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
 import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
 import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
-import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { resolveRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import type { ModifySchemaPlan } from './useSqliteDriver.ts';
 
 type SqlServerDataSourceConfig = {
@@ -217,6 +217,22 @@ export function useSqlServerSchemaHelper(deps: { normalizeOptionalText: SqlServe
         return normalizeCountValue(rows[0]?.count);
     }
 
+    /** `sys.partitions.rows` is maintained by the engine, so a table's size is known
+     *  without scanning it — COUNT(*) on a huge table is not worth the wait. */
+    async function estimateRowCount(client: RemoteDriverClient, tableName: string) {
+        const rows = await client.queryRows<{ count: number | bigint | string | null }>({
+            sql: `
+                SELECT COALESCE(SUM(p.rows), 0) AS count
+                FROM sys.partitions AS p
+                WHERE p.object_id = OBJECT_ID(?)
+                  AND p.index_id IN (0, 1)
+            `,
+            params: [tableName],
+        });
+
+        return normalizeCountValue(rows[0]?.count);
+    }
+
     async function getTableColumns(client: RemoteDriverClient, tableName: string): Promise<TableColumnInfo[]> {
         const table = await loadTypeOrmTable(client, tableName);
 
@@ -237,13 +253,34 @@ export function useSqlServerSchemaHelper(deps: { normalizeOptionalText: SqlServe
 
     async function getTableNames(client: RemoteDriverClient): Promise<TableSummary[]> {
         const queryRunner = getSqlServerQueryRunnerClient(client).queryRunner;
-        const [tables, views] = await Promise.all([queryRunner.getTables(), queryRunner.getViews()]);
+        const [tables, views, estimates] = await Promise.all([
+            queryRunner.getTables(),
+            queryRunner.getViews(),
+            client.queryRows<{ name: string | null; count: number | bigint | string | null }>({
+                sql: `
+                    SELECT o.name AS name, COALESCE(SUM(p.rows), 0) AS count
+                    FROM sys.partitions AS p
+                    INNER JOIN sys.objects AS o ON o.object_id = p.object_id
+                    WHERE p.index_id IN (0, 1)
+                      AND o.type = 'U'
+                      AND SCHEMA_NAME(o.schema_id) = SCHEMA_NAME()
+                    GROUP BY o.name
+                `,
+            }),
+        ]);
+        const estimateByName = new Map(estimates.map((row) => [String(row.name ?? ''), normalizeCountValue(row.count)]));
         const tableRows = await Promise.all(
-            tables.map(async (table) => ({
-                name: normalizeSqlServerObjectName(table),
-                type: 'table' as const,
-                rowCount: await queryRowCount(client, normalizeSqlServerObjectName(table)),
-            }))
+            tables.map(async (table) => {
+                const name = normalizeSqlServerObjectName(table);
+                const count = await resolveRowCount(estimateByName.get(name), () => queryRowCount(client, name));
+
+                return {
+                    name,
+                    type: 'table' as const,
+                    rowCount: count.rowCount,
+                    rowCountIsEstimated: count.rowCountIsEstimated,
+                } satisfies TableSummary;
+            })
         );
         const viewRows = views.map((view) => ({
             name: normalizeSqlServerObjectName(view),
@@ -289,6 +326,7 @@ export function useSqlServerSchemaHelper(deps: { normalizeOptionalText: SqlServe
         getTableColumns,
         getTableNames,
         queryRowCount,
+        estimateRowCount,
         buildCreateDatabaseStatement(databaseName: string, collation?: string): string {
             const quotedName = quoteSqlServerIdentifier(databaseName);
             const collationClause = collation ? ` COLLATE ${collation}` : '';

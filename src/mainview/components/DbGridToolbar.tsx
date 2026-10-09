@@ -11,6 +11,7 @@ type Props = {
     pageRangeStart?: number;
     pageRangeEnd?: number;
     totalRowCount?: number;
+    totalRowCountIsEstimate?: boolean;
     canGoToPreviousPage?: boolean;
     canGoToNextPage?: boolean;
     onGoToPreviousPage?: () => void;
@@ -143,7 +144,13 @@ export const DbGridToolbar = component(
                                         <span>
                                             {props.pageRangeStart}-{props.pageRangeEnd}
                                         </span>
-                                        <span class="opacity-60">of {props.totalRowCount}</span>
+                                        <span class="opacity-60">
+                                            of{' '}
+                                            {props.totalRowCountIsEstimate ? (
+                                                <span v-tooltip={{ value: 'Estimated count: an exact count would scan this large table', xs: true }}>~</span>
+                                            ) : null}
+                                            {props.totalRowCount}
+                                        </span>
                                         <span class="iconify icon-[mdi--chevron-down] h-3.5 w-3.5 opacity-70" />
                                     </button>
                                     {isPageSizeMenuOpen.value ? (
@@ -218,6 +225,7 @@ export const DbGridToolbar = component(
             'pageRangeStart',
             'pageRangeEnd',
             'totalRowCount',
+            'totalRowCountIsEstimate',
             'canGoToPreviousPage',
             'canGoToNextPage',
             'onGoToPreviousPage',

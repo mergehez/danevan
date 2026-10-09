@@ -11,6 +11,9 @@ const MYSQL = {
     database: 'tirsik3_test',
 };
 
+// Opened by the "huge table" test: counting these tables takes ~20s each.
+const LARGE_DATABASE = 'wikiferheng';
+
 async function post(request: APIRequestContext, method: string, data: unknown) {
     const resp = await request.post(`${API}/${method}`, { data });
     expect(resp.ok()).toBeTruthy();
@@ -104,6 +107,50 @@ test.describe('Opening a table from the sidebar', () => {
             await expect(panel.getByText(table.name, { exact: true }).first()).toBeVisible();
 
             await page.screenshot({ path: 'test-results/open-table-loaded.png', fullPage: true });
+        } finally {
+            await page.request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
+        }
+    });
+
+    test('a huge table reports an estimated row count instead of scanning it', async ({ page }) => {
+        const { serverId, connectionId } = await createMySqlServerAndConnection(page.request, LARGE_DATABASE);
+
+        try {
+            // The table list comes from the database catalog, so it must not wait for
+            // a COUNT(*) of every table in the database.
+            const startedAt = Date.now();
+            const tablesResponse = await page.request.post(`${API}/getTables`, { data: { connectionId } });
+            const listDurationMs = Date.now() - startedAt;
+
+            test.skip(!tablesResponse.ok(), `Could not reach the local MySQL database (${LARGE_DATABASE}).`);
+            const tableList = await tablesResponse.json();
+            const estimatedTable = tableList.find((entry: { rowCountIsEstimated?: boolean }) => entry.rowCountIsEstimated === true);
+            test.skip(!estimatedTable, `The ${LARGE_DATABASE} database has no table large enough to need an estimate.`);
+
+            expect(listDurationMs).toBeLessThan(10_000);
+
+            const rowsResponse = await page.request.post(`${API}/getTableData`, {
+                data: { connectionId, tableName: estimatedTable.name, limit: 100, offset: 0 },
+            });
+            expect(rowsResponse.ok()).toBe(true);
+            const data = await rowsResponse.json();
+            expect(data.rowCountIsEstimated).toBe(true);
+            expect(data.rowCount).toBeGreaterThan(100_000);
+            expect(data.rows.length).toBeGreaterThan(0);
+
+            await page.goto('/');
+
+            // The sidebar marks the estimate instead of pretending it is exact.
+            const tableRow = await openTableRow(page, serverId, connectionId, estimatedTable.name);
+            await expect(tableRow).toBeVisible();
+            await expect(tableRow).toContainText('~');
+
+            // Opening it shows rows immediately, with the estimate marked in the toolbar.
+            await tableRow.dblclick();
+
+            const panel = page.locator('main');
+            await expect(panel.getByRole('button', { name: /^1-\d+ of ~\d+$/ })).toBeVisible();
+            await page.screenshot({ path: 'test-results/open-table-estimated-count.png', fullPage: true });
         } finally {
             await page.request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
         }

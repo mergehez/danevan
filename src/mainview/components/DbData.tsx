@@ -422,6 +422,7 @@ export const DbData = component(
                                         pageRangeStart={pageRangeStart.value}
                                         pageRangeEnd={pageRangeEnd.value}
                                         totalRowCount={totalRowCount.value}
+                                        totalRowCountIsEstimate={query.tableData?.rowCountIsEstimated === true}
                                         canGoToPreviousPage={canGoToPreviousPage.value}
                                         canGoToNextPage={canGoToNextPage.value}
                                         onGoToPreviousPage={goToPreviousPage}

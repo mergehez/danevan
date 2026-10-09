@@ -35,8 +35,27 @@ export type RemoteDriverClient = {
     withTransaction: <T>(callback: (client: RemoteDriverClient) => Promise<T>) => Promise<T>;
 };
 
+/** Above this estimated size, tables report the catalog estimate instead of paying
+ *  for a full-scan COUNT(*) whenever their rows are read. */
+export const EXACT_ROW_COUNT_LIMIT = 100_000;
+
+/**
+ * Exact counts are instant on small tables and take minutes on huge ones (a full
+ * index scan), so a table only pays for one while its catalog estimate stays small.
+ */
+export async function resolveRowCount(estimate: number | undefined, countExactly: () => Promise<number>): Promise<{ rowCount: number; rowCountIsEstimated: boolean }> {
+    if (estimate !== undefined && estimate > EXACT_ROW_COUNT_LIMIT) {
+        return { rowCount: estimate, rowCountIsEstimated: true };
+    }
+
+    return { rowCount: await countExactly(), rowCountIsEstimated: false };
+}
+
 export type RemoteDriverHelper = {
     queryRowCount: (client: RemoteDriverClient, tableName: string) => Promise<number>;
+    /** Approximate row count from the database catalog. An exact COUNT(*) is a full
+     *  scan on InnoDB/Postgres, so large tables never pay for one. */
+    estimateRowCount?: (client: RemoteDriverClient, tableName: string) => Promise<number>;
     getTableColumns: (client: RemoteDriverClient, tableName: string) => Promise<TableColumnInfo[]>;
     getIndexes: (client: RemoteDriverClient, tableName: string) => Promise<TableIndexInfo[]>;
     getForeignKeys: (client: RemoteDriverClient, tableName: string) => Promise<TableForeignKeyInfo[]>;
@@ -84,12 +103,22 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
         return { columns: [], rows: await client.queryRows<Record<string, SqlValue>>(statement) };
     }
 
+    /**
+     * Exact counts are free on small tables and take minutes on huge ones (a full
+     * index scan), so the catalog estimate is used once it passes this bound.
+     */
+    async function readRowCount(client: RemoteDriverClient, tableName: string): Promise<{ rowCount: number; rowCountIsEstimated: boolean }> {
+        const count = await resolveRowCount(await deps.helper.estimateRowCount?.(client, tableName), () => deps.helper.queryRowCount(client, tableName));
+
+        return { rowCount: count.rowCount, rowCountIsEstimated: count.rowCountIsEstimated };
+    }
+
     async function readTableData(client: RemoteDriverClient, tableName: string, limit: number, offset: number, orderBy?: SortOrder, returnQuery?: boolean): Promise<TableData> {
         const statement = deps.helper.buildReadTableStatement(tableName, limit, offset, orderBy);
-        const [columns, rows, rowCount] = await Promise.all([
+        const [columns, rows, count] = await Promise.all([
             deps.helper.getTableColumns(client, tableName),
             client.queryRows<Record<string, SqlValue>>(statement),
-            deps.helper.queryRowCount(client, tableName),
+            readRowCount(client, tableName),
         ]);
         const columnNames = columns.map((column) => column.name);
 
@@ -97,7 +126,8 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             columns: columnNames,
             columnStats: deps.buildColumnStats(columnNames, rows),
             rows,
-            rowCount,
+            rowCount: count.rowCount,
+            rowCountIsEstimated: count.rowCountIsEstimated,
             limit,
             offset,
             sql: returnQuery ? statement.sql.replace('?', `${limit}`).replace('?', `${offset}`) : undefined,
@@ -115,11 +145,11 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
         },
         async getTableInfoFresh(connectionId: number, tableName: string): Promise<TableInfo> {
             return deps.withRemoteClient(connectionId, async (client) => {
-                const [columns, indexes, foreignKeys, rowCount, tableMetadata] = await Promise.all([
+                const [columns, indexes, foreignKeys, count, tableMetadata] = await Promise.all([
                     deps.helper.getTableColumns(client, tableName),
                     deps.helper.getIndexes(client, tableName),
                     deps.helper.getForeignKeys(client, tableName),
-                    deps.helper.queryRowCount(client, tableName),
+                    readRowCount(client, tableName),
                     deps.helper.getTableMetadata?.(client, tableName) ?? Promise.resolve({}),
                 ]);
 
@@ -128,7 +158,7 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
                     columns,
                     indexes,
                     foreignKeys,
-                    rowCount,
+                    rowCount: count.rowCount,
                     ...tableMetadata,
                 } satisfies TableInfo;
             });

@@ -72,7 +72,9 @@ export function getTableTreeForCollection(
                     id: state.getTableNodeId(collection.connectionId, table.name),
                     connectionId: collection.connectionId,
                     title: table.name,
-                    rightText: table.rowCount ? formatNumber(table.rowCount) : '-',
+                    // Very large tables report the catalog estimate instead of paying for
+                    // a full-scan COUNT(*); the tilde keeps that honest.
+                    rightText: table.rowCount ? `${table.rowCountIsEstimated ? '~' : ''}${formatNumber(table.rowCount)}` : '-',
                     expandable: true,
                     children: [],
                 } satisfies TableTreeItem & { children: never[] };

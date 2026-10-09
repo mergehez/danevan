@@ -5,7 +5,7 @@ import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.
 import { getTypeOrmObjectBaseName, mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata } from './typeOrmMappers.ts';
 import { prepareTypeOrmParameterizedStatement } from './typeOrmStatementParameters.ts';
 import { useMySqlSchemaHelper } from './useMySqlDriver.ts';
-import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { resolveRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import type { ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type PostgresSchemaHelperDeps = {
@@ -13,6 +13,18 @@ type PostgresSchemaHelperDeps = {
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     quoteIdentifier: (identifier: string) => string;
 };
+
+function normalizeCountValue(value: number | bigint | string | null | undefined) {
+    if (typeof value === 'bigint') {
+        return Number(value);
+    }
+
+    if (typeof value === 'string') {
+        return Number(value);
+    }
+
+    return value ?? 0;
+}
 
 type PostgresDataSourceConfig = {
     host: string;
@@ -312,18 +324,62 @@ export function usePostgresSchemaHelper(deps: PostgresSchemaHelperDeps) {
         return table ? mapTypeOrmForeignKeys(table.foreignKeys) : [];
     }
 
+    async function queryRowCount(client: RemoteDriverClient, tableName: string) {
+        const rows = await client.queryRows<{ count: number | bigint | string }>({
+            sql: `SELECT COUNT(*) AS count FROM ${deps.quoteIdentifier(tableName)}`,
+        });
+
+        return normalizeCountValue(rows[0]?.count);
+    }
+
+    /** `pg_class.reltuples` is the planner's estimate: instantly available, and the
+     *  only affordable source for tables where COUNT(*) scans the whole relation. */
+    async function estimateRowCount(client: RemoteDriverClient, tableName: string) {
+        const rows = await client.queryRows<{ count: number | bigint | string | null }>({
+            sql: `
+                SELECT GREATEST(COALESCE(c.reltuples, 0), 0)::bigint AS count
+                FROM pg_class AS c
+                INNER JOIN pg_namespace AS n ON n.oid = c.relnamespace
+                WHERE n.nspname = current_schema()
+                  AND c.relname = ?
+            `,
+            params: [tableName],
+        });
+
+        return normalizeCountValue(rows[0]?.count);
+    }
+
     async function getTableNames(client: RemoteDriverClient): Promise<TableSummary[]> {
         const queryRunner = getPostgresQueryRunnerClient(client).queryRunner;
         const currentSchema = await getCurrentSchema(client);
-        const [tables, views] = await Promise.all([queryRunner.getTables(), queryRunner.getViews()]);
+        const [tables, views, estimates] = await Promise.all([
+            queryRunner.getTables(),
+            queryRunner.getViews(),
+            client.queryRows<{ name: string | null; count: number | bigint | string | null }>({
+                sql: `
+                    SELECT c.relname AS name, GREATEST(COALESCE(c.reltuples, 0), 0)::bigint AS count
+                    FROM pg_class AS c
+                    INNER JOIN pg_namespace AS n ON n.oid = c.relnamespace
+                    WHERE n.nspname = current_schema()
+                      AND c.relkind IN ('r', 'p')
+                `,
+            }),
+        ]);
         const schemaTables = tables.filter((table) => table.schema === currentSchema);
         const schemaViews = views.filter((view) => view.schema === currentSchema);
+        const estimateByName = new Map(estimates.map((row) => [String(row.name ?? ''), normalizeCountValue(row.count)]));
         const tableRows = await Promise.all(
-            schemaTables.map(async (table) => ({
-                name: normalizePostgresTableName(table),
-                type: 'table' as const,
-                rowCount: await mysqlSchemaHelper.queryRowCount(client, normalizePostgresTableName(table)),
-            }))
+            schemaTables.map(async (table) => {
+                const name = normalizePostgresTableName(table);
+                const count = await resolveRowCount(estimateByName.get(name), () => queryRowCount(client, name));
+
+                return {
+                    name,
+                    type: 'table' as const,
+                    rowCount: count.rowCount,
+                    rowCountIsEstimated: count.rowCountIsEstimated,
+                } satisfies TableSummary;
+            })
         );
         const viewRows = schemaViews.map((view) => ({
             name: normalizePostgresTableName(view),
@@ -554,7 +610,8 @@ export function usePostgresSchemaHelper(deps: PostgresSchemaHelperDeps) {
         getServerSchemas,
         getTableColumns,
         getTableNames,
-        queryRowCount: mysqlSchemaHelper.queryRowCount,
+        queryRowCount: queryRowCount,
+        estimateRowCount: estimateRowCount,
         buildCreateDatabaseStatement(databaseName: string, _collation?: string): string {
             return `CREATE DATABASE ${deps.quoteIdentifier(databaseName)}`;
         },

@@ -3,7 +3,7 @@ import { DataSource, TableForeignKey, type QueryRunner, type Table, type View } 
 import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 import { splitSqlStatements } from '../shared/utils/sqlStatements';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
-import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
+import { resolveRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type MySqlSchemaHelperDeps = {
@@ -15,6 +15,7 @@ type MySqlSchemaHelperDeps = {
 type MySqlTableRow = {
     name: string | null;
     type: string | null;
+    tableRows: number | bigint | string | null;
 };
 
 type MySqlColumnRow = {
@@ -286,7 +287,8 @@ async function getMySqlTableRows(client: RemoteDriverClient) {
         sql: `
             SELECT
                 table_name AS name,
-                table_type AS type
+                table_type AS type,
+                table_rows AS tableRows
             FROM information_schema.tables
             WHERE table_schema = DATABASE()
             ORDER BY table_type ASC, table_name ASC
@@ -649,6 +651,22 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         return normalizeCountValue(rows[0]?.count);
     }
 
+    /** `information_schema.tables.table_rows` is an InnoDB estimate, but it is
+     *  instant — the only sane option for tables where COUNT(*) scans gigabytes. */
+    async function estimateRowCount(client: RemoteDriverClient, tableName: string) {
+        const rows = await client.queryRows<{ count: number | bigint | string | null }>({
+            sql: `
+                SELECT table_rows AS count
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+            `,
+            params: [tableName],
+        });
+
+        return normalizeCountValue(rows[0]?.count);
+    }
+
     async function getTableColumns(client: RemoteDriverClient, tableName: string): Promise<TableColumnInfo[]> {
         return mapMySqlColumns(await getMySqlColumnRows(client, tableName));
     }
@@ -666,13 +684,18 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         const tableSummaries = await Promise.all(
             rows
                 .filter((row) => String(row.type ?? '').toUpperCase() === 'BASE TABLE')
-                .map((row) => String(row.name ?? '').trim())
-                .filter((name, index, values) => name.length > 0 && values.indexOf(name) === index)
-                .map(async (name) => ({
-                    name,
-                    type: 'table' as const,
-                    rowCount: await queryRowCount(client, name),
-                }))
+                .map((row) => ({ name: String(row.name ?? '').trim(), estimate: normalizeCountValue(row.tableRows) }))
+                .filter((table, index, values) => table.name.length > 0 && values.findIndex((candidate) => candidate.name === table.name) === index)
+                .map(async (table) => {
+                    const count = await resolveRowCount(table.estimate, () => queryRowCount(client, table.name));
+
+                    return {
+                        name: table.name,
+                        type: 'table' as const,
+                        rowCount: count.rowCount,
+                        rowCountIsEstimated: count.rowCountIsEstimated,
+                    } satisfies TableSummary;
+                })
         );
         const seenNames = new Set(tableSummaries.map((table) => table.name.toLowerCase()));
         const viewSummaries = rows
@@ -965,6 +988,7 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         getTableColumns: getTableColumns,
         getTableNames: getTableNames,
         queryRowCount: queryRowCount,
+        estimateRowCount: estimateRowCount,
         buildCreateDatabaseStatement(databaseName: string, collation?: string): string {
             const quotedName = quoteMySqlIdentifier(databaseName);
             const collationClause = collation ? ` COLLATE ${collation}` : '';

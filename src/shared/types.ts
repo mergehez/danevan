@@ -219,6 +219,8 @@ export type TableSummary = {
     name: string;
     type: 'table' | 'view';
     rowCount: number;
+    /** Set when rowCount is the catalog estimate kept for tables too large to count. */
+    rowCountIsEstimated?: boolean;
 };
 
 export type TableColumnInfo = {
@@ -339,6 +341,9 @@ export type TableData = {
     columnStats: Record<string, number>;
     rows: Array<Record<string, SqlValue>>;
     rowCount: number;
+    /** Set when rowCount comes from the database catalog instead of an exact
+     *  COUNT(*), which large tables skip because it is a full scan. */
+    rowCountIsEstimated?: boolean;
     limit: number;
     offset: number;
     /** The SQL statement that was executed to produce this data.
