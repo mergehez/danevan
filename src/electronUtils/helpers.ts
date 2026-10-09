@@ -28,5 +28,9 @@ export async function callApiPost(method: string, params?: unknown): Promise<unk
         const text = await response.text();
         throw new Error(`Backend error (${response.status}): ${text}`);
     }
-    return response.json();
+
+    // Endpoints that return nothing answer with an empty body, which `response.json()`
+    // rejects — over this bridge a void API method would look like a failure.
+    const body = await response.text();
+    return body ? JSON.parse(body) : undefined;
 }
