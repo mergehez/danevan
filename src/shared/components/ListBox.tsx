@@ -319,7 +319,10 @@ export const ListBox = componentGeneric(
             listWidth.value = refInput.value?.offsetWidth ? refInput.value.offsetWidth + 'px' : 'auto';
             if (e instanceof FocusEvent) {
                 setTimeout(() => {
-                    if (refInput.value) {
+                    // `select()` focuses its input, so selecting after the user has already
+                    // moved on would steal focus back and reopen the dropdown over whatever
+                    // they clicked next.
+                    if (refInput.value && document.activeElement === refInput.value) {
                         refInput.value.select();
                     }
                 }, 100);
