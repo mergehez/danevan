@@ -4,6 +4,7 @@ import { useContextMenu } from '../directives/useContextMenu';
 import { useOverlaysState } from '../directives/useOverlaysState';
 import { Alert } from '../shared/components/Alert.tsx';
 import { AppConfirmationModal } from '../shared/components/AppConfirmationModal.tsx';
+import { AppSuccessToast } from '../shared/components/AppSuccessToast.tsx';
 import Splitter from '../shared/components/Splitter';
 import { DbData } from './components/DbData.tsx';
 import DbComparisonModal from './components/DbComparisonModal';
@@ -149,6 +150,7 @@ export const App = component(
                     ) : null}
                     <SettingsModal />
                     <AppConfirmationModal />
+                    <AppSuccessToast />
                     <GridFormatterModal />
                     <ModifyTableModal />
                     <DbComparisonModal />
