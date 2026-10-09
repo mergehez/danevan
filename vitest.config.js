@@ -12,7 +12,8 @@ export default defineConfig({
         globals: true,
         include: ['src/**/*.spec.{ts,tsx}'],
         // Keep vitest's own defaults (dist, cache dirs) instead of replacing them wholesale.
-        exclude: [...configDefaults.exclude, '**/e2e/**', '**/playwright/**'],
+        // Playwright owns the browser (`e2e`) and Electron (`tests/electron`) specs.
+        exclude: [...configDefaults.exclude, '**/e2e/**', '**/playwright/**', '**/tests/electron/**'],
         setupFiles: ['./src/mainview/tests/setup.ts'],
         coverage: {
             provider: 'v8',
