@@ -9,6 +9,7 @@ type Props = {
     canRedo: boolean;
     isSavingChanges?: boolean;
     saveButtonLabel?: string;
+    saveErrorMessage?: string;
     supportsForeignKeyCheckToggle?: boolean;
     disableForeignKeyChecks?: boolean;
     onClearChanges?: () => void;
@@ -35,6 +36,11 @@ export const DbSaveBar = component(
                                 {props.pendingChangeCount} pending {changeLabel.value}
                             </span>
                         </span>
+                        {props.saveErrorMessage ? (
+                            <span class="min-w-0 flex-1 truncate px-3 text-amber-200" data-testid="save-bar-error" title={props.saveErrorMessage}>
+                                {props.saveErrorMessage}
+                            </span>
+                        ) : null}
                         <div class="flex items-center gap-3">
                             {props.supportsForeignKeyCheckToggle ? (
                                 <label class="flex cursor-pointer items-center gap-2 opacity-80 transition hover:opacity-100">
@@ -84,6 +90,7 @@ export const DbSaveBar = component(
             'canRedo',
             'isSavingChanges',
             'saveButtonLabel',
+            'saveErrorMessage',
             'supportsForeignKeyCheckToggle',
             'disableForeignKeyChecks',
             'onClearChanges',

@@ -109,6 +109,8 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     const addRowDialogValues = ref<Record<string, SqlValue>>({});
     const isEditRowDialogOpen = ref(false);
     const editRowDialogRowIndex = ref(-1);
+    /** Set when the last save failed, so the save bar can say why instead of failing silently. */
+    const saveErrorMessage = ref<string | undefined>(undefined);
 
     // Separate undo stacks for row-level operations (delete/insert).
     // Cell-level edits are tracked via the DataGrid's own undoStack.
@@ -808,6 +810,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         const deleteStatements = overlayTableData.value.rows.map((_, rowIndex) => buildDeleteStatement(rowIndex)).filter((statement): statement is string => !!statement);
 
         gridState.setSavingChanges(true);
+        saveErrorMessage.value = undefined;
 
         try {
             if (changes.length) {
@@ -846,6 +849,10 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             isPreviewOpen.value = false;
             await query.loadSelectedTable(connectionId, tableName.value);
             options.onSaved?.();
+        } catch (error) {
+            // The pending changes stay staged (they are only cleared on success), so the save bar
+            // is the place the user finds out why the save did not happen.
+            saveErrorMessage.value = error instanceof Error ? error.message : String(error);
         } finally {
             gridState.setSavingChanges(false);
         }
@@ -943,6 +950,8 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         canUndo: computed(() => gridState.dirtyChanges.length > 0 || pendingRowUndoStack.value.length > 0),
         canRedo: computed(() => pendingRowRedoStack.value.length > 0),
         undoChanges: () => {
+            saveErrorMessage.value = undefined;
+
             // Prefer undoing row-level changes first (most recent user action).
             if (pendingRowUndoStack.value.length > 0) {
                 const snapshot = pendingRowUndoStack.value.at(-1)!;
@@ -962,6 +971,8 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             cellUndoChanges();
         },
         redoChanges: () => {
+            saveErrorMessage.value = undefined;
+
             if (pendingRowRedoStack.value.length > 0) {
                 const snapshot = pendingRowRedoStack.value.at(-1)!;
                 pendingRowUndoStack.value = [
@@ -981,6 +992,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         },
         /** Discards all pending changes and clears undo/redo stacks. */
         clearChanges: () => {
+            saveErrorMessage.value = undefined;
             gridState.clearHistory();
             gridState.clearPendingChanges();
             pendingRowUndoStack.value = [];
@@ -1036,6 +1048,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             return pendingCount === 1 ? 'Save 1 change' : `Save ${pendingCount} changes`;
         }),
         saveChanges: saveChanges,
+        saveErrorMessage: saveErrorMessage,
         setDisableForeignKeyChecks: (value: boolean) => (disableForeignKeyChecks.value = value),
         supportsForeignKeyCheckToggle: supportsForeignKeyCheckToggle,
     });

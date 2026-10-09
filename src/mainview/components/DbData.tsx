@@ -361,6 +361,7 @@ export const DbData = component(
                     canRedo={dataGridState.canRedo}
                     isSavingChanges={dataGridState.isSavingChanges}
                     saveButtonLabel={dataGridState.saveButtonLabel}
+                    saveErrorMessage={dataGridState.saveErrorMessage}
                     supportsForeignKeyCheckToggle={dataGridState.supportsForeignKeyCheckToggle}
                     disableForeignKeyChecks={dataGridState.disableForeignKeyChecks}
                     onClearChanges={dataGridState.clearChanges}
