@@ -1,7 +1,7 @@
 # Test audit — what to test next
 
-**Status:** 694 unit tests (63 files) · 87 browser tests (23 files) · 1 Electron shell test ·
-coverage over every source file **37.5 % statements / 29.6 % branches** · aggregate and per-area
+**Status:** 720 unit tests (64 files) · 89 browser tests (24 files) · 1 Electron shell test ·
+coverage over every source file **38.4 % statements / 30.6 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
 
@@ -59,7 +59,11 @@ and keyboard state machines (`useTree`, `useFileTree`, `useKeyboardNavigation`, 
 manifest, SQL script runner)** · **grid context-menu planning (cell peek items, row menu for single
 vs multi selection, header formatter menu, toolbar copy item, and the `useDbDataGrid` wiring)** ·
 **the Electron shell (`src/mainview/tests/electron/shell.spec.ts` launches the built
-`dist-electron/main.cjs`: window, preload bridge, IPC round trip, `App.tsx` window title)**.
+`dist-electron/main.cjs`: window, preload bridge, IPC round trip, `App.tsx` window title)** ·
+**SQLite table DDL (`sqliteTableDdl.ts`: statement splitting with quoted and nested commas, column
+definition lookup, AUTOINCREMENT/COLLATE detection, and the `CREATE TABLE` generated for a modify
+plan)** · **a save against a dead connection keeps the pending change and says why in the save bar ·
+credentials the server rejects name the connection**.
 
 ---
 
@@ -74,14 +78,14 @@ either. Add a spec that edits, inserts and deletes a row, saves, and re-reads th
 `post(request, 'getTableData', …)` for both dialects, behind a `require*` precondition that fails
 loudly — the dialect where wrong SQL silently corrupts data is the one with no write coverage.
 
-### e2e-14 · Environment and connection failure modes (medium)
+### e2e-14 · Startup and export failure modes (small)
 
-Three real failures have no spec. An unwritable app data directory (backend throws `SqliteError:
-attempt to write a readonly database`, never listens on the API port, and every screen is dead with
-no message) must surface an error the user can read. A connection that worked when the source was
-added but is gone when a save runs must keep the pending change and show the failure where the result
-would appear. Bad credentials and a missing `mysqldump` binary (`requireMySqlExecutable`) must each
-name the problem on screen. Assert the message, not that the app stayed up.
+The failed save and the rejected credentials are covered (`failure-modes.spec.ts`); two failure modes
+still have no spec. An unwritable app data directory makes the backend throw `SqliteError: attempt to
+write a readonly database`, never listen on the API port, and leave every screen dead with no message
+— the shell must say so instead of showing an empty window. And a `mysqldump` executable that
+disappears between opening the export modal and submitting it must show its error in the modal (the
+API-level guard is covered in `appApi.spec.ts`, the screen is not).
 
 ### e2e-15 · Packaged application smoke (small)
 
@@ -97,15 +101,16 @@ an asar layout problem ships green. Add a job that runs `electron-builder` and l
 
 ## Unit tasks
 
-### unit-8 · Driver SQL builders and value mapping (medium)
+### unit-8 · Remote driver SQL and value mapping (medium)
 
-The drivers are the largest uncovered code in the backend: `useMsAccessDriver.ts` (654 statements,
-0.6 %), `useMySqlDriver.ts` (417, 6.5 %), `useSqliteDriver.ts` (368, 10.3 %), `usePostgresDriver.ts`
-(297, 11.8 %) and `useMsAccessWindowsDriver.ts` (213, 4.2 %). Extract the parts that decide what
-reaches the database — identifier quoting, WHERE/LIMIT/OFFSET building per dialect, INSERT/UPDATE/
-DELETE and DDL generation, value coercion (dates, binary, bigint, NULL versus empty string) and error
-mapping — into pure helpers and cover them directly, the way the grid menus were extracted. No server
-is needed, and this is the code where a wrong string corrupts data.
+The SQLite driver's DDL now lives in `sqliteTableDdl.ts` and is covered; the remote drivers are still
+the largest uncovered code in the backend: `useMsAccessDriver.ts` (654 statements, 0.6 %),
+`useMySqlDriver.ts` (417, 6.5 %), `usePostgresDriver.ts` (297, 11.8 %) and
+`useMsAccessWindowsDriver.ts` (213, 4.2 %). Extract what decides the SQL that reaches those servers —
+identifier quoting, WHERE/LIMIT/OFFSET building, INSERT/UPDATE/DELETE and DDL generation, value
+coercion (dates, binary, bigint, NULL versus empty string) and error mapping — into pure helpers and
+cover them directly, the way the grid menus and the SQLite DDL were. No server is needed, and this is
+where a wrong string corrupts data.
 
 ### unit-9 · MS Access driver and bridge (medium)
 
