@@ -24,10 +24,10 @@ export default defineConfig({
             // Ratchets two points below today's numbers: they exist to catch a regression,
             // not to look good. Raise them as the gaps in TESTS-AUDIT.md get specs.
             thresholds: {
-                statements: 33,
-                branches: 26,
-                functions: 31,
-                lines: 34,
+                statements: 35,
+                branches: 27,
+                functions: 33,
+                lines: 36,
             },
         },
     },
