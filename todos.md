@@ -8,8 +8,9 @@ Pending work for this repo, in two parts:
 2. **User-reported issues and ideas (`U1`, `U2`, …)** at the end — filed by the developer while
    using the app. Append new ones there.
 
-**Nothing here is implemented yet.** Each entry has a `- [ ]` checkbox, evidence with `file:line`
-pointers, a fix sketch, and a way to verify the fix.
+**Nothing in the performance audit is implemented yet.** Each entry has a `- [ ]` checkbox, evidence
+with `file:line` pointers, a fix sketch, and a way to verify the fix. The `U` entries record their
+status inline.
 
 Evidence comes from four parallel read-only audits (backend DB layer, frontend state/data flow,
 startup/app-DB/packaging, datagrid/rendering) plus direct measurements on this machine. Numbers
@@ -446,7 +447,11 @@ what happens, the repro, `file:line` evidence, a fix sketch and a verification s
 
 ### U1 — In-cell editor: arrow keys move the grid cell instead of the text cursor — bug
 
-- [ ] Not started
+- [x] Fixed — the editor's own keydown handler now stops the arrows (without cancelling them) and
+  handles `Enter` (commit + move down), `Escape` (cancel) and `Tab` (commit sideways);
+  `src/datagrid/useDataGridView.ts` `handleEditingKeydown`, `src/datagrid/useDataGridNavigation.ts`
+  `commitEditingCellAndMoveDown`. Covered by `src/mainview/tests/e2e/cell-editor.spec.ts` and the
+  unit test "keeps arrow keys and Enter in the inline cell editor".
 - **Repro**: double-click a cell in the data grid to edit it, then press `ArrowRight` (same for
   `ArrowUp`/`ArrowDown`): the active cell jumps to the neighbouring cell instead of moving the caret
   inside the editor. `ArrowLeft` is broken the other way — the caret cannot move left at all.
@@ -469,7 +474,11 @@ what happens, the repro, `file:line` evidence, a fix sketch and a verification s
 
 ### U2 — Closing the cell editor without typing marks the cell as changed — bug
 
-- [ ] Not started
+- [x] Fixed — `startEditingCell`/`openModalEditingCell` snapshot the formatted draft
+  (`initialDraftValue`) and both commit paths skip `applyCellChange` entirely when the draft is
+  unchanged, before parsing. Menu-picked values clear the snapshot so they still count as edits.
+  Covered by the unit tests "does not stage a change when the inline editor is closed without
+  typing" (binary + numeric + JSON text) and `src/mainview/tests/e2e/cell-editor.spec.ts`.
 - **Repro (as reported)**: `hetzner (server) → peyvdank_test (db) → games (table) → board (column)`.
   Double-click the cell (large text), click somewhere else to close the editor: the save bar appears
   as if a change was made, although nothing was typed.
@@ -508,7 +517,10 @@ what happens, the repro, `file:line` evidence, a fix sketch and a verification s
 
 ### U3 — "Text wrap" in the "Edit cell value" dialog is not remembered — bug
 
-- [ ] Not started
+- [x] Fixed — the open-time reset watcher is gone and the flag is a global preference persisted with
+  `useCache` in `src/datagrid/dataGridModalPreferences.ts` (detached scope so its watcher survives
+  grid unmounts). Covered by `src/mainview/tests/e2e/cell-editor-modal.spec.ts` (reopen and reload)
+  and the unit test "remembers the modal editor text wrap preference across dialogs".
 - **Repro**: open "Edit cell value", toggle **Text wrap**, close the dialog, reopen it — wrap is off
   again (and it is off after every app restart).
 - **Evidence**: the toggle flips `_state.isModalEditTextWrap`
@@ -523,7 +535,11 @@ what happens, the repro, `file:line` evidence, a fix sketch and a verification s
 
 ### U4 — JSON "Prettify" / "Compact" buttons in the "Edit cell value" dialog — feature
 
-- [ ] Not started
+- [x] Implemented — `openModalEditingCell` decides JSON-ness once (`isJsonObjectText`); the dialog
+  header shows `Prettify`/`Compact` only then. Both re-serialise the draft through
+  `setModalEditingValue` and no-op on invalid JSON, and `Save` is unaffected. Covered by
+  `src/mainview/tests/e2e/cell-editor-modal.spec.ts` and the unit test "offers JSON prettify and
+  compact only for a value that is a JSON object".
 - **Request**: when the dialog opens, check **once** whether the value is JSON (trimmed text starts
   with `{` and ends with `}`); if yes, show `Prettify` and `Compact` buttons. Explicitly not a
   watcher/computed on the draft: evaluate it imperatively at open time so typing does not re-evaluate
