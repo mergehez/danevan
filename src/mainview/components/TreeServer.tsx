@@ -72,6 +72,13 @@ export const TreeServer = component(
             return connection ? state.buildConnectionTreeItem(connection) : undefined;
         }
 
+        /** A file source created by the connection form has no connection until its second call
+         *  lands, and rendering it must not throw in between. */
+        function getFileServerChildren(serverId: number): TableCollectionTreeItem[] {
+            const connection = getFileServerConnection(serverId);
+            return connection ? getConnectionTreeChildren(connection.id) : [];
+        }
+
         const settings = useDbSettings();
 
         // const fileServers = computed(() => servers.servers.filter((server) => server.kind === 'file'));
@@ -422,7 +429,7 @@ export const TreeServer = component(
                         onClick={(e) => handleFirstDepthRowClick(item, e)}
                         onDblClick={() => void handleFileServerSelect(server)}
                         contextMenuItems={serverMenuItems}
-                        children={() => getConnectionTreeChildren(getFileServerConnection(server.id)!.id)}
+                        children={() => getFileServerChildren(server.id)}
                         slots={{
                             child: ({ item: collection, parentId, allItems }) => (
                                 <TreeTable server={server} collection={collection} parentId={parentId} skipTitle={allItems.length === 1} />
