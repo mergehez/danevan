@@ -1,10 +1,11 @@
 import { execFileSync } from 'child_process';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { BrowserWindow, dialog, shell } from 'electron';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { app as backendApp } from '../backend/app.ts';
-import { useAppDb } from '../backend/db-app.ts';
+// The API runs in the backend process (backend.cjs); the main bundle only needs
+// the app's *type* here, never its drivers.
+import type { app as backendApp } from '../backend/app.ts';
 import { createElectronHelpers, type CreateAppClientRequestApi } from '../electronUtils/mainProloadHelpers.ts';
 import { apiMethods } from '../shared/utils/apiMethods';
 
@@ -131,16 +132,5 @@ const helpers = createElectronHelpers({
 
 export type HandlersMap = ReturnType<typeof helpers.generateHandlers>;
 export type AppClientRequestApi = CreateAppClientRequestApi<HandlersMap>;
-
-function resolveAppDataDir(): string {
-    const appData = process.env.DANEVAN_DATA_DIR;
-    if (appData) return appData;
-
-    const elecAppData = app.getPath('appData');
-    return join(elecAppData, 'danevan');
-}
-
-const userDataDir = resolveAppDataDir();
-useAppDb().configureDatabase(userDataDir);
 
 helpers.start();
