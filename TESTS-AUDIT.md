@@ -1,6 +1,6 @@
 # Test audit — what to test next
 
-**Status:** 379 unit tests (39 files) · 61 browser tests (15 files) · coverage over every source
+**Status:** 379 unit tests (39 files) · 70 browser tests (18 files) · coverage over every source
 file **26.0 % statements / 20.8 % branches** · floors enforced in `vitest.config.js` ·
 **85 source files still at 0 %**.
 
@@ -38,46 +38,14 @@ popover · open table + loading state · huge-table estimate · grid search · i
 (wrap, JSON prettify) · add row + NULL columns · modify table (add/type/undo/redo/move/drag/delete
 column, API + popup) · mysqldump dump output/defaults/menu visibility · run SQL script (API + menu) ·
 **edit / duplicate / delete row + undo-redo** · edit, preview and save a row · SQL editor run, draft
-reload, cursor stability · sticky sidebar rows.
+reload, cursor stability · sticky sidebar rows · **add source through the form (SQLite + MySQL with a
+password)** · **multi-row "Delete N Rows"** · **two-change preview and the FK-violation dialog** ·
+**grid toolbar (column visibility, paging, page size, reload, custom query)** · **table create/delete,
+Copy as DDL, create database**.
 
 ---
 
 ## Browser tasks (in priority order)
-
-### e2e-1 · Create a connection through the form (high)
-Every spec creates sources with `post(request, 'createServer', …)`, so the product's front door is
-untested: a broken driver switch, a lost file path or a form that never submits would ship green.
-New `e2e/connection-form.spec.ts`: open the add-source dialog (`aside button:has(i[class*="database-plus-outline"])`),
-pick SQLite, fill `#form-sourceName` and `#form-databaseFilePath`, submit, then assert the source row
-`[data-node-id="server:<id>"]` appears with its connection and tables. Read `DbConnectionForm.tsx` for the
-submit button and the validation messages. Clean up with `post(request, 'deleteServer', …)` + `rmSync`.
-Same spec, second test: a MySQL connection with a **password**, asserting the connection is created and
-the password is never echoed back into the form.
-
-### e2e-2 · Multi-row selection and "Delete N Rows" (high)
-`useDbDataGrid.ts:443-467` labels the menu `Delete N Rows` for a multi-row selection and the Delete key
-uses the same path — nothing asserts the count. Extend `e2e/row-mutations.spec.ts`: select three rows,
-open the gutter menu, assert the item reads exactly `Delete 3 Rows`, confirm the save bar shows
-`3 pending changes`, then Save and assert via `getTableData` that exactly those three are gone and the
-rest survive.
-
-### e2e-3 · The save bar before an UPDATE reaches the database (high)
-`row-mutations.spec.ts` covers a one-change Preview. Extend it: make **two** different changes, assert
-Preview lists both statements in order (`.v-menu`-free: the dialog titled `Pending updates`, `<pre>`),
-that `Disable FK checks` appears for MySQL (read `DbData.tsx:617-645`), and that a save the database
-rejects surfaces the FK-violation dialog (`DbData.tsx:599-615`) instead of silently dropping the change.
-
-### e2e-4 · Grid toolbar (high)
-`DbGridToolbar.tsx` — column visibility (`N of M columns`), pagination prev/next, page size, reload and
-the custom-query box (`DbData.tsx:378-408`) have no spec. New `e2e/grid-toolbar.spec.ts` on a seeded
-file source: hide a column and assert the *right* one disappears; change the page size and assert the
-requested LIMIT/OFFSET and the visible range; type a custom query and assert the grid shows its result,
-not the generated query.
-
-### e2e-5 · Table and database lifecycle (high)
-New `e2e/table-lifecycle.spec.ts`: create a table, delete a table (assert the confirmation modal names
-it and that cancelling keeps it), `Copy as DDL` (assert the clipboard/DDL text contains the columns), and
-the create-database modal. Entry points: `TreeServer.tsx:221,251,313`, `TreeTableRow.tsx:247,266`.
 
 ### e2e-6 · Foreign-key peek (medium)
 `useForeignKeyPeek.ts` (773 lines, 0 % covered) plus `DbData.tsx:500-596`. New `e2e/fk-peek.spec.ts`
