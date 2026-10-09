@@ -1,6 +1,6 @@
-import { nextTick, type ComputedRef } from 'vue';
+import { nextTick, watch, type ComputedRef } from 'vue';
 import { useKeyboardNavigation, type KeyboardNavigationPosition } from '../shared/utils/useKeyboardNavigation';
-import { DATA_GRID_COLUMN_MAX_WIDTH, DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from './dataGrid';
+import { DATA_GRID_COLUMN_MAX_WIDTH, DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT, DATA_GRID_SEARCH_DEBOUNCE_MS } from './dataGrid';
 import type { DataGridInternalState, DataGridTransposedState } from './useDataGrid';
 import { isJsonObjectText } from './useDataGridCoreUtils';
 import type { DataGridHistoryOptions, DataGridNormalizedCellRange, DataGridSearchMatch, DataGridUpdateLayoutState } from './useDataGridHelperTypes';
@@ -21,6 +21,8 @@ export interface DataGridNavigationArgs {
 }
 export function createDataGridNavigation(args: DataGridNavigationArgs) {
     const { internalState, transposedState: trState, options } = args;
+    let searchCommitTimer: ReturnType<typeof setTimeout> | undefined;
+
     function getSourceRowIndexForVisualRowIndex(visualRowIndex: number) {
         const rowIndexes = args.sortedRowIndexes.value;
 
@@ -613,20 +615,48 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
 
     function setSearchQuery(value: string) {
         internalState.searchQuery = value;
-
-        if (!internalState.normalizedSearchQuery || !args.searchMatches.value.length) {
-            clearSelectedRows();
-            clearSelectedColumn();
-            clearSelectedCellRange();
-            return;
-        }
-
-        const firstMatch = args.searchMatches.value[0];
-        clearSelectedRows();
-        clearSelectedColumn();
-        clearSelectedCellRange();
-        setActiveCell(firstMatch.rowIndex, firstMatch.columnIndex, { align: 'center' });
     }
+
+    // The raw query updates on every keystroke; the committed query (and the jump to
+    // the first match) waits for typing to pause. Clearing is immediate.
+    watch(
+        () => internalState.searchQuery,
+        (value, _previous, onCleanup) => {
+            if (searchCommitTimer) {
+                clearTimeout(searchCommitTimer);
+                searchCommitTimer = undefined;
+            }
+
+            onCleanup(() => {
+                if (searchCommitTimer) {
+                    clearTimeout(searchCommitTimer);
+                    searchCommitTimer = undefined;
+                }
+            });
+
+            const commit = () => {
+                searchCommitTimer = undefined;
+                internalState.committedSearchQuery = value;
+
+                clearSelectedRows();
+                clearSelectedColumn();
+                clearSelectedCellRange();
+
+                const firstMatch = args.searchMatches.value[0];
+
+                if (firstMatch) {
+                    setActiveCell(firstMatch.rowIndex, firstMatch.columnIndex, { align: 'center' });
+                }
+            };
+
+            if (!value.trim()) {
+                commit();
+                return;
+            }
+
+            searchCommitTimer = setTimeout(commit, DATA_GRID_SEARCH_DEBOUNCE_MS);
+        }
+    );
 
     function goToSearchMatch(step: 1 | -1) {
         if (!args.searchMatches.value.length) {

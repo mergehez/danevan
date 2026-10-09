@@ -15,6 +15,9 @@ export const DATA_GRID_EDITING_TEXTAREA_MAX_GRID_HEIGHT_RATIO = 0.6;
 export const DATA_GRID_ROW_NUMBER_MIN_WIDTH = 42;
 export const DATA_GRID_ROW_HEADER_COMPACT_WIDTH = 18;
 
+/** Typing in the grid search must not reformat the whole result set per keystroke. */
+export const DATA_GRID_SEARCH_DEBOUNCE_MS = 200;
+
 export const DATA_GRID_NEWLINE_SYMBOL = '⏎';
 export const DATA_GRID_NEWLINE_TOKEN = ` ${DATA_GRID_NEWLINE_SYMBOL} `;
 

@@ -6,6 +6,7 @@ import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
 import {
     DATA_GRID_COLUMN_MIN_WIDTH,
     DATA_GRID_ROW_HEIGHT,
+    DATA_GRID_SEARCH_DEBOUNCE_MS,
     useDataGrid,
     useDataGridView,
     type DataGridCellValue,
@@ -36,6 +37,7 @@ type GridStateOptions = {
     getPendingRowState?: (rowIndex: number) => 'inserted' | 'deleted' | undefined;
     parseEditingValue?: (draftValue: string, originalValue: DataGridCellValue) => DataGridCellValue;
     createPendingChange?: (change: DataGridPendingChangeContext) => DataGridPendingChange;
+    getFormattedCellValue?: (rowIndex: number, columnName: string) => string;
 };
 
 type MockCanvasContext = CanvasRenderingContext2D & {
@@ -174,6 +176,7 @@ function createGridState(options: GridStateOptions = {}) {
         getPendingRowState: options.getPendingRowState,
         parseEditingValue: options.parseEditingValue,
         createPendingChange: options.createPendingChange,
+        getFormattedCellValue: options.getFormattedCellValue,
     });
 
     return { columns, rows, state };
@@ -287,44 +290,102 @@ describe('DataGrid', () => {
         expect(state.showRowNumbers).toBe(false);
     });
 
-    it('covers search navigation, cell-range selection, and transpose mode', () => {
-        const { state } = createGridState({
-            rows: [
-                { id: 1, name: 'Alpha', city: 'Berlin' },
-                { id: 2, name: 'Alphabet', city: 'Boston' },
-                { id: 3, name: 'Zulu', city: 'Cairo' },
-            ],
-        });
+    it('covers search navigation, cell-range selection, and transpose mode', async () => {
+        vi.useFakeTimers();
 
-        state.setSearchQuery('alp');
+        try {
+            const { state } = createGridState({
+                rows: [
+                    { id: 1, name: 'Alpha', city: 'Berlin' },
+                    { id: 2, name: 'Alphabet', city: 'Boston' },
+                    { id: 3, name: 'Zulu', city: 'Cairo' },
+                ],
+            });
 
-        expect(state.searchQuery).toBe('alp');
-        expect(state.searchMatchCount).toBe(2);
-        expect(state.activeCell.rowIndex).toBe(0);
-        expect(state.activeCell.columnIndex).toBe(1);
-        expect(state.activeSearchMatchIndex).toBe(0);
+            state.setSearchQuery('alp');
 
-        state.goToNextSearchMatch();
-        expect(state.activeCell.rowIndex).toBe(1);
-        expect(state.activeCell.columnIndex).toBe(1);
-        expect(state.activeSearchMatchIndex).toBe(1);
+            // The input updates immediately; matching waits for typing to pause.
+            expect(state.searchQuery).toBe('alp');
+            await nextTick();
+            expect(state.searchMatchCount).toBe(0);
 
-        state.selectCellRange(0, 0, 1, 1);
-        expect(state.selectedCellRange).toEqual({
-            startRowIndex: 0,
-            startColumnIndex: 0,
-            endRowIndex: 1,
-            endColumnIndex: 1,
-        });
+            vi.advanceTimersByTime(DATA_GRID_SEARCH_DEBOUNCE_MS);
+            expect(state.searchMatchCount).toBe(2);
+            expect(state.activeCell.rowIndex).toBe(0);
+            expect(state.activeCell.columnIndex).toBe(1);
+            expect(state.activeSearchMatchIndex).toBe(0);
 
-        state.toggleTranspose?.();
-        expect(state.isTransposed).toBe(true);
-        expect(state.orderedColumns[0]).toBe('Column');
-        expect(state.rows.length).toBe(3);
+            state.goToNextSearchMatch();
+            expect(state.activeCell.rowIndex).toBe(1);
+            expect(state.activeCell.columnIndex).toBe(1);
+            expect(state.activeSearchMatchIndex).toBe(1);
 
-        state.toggleTranspose?.();
-        expect(state.isTransposed).toBe(false);
-        expect(state.orderedColumns).toEqual(['id', 'name', 'city']);
+            state.selectCellRange(0, 0, 1, 1);
+            expect(state.selectedCellRange).toEqual({
+                startRowIndex: 0,
+                startColumnIndex: 0,
+                endRowIndex: 1,
+                endColumnIndex: 1,
+            });
+
+            state.toggleTranspose?.();
+            expect(state.isTransposed).toBe(true);
+            expect(state.orderedColumns[0]).toBe('Column');
+            expect(state.rows.length).toBe(3);
+
+            state.toggleTranspose?.();
+            expect(state.isTransposed).toBe(false);
+            expect(state.orderedColumns).toEqual(['id', 'name', 'city']);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('formats each cell once for a search instead of on every keystroke', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const values: Record<string, string[]> = {
+                id: ['1', '2', '3'],
+                name: ['Alpha', 'Alphabet', 'Zulu'],
+                city: ['Berlin', 'Boston', 'Cairo'],
+            };
+            const formatCell = vi.fn((rowIndex: number, columnName: string) => values[columnName]?.[rowIndex] ?? '');
+            const { state } = createGridState({
+                columns: ['id', 'name', 'city'],
+                rows: [
+                    { id: 1, name: 'Alpha', city: 'Berlin' },
+                    { id: 2, name: 'Alphabet', city: 'Boston' },
+                    { id: 3, name: 'Zulu', city: 'Cairo' },
+                ],
+                getFormattedCellValue: formatCell,
+            });
+
+            // Nothing is formatted while the user is only typing.
+            state.setSearchQuery('zulu');
+            await nextTick();
+            expect(formatCell).not.toHaveBeenCalled();
+
+            // The first committed query builds the index: rows × columns, once.
+            vi.advanceTimersByTime(DATA_GRID_SEARCH_DEBOUNCE_MS);
+            expect(formatCell).toHaveBeenCalledTimes(9);
+            expect(state.searchMatchCount).toBe(1);
+
+            // Every further keystroke reuses it.
+            state.setSearchQuery('a');
+            await nextTick();
+            vi.advanceTimersByTime(DATA_GRID_SEARCH_DEBOUNCE_MS);
+            expect(formatCell).toHaveBeenCalledTimes(9);
+            expect(state.searchMatchCount).toBe(3);
+
+            // Clearing is immediate and does not wait for the debounce.
+            state.setSearchQuery('');
+            await nextTick();
+            expect(state.searchMatchCount).toBe(0);
+            expect(state.sortedRowIndexes).toEqual([0, 1, 2]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('covers inline editing, modal editing, and clipboard exports', async () => {
@@ -638,23 +699,31 @@ describe('DataGrid', () => {
     });
 
     it('keeps the column headers and shows a no-rows message for an empty table', async () => {
-        const { state } = createGridState({ rows: [] });
-        const wrapper = mount(DataGrid, {
-            attachTo: document.body,
-            props: { state },
-            global: { directives: { menu: {}, tooltip: {} } },
-        });
+        vi.useFakeTimers();
 
-        // Header canvas only: no rows, so no body canvas to paint.
-        expect(wrapper.findAll('canvas')).toHaveLength(1);
-        expect(wrapper.text()).toContain('No rows');
+        try {
+            const { state } = createGridState({ rows: [] });
+            const wrapper = mount(DataGrid, {
+                attachTo: document.body,
+                props: { state },
+                global: { directives: { menu: {}, tooltip: {} } },
+            });
 
-        state.setSearchQuery('zzz');
-        await nextTick();
+            // Header canvas only: no rows, so no body canvas to paint.
+            expect(wrapper.findAll('canvas')).toHaveLength(1);
+            expect(wrapper.text()).toContain('No rows');
 
-        expect(wrapper.text()).toContain('No matching rows.');
+            state.setSearchQuery('zzz');
+            await nextTick();
+            vi.advanceTimersByTime(DATA_GRID_SEARCH_DEBOUNCE_MS);
+            await nextTick();
 
-        wrapper.unmount();
+            expect(wrapper.text()).toContain('No matching rows.');
+
+            wrapper.unmount();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('shows the empty hint instead of headers when there is no result set', () => {

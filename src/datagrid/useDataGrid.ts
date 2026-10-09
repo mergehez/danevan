@@ -147,8 +147,11 @@ function createInternalState(options: UseDataGridFinalOptions) {
         isSavingChanges: false,
         activeCellScrollAlign: 'nearest' as 'nearest' | 'center',
         searchQuery: '',
+        // The input updates `searchQuery` on every keystroke; matching runs against
+        // the debounced value so typing never reformats the whole page.
+        committedSearchQuery: '',
         get normalizedSearchQuery() {
-            return state.searchQuery.trim().toLocaleLowerCase();
+            return state.committedSearchQuery.trim().toLocaleLowerCase();
         },
         isTransposed: options.transposeState ?? false,
         transposeLabelColumnName: computed(() => unref(options.transposeLabelColumnName) ?? 'Column'),
@@ -447,6 +450,24 @@ export function useDataGrid(_options: UseDataGridOptions) {
     const getFormattedCellValue =
         options.getFormattedCellValue ?? ((rowIndex: number, columnName: string) => formatDefaultValue(transposedState.getDisplayedCellValue(rowIndex, columnName)));
 
+    // Formatting a cell can run a custom formatter template, so it is done once per
+    // page and cached: a search then only lowercases nothing and runs `includes`.
+    // Built lazily on the first committed query, and invalidated reactively whenever
+    // the rows, columns or formatted values change.
+    const searchIndex = computed(() => {
+        const columns = transposedState.orderedColumns;
+        const cellTexts: string[][] = [];
+        const rowTexts: string[] = [];
+
+        for (const rowIndex of transposedState.baseSortedRowIndexes) {
+            const texts = columns.map((columnName) => getFormattedCellValue(rowIndex, columnName).toLocaleLowerCase());
+            cellTexts[rowIndex] = texts;
+            rowTexts[rowIndex] = texts.join('\u0000');
+        }
+
+        return { cellTexts, rowTexts };
+    });
+
     const searchMatches = computed<DataGridSearchMatch[]>(() => {
         const query = baseState.normalizedSearchQuery;
 
@@ -454,23 +475,25 @@ export function useDataGrid(_options: UseDataGridOptions) {
             return [];
         }
 
+        const { cellTexts, rowTexts } = searchIndex.value;
         const matches: DataGridSearchMatch[] = [];
 
         for (const rowIndex of transposedState.baseSortedRowIndexes) {
-            for (let columnIndex = 0; columnIndex < transposedState.orderedColumns.length; columnIndex += 1) {
-                const columnName = transposedState.orderedColumns[columnIndex];
+            // Cheap row-wide rejection before looking at individual cells.
+            if (!rowTexts[rowIndex]?.includes(query)) {
+                continue;
+            }
 
-                if (!columnName) {
-                    continue;
+            const texts = cellTexts[rowIndex];
+
+            if (!texts) {
+                continue;
+            }
+
+            for (let columnIndex = 0; columnIndex < texts.length; columnIndex += 1) {
+                if (texts[columnIndex]?.includes(query)) {
+                    matches.push({ rowIndex, columnIndex });
                 }
-
-                const text = getFormattedCellValue(rowIndex, columnName).toLocaleLowerCase();
-
-                if (!text.includes(query)) {
-                    continue;
-                }
-
-                matches.push({ rowIndex, columnIndex });
             }
         }
 
@@ -694,6 +717,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         showRowNumbers: computed(() => baseState.showRowNumbers),
         searchable: options.searchable ?? true,
         searchQuery: toRef(baseState, 'searchQuery'),
+        committedSearchQuery: computed(() => baseState.committedSearchQuery),
         searchMatchCount: computed(() => searchMatches.value.length),
         activeSearchMatchIndex: activeSearchMatchIndex,
         canGenerateSqlStatements: computed(

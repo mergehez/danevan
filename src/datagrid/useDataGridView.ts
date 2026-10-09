@@ -600,7 +600,8 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
             state.selectedColumnName,
             state.sortState?.columnName,
             state.sortState?.direction,
-            state.searchQuery,
+            // The raw query only drives the input; matching uses the committed one.
+            state.committedSearchQuery,
             state.gridFontFamily,
             state.showRowNumbers,
             state.renderVersion,
