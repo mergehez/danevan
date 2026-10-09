@@ -1,6 +1,7 @@
 # Test audit — what to test next
 
-**Status:** 720 unit tests (64 files) · 89 browser tests (24 files) · 1 Electron shell test ·
+**Status:** 720 unit tests (64 files) · 89 browser tests (24 files) · 2 Electron shell tests
+(dev build + packaged `.app`) ·
 coverage over every source file **38.4 % statements / 30.6 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
@@ -60,9 +61,11 @@ manifest, SQL script runner)** · **grid context-menu planning (cell peek items,
 vs multi selection, header formatter menu, toolbar copy item, and the `useDbDataGrid` wiring)** ·
 **the Electron shell (`src/mainview/tests/electron/shell.spec.ts` launches the built
 `dist-electron/main.cjs`: window, preload bridge, IPC round trip, `App.tsx` window title)** ·
-**SQLite table DDL (`sqliteTableDdl.ts`: statement splitting with quoted and nested commas, column
-definition lookup, AUTOINCREMENT/COLLATE detection, and the `CREATE TABLE` generated for a modify
-plan)** · **a save against a dead connection keeps the pending change and says why in the save bar ·
+**the packaged application (`test:e2e:packaged` builds the electron-builder bundle and launches
+`build/mac-arm64/Danevan.app`, so the asar layout, the bundled `backend.cjs` and the externalised
+`better-sqlite3` are proven to work, not just the dev build)** · **SQLite table DDL
+(`sqliteTableDdl.ts`: statement splitting with quoted and nested commas, column definition lookup,
+AUTOINCREMENT/COLLATE detection, and the `CREATE TABLE` generated for a modify plan)** · **a save against a dead connection keeps the pending change and says why in the save bar ·
 credentials the server rejects name the connection**.
 
 ---
@@ -86,16 +89,6 @@ write a readonly database`, never listen on the API port, and leave every screen
 — the shell must say so instead of showing an empty window. And a `mysqldump` executable that
 disappears between opening the export modal and submitting it must show its error in the modal (the
 API-level guard is covered in `appApi.spec.ts`, the screen is not).
-
-### e2e-15 · Packaged application smoke (small)
-
-The built entry points are now launched for real (`bun run test:e2e:electron`), but the artifact users
-install is the electron-builder bundle in `build/mac-arm64/`, and its `files: ['dist/**/*',
-'dist-electron/**/*']` list excludes `node_modules` while `main.cjs` and `backend.cjs` externalise
-`better-sqlite3`. Nothing asserts that the packaged `.app` still starts, so a missing native module or
-an asar layout problem ships green. Add a job that runs `electron-builder` and launches the built
-`.app`, asserting the window and one IPC round trip — or, if packaging in CI is too slow, at least
-`unzip` the asar and assert `backend.cjs`, `preload.cjs` and `better-sqlite3` are reachable.
 
 ---
 
@@ -136,8 +129,9 @@ shell behaviour.
   `E2E_SKIP_MISSING_DB=1` can no longer produce a green run that proves less.
 - Coverage floors are one point below the measured numbers and per-area (`src/backend`, `src/datagrid`,
   `src/shared`, `src/directives`), so a gap cannot hide in the aggregate.
-- `bun run test:e2e:electron` builds the shell (`build:shell`) and launches it; the browser suite and
-  the shell suite need separate configs because `appConfig` hard-codes the API port they both bind.
+- `bun run test:e2e:electron` builds the shell (`build:shell`) and launches it;
+  `bun run test:e2e:packaged` additionally runs `electron-builder` and launches the packaged `.app`.
+  Separate configs are needed because `appConfig` hard-codes the API port every one of them binds.
 
 ---
 
