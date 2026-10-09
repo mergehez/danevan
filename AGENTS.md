@@ -50,6 +50,25 @@ To efficiently build this compact email client;
 - Never create temporary tests if a test can be used later. We need to integrate it properly into the test suite
   rather than leaving it as a throwaway or provisional test.
 - Every user-facing feature gets a browser spec under `src/mainview/tests/e2e`, however small it is — a new control, a dialog, a field, a public page's behaviour. A server test says the endpoint answers; only the browser says the screen actually draws the control, wires it to that endpoint and shows what came back.
+- A test that cannot fail is worse than no test, because it reports safety it does not provide. Never assert
+  `length > 0`, "is defined", "does not throw", or take a screenshot as the only check; never branch on
+  `if (await locator.isVisible())` so the assertions can be skipped. Assert the value the user would see.
+- Never mock the module under test. `vi.mock('.../the-module', ...)` plus assertions on that mock only tests
+  the mock — see `backend/db-app.spec.ts`, which for months validated a hand-written reimplementation while
+  the real 697-line store had zero coverage. Reach for a real temp SQLite file, a real subprocess or a real
+  component instead; mock only the process/network boundary.
+- Never let a missing dependency turn into a pass. A spec that needs MySQL, a binary or seeded fixture calls
+  a precondition from `src/mainview/tests/e2e/helpers.ts` that FAILS with an actionable message
+  (`E2E_SKIP_MISSING_DB=1` is the single, explicit opt-out). A green run must mean the specs really ran.
+- Assert on user-visible state, not on geometry or wall-clock time. Pixel offsets, hard-coded click
+  coordinates and `expect(duration).toBeLessThan(...)` break on unrelated CSS changes and hide nothing.
+- Drive the UI the way a user does. Synthetic `dispatchEvent(new MouseEvent(...))` bypasses hit-testing, so
+  it cannot see the "row is covered and unclickable" class of bug it is supposed to catch.
+- Share the setup, do not copy it. `post`, the API base URL and the MySQL/file-source fixtures live in
+  `src/mainview/tests/e2e/helpers.ts`; six copies of a skip guard is how they drifted into disagreeing.
+- Measure coverage, don't assume it. `bun run test:coverage` counts every source file and fails below the
+  thresholds in `vitest.config.js`; raise them when you close a gap. Untested modules that no spec imports
+  are invisible to a "green" badge.
 
 ## Git
 

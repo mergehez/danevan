@@ -33,6 +33,7 @@
         "dev": "vite",
         "dev2": "vite --mode desktop",
         "test:ui": "vitest run",
+        "test:coverage": "vitest run --coverage",
         "release:audit": "bun do.ts audit",
         "release:validate": "vitest run && bun run test:e2e && bun run build",
         "release:mac": "bun do.ts release",
