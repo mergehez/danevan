@@ -65,3 +65,25 @@ To efficiently build this compact email client;
 
 - Do not write huge comments; keep them concise and relevant to the code they describe. My experience shows that
   AI agents tend to write overly verbose comments if not guided properly.
+
+## Suggest new rules
+
+- when you notice a recurring pattern or issue in the codebase that could benefit from a new rule, document it here with a short and clear explanation and rationale.
+
+Suggested from the 2026-10-09 performance audit (tasks in `todos.md`):
+
+- **Never run one query per item.** Table lists, metadata sweeps and counts come from one catalog query or
+  one batched call, never a `COUNT(*)`/metadata query per table. Each per-item query costs a round trip and,
+  on InnoDB/Access/SQLite, a scan: a 23-table 30 GB schema took 58 s to list and 19 s to open a single table.
+- **Never open a connection or read the keychain per request.** Keep a session-pooled connection per data
+  source and cache credentials in-process, invalidating on edit/disconnect. Measured: 20 ms of overhead per
+  backend call (16 ms of it a `security` process spawn), plus one server session per request.
+- **Never fan out one IPC/backend request per item from the UI.** Comparison, autocomplete and FK peek ask
+  the backend once for a list of tables instead of once per table: 163 tables currently mean 163 requests,
+  each opening its own connection.
+- **Do not deep-watch and synchronously persist large, frequently mutated state.** A `deep: true` watcher
+  plus `localStorage.setItem(JSON.stringify(state))` over grid rows, per-table metadata or draft SQL blocks
+  the main thread on every keystroke; scope the key per entity, debounce, cap the size and handle quota errors.
+- **Show progress and failure where the result will appear.** If an action can take a second or more (table
+  list hydration, a large load), the panel that will show the result renders its own loading/error state —
+  the small global corner indicator reads as "nothing happened".
