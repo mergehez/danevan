@@ -52,3 +52,18 @@ To efficiently build this compact email client;
 - Enforce the execution of `vp build` and `vp check --fix` after any boundary or UI refactors to guarantee app integrity. If a Vue component is changed, run 'vp run lint' to check for any type errors.
 
 - Monitor bundle sizes and memory footprint to maintain the "compact app" goal.
+
+## Git
+
+- After finishing a task, commit the changes with clear and descriptive messages.
+    - No batch commits; each commit should represent a single logical change unless it requires too much hunting
+      for related changes.
+    - No huge commit messages; max 72 characters. If you need to provide more details, include them in the body
+      of the commit message.
+    - Use imperative mood in commit messages (e.g. "fix bug" instead of "fixed bug" or "fixes bug").
+    - Avoid vague commit messages like "update" or "changes"; be specific about what was changed and why.
+
+## Comments
+
+- Do not write huge comments; keep them concise and relevant to the code they describe. My experience shows that
+  AI agents tend to write overly verbose comments if not guided properly.
