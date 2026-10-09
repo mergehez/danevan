@@ -221,8 +221,11 @@ export const DbMysqldumpExportModal = component(
                             {optionDefinitions.map((option) => (
                                 <label class="flex items-center gap-2 text-xs" key={option.key}>
                                     <input
-                                        value={form.options[option.key]}
-                                        onInput={(e: any) => (form.options[option.key] = e.target.value)}
+                                        // `checked` + `onChange` with `e.target.checked`: binding the
+                                        // value and reading `e.target.value` never changed the option,
+                                        // so the checkboxes only looked toggled.
+                                        checked={form.options[option.key]}
+                                        onChange={(e: any) => (form.options[option.key] = e.target.checked)}
                                         type="checkbox"
                                         class="size-4 border border-x4 bg-x1"
                                     />
