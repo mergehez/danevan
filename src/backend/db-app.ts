@@ -13,6 +13,7 @@ import type {
     UpdateScriptParams,
     UpdateServerParams,
 } from '../shared/types';
+import { cleanupLegacySettings } from './appDbMaintenance.ts';
 
 type SQLInputValue = string | number | bigint | Uint8Array | Buffer | null;
 type SQLOutputValue = string | number | bigint | Uint8Array | Buffer | null;
@@ -355,6 +356,8 @@ export function useAppDb() {
             if (!connectionColumns.some((column) => column.name === 'hidden')) {
                 db.exec('ALTER TABLE connections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;');
             }
+
+            cleanupLegacySettings(db);
         },
         getStoredServerCount(userDataDir: string) {
             const databasePath = join(userDataDir, DATABASE_FILE_NAME);
