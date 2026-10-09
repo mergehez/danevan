@@ -194,6 +194,7 @@ export const DataGrid = component(
                     <div
                         ref={(element) => (vs.viewportElement = element as HTMLElement)}
                         tabindex="0"
+                        data-testid="data-grid-viewport"
                         onScroll={vs.viewportHelpers.handleViewportScroll}
                         onKeydown={vs.pointerHandlers.handleViewportKeydown}
                         class="relative min-h-0 flex-1 overflow-auto border border-x4 bg-x0 outline-none scrollbar-large"
