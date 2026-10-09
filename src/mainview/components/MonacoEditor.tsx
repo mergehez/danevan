@@ -258,7 +258,7 @@ export const MonacoEditor = component(
 
             const monaco = await getMonacoModule();
 
-            configureMonaco(monaco);
+            await configureMonaco(monaco);
             monaco.editor.setTheme(APP_MONACO_THEME);
 
             modelRef.value = monaco.editor.createModel(modelValue.value ?? '', finalLanguage.value);
