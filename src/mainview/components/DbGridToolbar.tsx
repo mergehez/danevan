@@ -103,7 +103,7 @@ export const DbGridToolbar = component(
                     <>
                         <span ref={columnButtonElement} class="relative">
                             <button type="button" onClick={toggleColumnMenu} class="border border-x7 bg-x2 px-1 rounded-md text-2xs opacity-60 hover:opacity-100 transition">
-                                {visibleColumnCount.value} of {totalColumnCount.value}columns
+                                {visibleColumnCount.value} of {totalColumnCount.value} columns
                             </button>
                             {isColumnMenuOpen.value ? (
                                 <div ref={columnMenuElement} class="absolute left-0 top-full z-20 mt-1 min-w-40 border border-x4 bg-x1 py-1">
