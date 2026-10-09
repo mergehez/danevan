@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { API, MYSQL, createFileSource, createMySqlServerAndConnection, expandSidebarRow, openSidebarTable, post, reloadSidebarRow, requireMySqlDatabase } from './helpers';
+import { API, MYSQL, createFileSource, createMySqlServerAndConnection, openMySqlTable, openSidebarTable, post, reloadSidebarRow, requireMySqlDatabase } from './helpers';
 
 /** The row-number gutter, then the first body row and its height, as the canvas draws them. */
 const ROW_HEADER_X = 20;
@@ -61,27 +61,6 @@ function rowHeaderPoint(page: Page, rowIndex: number) {
 
 async function saveChanges(page: Page) {
     await page.getByTestId('save-bar-save').click();
-}
-
-type MySqlSource = Awaited<ReturnType<typeof createMySqlServerAndConnection>>;
-
-/** Expands a MySQL server down to one of its tables and opens it. */
-async function openMySqlTable(page: Page, source: MySqlSource, tableName: string) {
-    await expandSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
-    await expandSidebarRow(page.locator(`[data-node-id="connection:${source.connectionId}"]`));
-
-    // Tables can sit behind a "tables" group; the collection filter can flatten them.
-    const tablesCollection = page.locator(`[data-collection-kind="tables"][data-parent-id="connection:${source.connectionId}"]`);
-    const tableRow = page.locator(`[data-node-id="table:${source.connectionId}:${tableName}"]`);
-
-    // The table list arrives asynchronously once the connection expands.
-    await expect(tablesCollection.or(tableRow).first()).toBeVisible({ timeout: 15_000 });
-
-    if ((await tablesCollection.count()) > 0) {
-        await expandSidebarRow(tablesCollection.first());
-    }
-
-    await openSidebarTable(page, source.connectionId, tableName);
 }
 
 /** Fills the Edit Row dialog and submits it, staging one change per edited column. */

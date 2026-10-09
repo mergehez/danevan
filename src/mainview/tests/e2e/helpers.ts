@@ -232,3 +232,22 @@ export async function openSidebarTable(page: Page, connectionId: number, tableNa
 
     await expect(page.getByTestId('data-grid-viewport').first()).toBeVisible();
 }
+
+/** Expands a MySQL server down to one of its tables and opens it. */
+export async function openMySqlTable(page: Page, source: { serverId: number; connectionId: number }, tableName: string) {
+    await expandSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
+    await expandSidebarRow(page.locator(`[data-node-id="connection:${source.connectionId}"]`));
+
+    // Tables can sit behind a "tables" group; the collection filter can flatten them.
+    const tablesCollection = page.locator(`[data-collection-kind="tables"][data-parent-id="connection:${source.connectionId}"]`);
+    const tableRow = page.locator(`[data-node-id="table:${source.connectionId}:${tableName}"]`);
+
+    // The table list arrives asynchronously once the connection expands.
+    await expect(tablesCollection.or(tableRow).first()).toBeVisible({ timeout: 15_000 });
+
+    if ((await tablesCollection.count()) > 0) {
+        await expandSidebarRow(tablesCollection.first());
+    }
+
+    await openSidebarTable(page, source.connectionId, tableName);
+}
