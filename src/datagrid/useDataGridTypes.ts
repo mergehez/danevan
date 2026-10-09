@@ -43,6 +43,9 @@ export type DataGridModalEditingCell = {
     draftValue: string;
     /** See `DataGridEditingCell.initialDraftValue`. */
     initialDraftValue?: string;
+    /** Whether the value looked like a JSON object when the dialog opened. Decided
+     *  once at open time so typing in the draft never re-evaluates it. */
+    isJsonObject?: boolean;
 };
 
 export type DataGridRowSelectionMode = 'replace' | 'toggle' | 'range';

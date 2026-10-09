@@ -38,6 +38,7 @@ type DataGridModalEditingState = {
         rowIndex: number;
         columnIndex: number;
         draftValue: string;
+        isJsonObject?: boolean;
     };
     setModalEditingValue?: (value: string) => void;
     closeModalEditingCell?: (options?: { focusGrid?: boolean }) => void;
@@ -525,6 +526,26 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         dataGridModalPreferences.state.value.textWrap = !dataGridModalPreferences.state.value.textWrap;
     }
 
+    function getModalEditDraft() {
+        return stateWithModalEditing.value.modalEditingCell.draftValue;
+    }
+
+    function applyModalEditJsonFormat(indent?: number) {
+        const formatted = formatJsonDraft(getModalEditDraft(), indent);
+
+        if (formatted !== undefined) {
+            state.setModalEditingValue?.(formatted);
+        }
+    }
+
+    function prettifyModalEditValue() {
+        applyModalEditJsonFormat(2);
+    }
+
+    function compactModalEditValue() {
+        applyModalEditJsonFormat();
+    }
+
     /**
      * The in-cell editor owns the keyboard while it is open: arrows move the
      * caret instead of the grid, Enter commits and moves down, Escape cancels,
@@ -685,9 +706,12 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         handleEditingKeydown,
         headerCanvasElement: toRef(_state, 'headerCanvasElement'),
         headerCursor: computed(() => _state.headerCursor),
+        compactModalEditValue,
+        isModalEditJson: computed(() => stateWithModalEditing.value.modalEditingCell.isJsonObject ?? false),
         isModalEditTextWrap: computed(() => dataGridModalPreferences.state.value.textWrap),
         onInput,
         pointerHandlers,
+        prettifyModalEditValue,
         rowCount: computed(() => _state.rowCount),
         shouldSelectEditingInputText,
         state,
@@ -702,6 +726,15 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         viewportHelpers,
         viewportWidth: computed(() => _state.viewportWidth),
     });
+}
+
+/** Re-serialised JSON draft, or undefined when the draft is not valid JSON. */
+function formatJsonDraft(draftValue: string, indent?: number) {
+    try {
+        return JSON.stringify(JSON.parse(draftValue), null, indent);
+    } catch {
+        return undefined;
+    }
 }
 
 function getTextMeasureContext() {

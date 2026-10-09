@@ -133,6 +133,7 @@ function createInternalState(options: UseDataGridFinalOptions) {
             columnIndex: -1,
             draftValue: '',
             initialDraftValue: undefined as string | undefined,
+            isJsonObject: false,
         } as DataGridModalEditingCell,
         selectedRowIndexes: unref(options.selectedRowIndexes) ?? [],
         selectedCellRange: unref(options.selectedCellRange),

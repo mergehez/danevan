@@ -2,6 +2,7 @@ import { nextTick, type ComputedRef } from 'vue';
 import { useKeyboardNavigation, type KeyboardNavigationPosition } from '../shared/utils/useKeyboardNavigation';
 import { DATA_GRID_COLUMN_MAX_WIDTH, DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from './dataGrid';
 import type { DataGridInternalState, DataGridTransposedState } from './useDataGrid';
+import { isJsonObjectText } from './useDataGridCoreUtils';
 import type { DataGridHistoryOptions, DataGridNormalizedCellRange, DataGridSearchMatch, DataGridUpdateLayoutState } from './useDataGridHelperTypes';
 import type { DataGridCellChange, DataGridCellFocusOptions, DataGridRowSelectionOptions, GridCellRange, UseDataGridFinalOptions } from './useDataGridTypes';
 
@@ -338,6 +339,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         internalState.modalEditingCell.columnIndex = -1;
         internalState.modalEditingCell.draftValue = '';
         internalState.modalEditingCell.initialDraftValue = undefined;
+        internalState.modalEditingCell.isJsonObject = false;
 
         if (options?.focusGrid ?? true) {
             focusGrid();
@@ -365,6 +367,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         internalState.modalEditingCell.columnIndex = columnIndex;
         internalState.modalEditingCell.draftValue = options.formatEditingValue(resolvedCell.value);
         internalState.modalEditingCell.initialDraftValue = internalState.modalEditingCell.draftValue;
+        internalState.modalEditingCell.isJsonObject = isJsonObjectText(internalState.modalEditingCell.draftValue);
     }
 
     function commitModalEditingCell() {

@@ -808,6 +808,85 @@ describe('DataGrid', () => {
         wrapper.unmount();
     });
 
+    it('offers JSON prettify and compact only for a value that is a JSON object', async () => {
+        const { state } = createGridState({
+            columns: ['id', 'payload'],
+            rows: [
+                { id: 1, payload: '{"a":1,"b":[2,3]}' },
+                { id: 2, payload: 'hello' },
+                { id: 3, payload: '{not json}' },
+            ],
+        });
+        const { vm, wrapper } = await mountGridViewHarness(state);
+
+        state.openModalEditingCell?.(0, 1);
+        await nextTick();
+        expect(vm.vs.isModalEditJson).toBe(true);
+
+        vm.vs.prettifyModalEditValue();
+        expect(state.modalEditingCell.draftValue).toBe(JSON.stringify({ a: 1, b: [2, 3] }, null, 2));
+
+        vm.vs.compactModalEditValue();
+        expect(state.modalEditingCell.draftValue).toBe('{"a":1,"b":[2,3]}');
+
+        // Typing must not re-evaluate JSON-ness: the flag stays as it was at open time.
+        state.setModalEditingValue?.('definitely not json');
+        await nextTick();
+        expect(vm.vs.isModalEditJson).toBe(true);
+
+        // Clicking with an invalid draft is a no-op instead of throwing.
+        vm.vs.prettifyModalEditValue();
+        expect(state.modalEditingCell.draftValue).toBe('definitely not json');
+
+        for (const rowIndex of [1, 2]) {
+            state.closeModalEditingCell?.();
+            state.openModalEditingCell?.(rowIndex, 1);
+            await nextTick();
+            expect(vm.vs.isModalEditJson).toBe(false);
+        }
+
+        wrapper.unmount();
+    });
+
+    it('renders the JSON actions in the modal editor only for JSON values', async () => {
+        const { state } = createGridState({
+            columns: ['id', 'payload'],
+            rows: [
+                { id: 1, payload: '{"a":1}' },
+                { id: 2, payload: 'hello' },
+            ],
+        });
+        const wrapper = mount(DataGrid, {
+            attachTo: document.body,
+            props: { state },
+            global: {
+                directives: { menu: {}, tooltip: {} },
+                stubs: {
+                    CenteredModal: { template: '<div><slot /></div>' },
+                    IconButton: { template: '<button type="button"><slot /></button>' },
+                },
+            },
+        });
+
+        state.openModalEditingCell?.(0, 1);
+        await nextTick();
+
+        await wrapper.get('[data-testid="modal-edit-prettify"]').trigger('click');
+        expect((wrapper.get('[data-testid="modal-edit-value"]').element as HTMLTextAreaElement).value).toBe(JSON.stringify({ a: 1 }, null, 2));
+
+        await wrapper.get('[data-testid="modal-edit-compact"]').trigger('click');
+        expect((wrapper.get('[data-testid="modal-edit-value"]').element as HTMLTextAreaElement).value).toBe('{"a":1}');
+
+        state.closeModalEditingCell?.();
+        state.openModalEditingCell?.(1, 1);
+        await nextTick();
+
+        expect(wrapper.find('[data-testid="modal-edit-prettify"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="modal-edit-compact"]').exists()).toBe(false);
+
+        wrapper.unmount();
+    });
+
     it('never sorts by a column the result set does not have', () => {
         const layoutStorageKey = 'data-grid-test-stale-sort';
 

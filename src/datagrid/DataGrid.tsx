@@ -68,21 +68,46 @@ export const DataGrid = component(
                     <div class="flex h-full min-h-0 flex-col px-4 py-4">
                         <div class="mb-3 flex items-center justify-between gap-3 border-b border-x3 pb-3 text-xs opacity-80">
                             <span class="truncate">{vs.getModalEditColumnName() || 'Value'}</span>
-                            <Button
-                                severity="secondary"
-                                smaller={true}
-                                data-testid="modal-edit-text-wrap"
-                                onClick={vs.toggleModalEditTextWrap}
-                                class={vs.isModalEditTextWrap ? 'bg-blue-500/15 text-blue-200' : ''}
-                            >
-                                Text wrap
-                            </Button>
+                            <div class="flex shrink-0 items-center gap-1">
+                                {vs.isModalEditJson ? (
+                                    <>
+                                        <Button
+                                            severity="secondary"
+                                            smaller={true}
+                                            data-testid="modal-edit-prettify"
+                                            v-tooltip={{ value: 'Indent the JSON value', xs: true, nowrap: true }}
+                                            onClick={vs.prettifyModalEditValue}
+                                        >
+                                            Prettify
+                                        </Button>
+                                        <Button
+                                            severity="secondary"
+                                            smaller={true}
+                                            data-testid="modal-edit-compact"
+                                            v-tooltip={{ value: 'Collapse the JSON value to one line', xs: true, nowrap: true }}
+                                            onClick={vs.compactModalEditValue}
+                                        >
+                                            Compact
+                                        </Button>
+                                    </>
+                                ) : null}
+                                <Button
+                                    severity="secondary"
+                                    smaller={true}
+                                    data-testid="modal-edit-text-wrap"
+                                    onClick={vs.toggleModalEditTextWrap}
+                                    class={vs.isModalEditTextWrap ? 'bg-blue-500/15 text-blue-200' : ''}
+                                >
+                                    Text wrap
+                                </Button>
+                            </div>
                         </div>
                         <textarea
                             value={props.state.modalEditingCell.draftValue}
                             placeholder={vs.getModalEditPlaceholder()}
                             wrap={vs.isModalEditTextWrap ? 'soft' : 'off'}
                             spellcheck="false"
+                            data-testid="modal-edit-value"
                             onInput={(e) => props.state.setModalEditingValue?.((e.target as HTMLTextAreaElement).value)}
                             onKeydown={preventedKeys(() => props.state.commitModalEditingCell?.(), ['enter'])}
                             class={[

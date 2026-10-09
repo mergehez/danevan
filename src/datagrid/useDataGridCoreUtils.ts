@@ -29,6 +29,22 @@ export function parseDefaultEditingValue(draftValue: string) {
     return draftValue === '__NULL__' ? null : draftValue;
 }
 
+/** True when the text looks like a JSON object and actually parses as one. */
+export function isJsonObjectText(value: string) {
+    const trimmed = value.trim();
+
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+        return false;
+    }
+
+    try {
+        JSON.parse(trimmed);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function gridValuesEqual(left: DataGridCellValue, right: DataGridCellValue) {
     if (left instanceof Uint8Array && right instanceof Uint8Array) {
         return left.length === right.length && left.every((value, index) => value === right[index]);
