@@ -371,13 +371,6 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                     id: 'peek-usages',
                     label: 'Peek Usages',
                     action: async () => {
-                        console.log('[useDbDataGrid] Peek Usages action', {
-                            connectionId,
-                            tableName: currentTableName,
-                            columnName: context.columnName,
-                            rowIndex: context.rowIndex,
-                            value,
-                        });
                         await options.onPeekUsages?.({
                             connectionId,
                             tableName: currentTableName,
