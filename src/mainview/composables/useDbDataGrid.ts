@@ -709,12 +709,17 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             const tableChanged = connectionId !== previousConnectionId || currentTableName !== previousTableName;
 
             disableForeignKeyChecks.value = false;
-            foreignKeyViolations.value = [];
-            isForeignKeyViolationsOpen.value = false;
             pendingInsertedRows.value = [];
             pendingDeletedBaseRowIndexes.value = [];
             gridState.resetViewState({ clearColumnList: true, clearHistory: true, preserveActiveCell: !tableChanged });
             fkPeek.closeFkPeekPopover();
+
+            // The save that produced the report reloads the same table; a reload must not
+            // wipe the violations the user still has to read. Only leaving the table does.
+            if (tableChanged) {
+                foreignKeyViolations.value = [];
+                isForeignKeyViolationsOpen.value = false;
+            }
         },
         { immediate: true }
     );
