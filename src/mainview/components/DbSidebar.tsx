@@ -209,6 +209,7 @@ export const DbSidebar = component(
             headerActions: [
                 {
                     title: 'Add script',
+                    testid: 'add-script',
                     icon: 'icon-[mdi--plus]',
                     async onClick() {
                         const connection = connections.selectedConnection ?? connections.connections[0];

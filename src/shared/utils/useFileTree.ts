@@ -25,6 +25,8 @@ export type FileTreeAction = {
     icon?: `icon-\[${string}`;
     onClick: (event: MouseEvent) => void;
     disabled?: boolean;
+    /** Optional test hook, so a spec can reach an icon-only action. */
+    testid?: string;
 };
 
 type THeader<TData, TRoot> = FileTreeItem<TData, TRoot>;

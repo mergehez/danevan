@@ -99,6 +99,7 @@ export const FileTree = <TData, TRoot = {}>(p: Props<TData, TRoot>) => {
                                           <Button
                                               severity={action.icon ? 'raised' : 'secondary'}
                                               disabled={action.disabled}
+                                              data-testid={action.testid}
                                               smaller={true}
                                               onClick={prevented(action.onClick)}
                                               class={['text-2xs', action.icon ? 'p-0.5' : 'px-1 py-0.5']}
@@ -115,6 +116,7 @@ export const FileTree = <TData, TRoot = {}>(p: Props<TData, TRoot>) => {
                                           <Button
                                               severity={action.icon ? 'raised' : 'secondary'}
                                               disabled={action.disabled}
+                                              data-testid={action.testid}
                                               smaller={true}
                                               v-tooltip={{ value: action.icon ? action.title : undefined, xs: true, nowrap: true }}
                                               onClick={prevented(action.onClick)}
