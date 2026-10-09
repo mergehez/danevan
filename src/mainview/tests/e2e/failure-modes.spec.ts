@@ -2,7 +2,7 @@
 // after the change was staged must keep the change and say why; a server that rejects the
 // credentials must name the connection it rejected.
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { API, MYSQL, createMySqlServerAndConnection, openMySqlTable, post, requireFixtureData, requireMySqlDatabase } from './helpers';
+import { API, MYSQL, createMySqlServerAndConnection, expandSidebarRow, openMySqlTable, openSidebarRowMenu, post, requireFixtureData, requireMySqlDatabase } from './helpers';
 
 async function runSql(request: APIRequestContext, connectionId: number, sql: string) {
     await post(request, 'runQuery', { connectionId, sql });
@@ -105,6 +105,48 @@ test.describe('Failure modes', () => {
             const errorText = page.locator('p', { hasText: 'Access denied' });
             await expect(errorText).toBeVisible();
             await expect(errorText).toContainText(connectionName);
+        } finally {
+            await request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
+        }
+    });
+
+    test('says the backend never answered instead of leaving an empty shell', async ({ page }) => {
+        // Nothing listens on the API port: the renderer boots, but no request can succeed.
+        await page.route('**/api/**', (route) => route.abort());
+
+        await page.goto('/');
+
+        const failure = page.getByTestId('request-error');
+        await expect(failure).toBeVisible();
+        await expect(failure).toContainText('Request failed');
+
+        // The same build boots normally as soon as the backend answers again.
+        await page.unroute('**/api/**');
+        await page.reload();
+        await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible();
+        await expect(failure).toHaveCount(0);
+    });
+
+    test('shows a mysqldump executable that is gone, in the export modal', async ({ page, request }) => {
+        await requireMySqlDatabase(MYSQL.database, 'failure-modes.spec.ts');
+
+        const { serverId, connectionId } = await createMySqlServerAndConnection(request, MYSQL.database, 'export-failure');
+
+        try {
+            await page.goto('/');
+            await expandSidebarRow(page.locator(`[data-node-id="server:${serverId}"]`));
+            await openSidebarRowMenu(page.locator(`[data-node-id="connection:${connectionId}"]`));
+            await page.locator('.v-menu-item', { hasText: 'Export using mysqldump...' }).click();
+
+            const modal = page.getByTestId('centered-modal-surface');
+            await expect(modal).toContainText('Export with mysqldump...');
+
+            const missingExecutable = '/tmp/e2e-mysqldump-that-is-gone';
+            await modal.getByPlaceholder('/path/to/mysqldump').fill(missingExecutable);
+            await modal.getByPlaceholder('/path/to/dump.sql').fill('/tmp/e2e-export-failure.sql');
+            await modal.getByRole('button', { name: 'Run', exact: true }).click();
+
+            await expect(modal).toContainText(`The mysqldump executable was not found at: ${missingExecutable}`);
         } finally {
             await request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
         }

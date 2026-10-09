@@ -138,7 +138,11 @@ export const App = component(
                         }}
                     />
                     {tasks.errorMessage ? (
-                        <div class="fixed bottom-4 right-4 max-w-md border border-x5 bg-x2 px-4 py-3 text-sm text-reverse shadow-2xl" style={{ zIndex: errorZIndex.value }}>
+                        <div
+                            class="fixed bottom-4 right-4 max-w-md border border-x5 bg-x2 px-4 py-3 text-sm text-reverse shadow-2xl"
+                            data-testid="request-error"
+                            style={{ zIndex: errorZIndex.value }}
+                        >
                             <div class="mb-2 flex items-center justify-between gap-4">
                                 <strong>Request failed</strong>
                                 <button onClick={tasks.dismissError} class="text-xs uppercase tracking-[0.2em] text-reverse opacity-70">
