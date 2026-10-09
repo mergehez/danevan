@@ -134,15 +134,20 @@ export async function createMySqlServerAndConnection(request: APIRequestContext,
 /** Creates a throwaway SQLite file plus a matching file source, and returns how to clean it up. */
 export async function createFileSource(
     request: APIRequestContext,
-    options: { label: string; tableCount?: number; tableNames?: string[] } = { label: 'file' }
+    options: { label: string; tableCount?: number; tableNames?: string[]; schema?: string } = { label: 'file' }
 ) {
     const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const databasePath = join(tmpdir(), `e2e-${options.label}-${suffix}.sqlite`);
     const file = new Database(databasePath);
     const tableNames = options.tableNames ?? Array.from({ length: options.tableCount ?? 3 }, (_, index) => `table_${String(index).padStart(2, '0')}`);
 
-    for (const tableName of tableNames) {
-        file.exec(`CREATE TABLE ${tableName} (id integer primary key, name text)`);
+    // `schema` seeds a table shape the spec asserts against; otherwise create empty tables.
+    if (options.schema) {
+        file.exec(options.schema);
+    } else {
+        for (const tableName of tableNames) {
+            file.exec(`CREATE TABLE ${tableName} (id integer primary key, name text)`);
+        }
     }
 
     file.close();
