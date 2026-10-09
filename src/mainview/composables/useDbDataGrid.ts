@@ -1,13 +1,20 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useDataGrid, type DataGridCellValue, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
 import { getDataGridLayoutStorageKey } from '../../datagrid/dataGridLayoutStorage';
-import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import type { ApplyTableChangesParams, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { formatValue } from '../../shared/utils/valueFormatting';
+import {
+    getDbGridCellMenuItems,
+    getDbGridHeaderMenuItems,
+    getDbGridRowMenuItems,
+    getDbGridToolbarCopyItems,
+    type DbGridPeekRelationParams,
+    type DbGridPeekUsagesParams,
+} from '../lib/dbGridMenus';
 import { useConnections } from './useConnections';
 import { copyTableAsDdl } from './useCopyTableDdl';
-import { useForeignKeyPeek, type FkPeekRelation } from './useForeignKeyPeek';
+import { useForeignKeyPeek } from './useForeignKeyPeek';
 import { useGridFormatters } from './useGridFormatters';
 import { useQuery } from './useQuery';
 import { useServers } from './useServers';
@@ -30,23 +37,8 @@ type PlannedPendingUpdateChange = PendingCellChange & { matchValue: SqlValue };
 type UseDbDataGridOptions = {
     connectionId: () => number | undefined;
     emptyText?: () => string | undefined;
-    onPeekRelation?: (params: {
-        connectionId: number;
-        rowIndex: number;
-        columnIndex: number;
-        columnName: string;
-        relation: FkPeekRelation;
-        value: SqlValue;
-        event: MouseEvent;
-    }) => void | Promise<void>;
-    onPeekUsages?: (params: {
-        connectionId: number;
-        tableName: string;
-        columnName: string;
-        value: SqlValue;
-        rowValues: Record<string, SqlValue>;
-        event: MouseEvent;
-    }) => void | Promise<void>;
+    onPeekRelation?: (params: DbGridPeekRelationParams) => void | Promise<void>;
+    onPeekUsages?: (params: DbGridPeekUsagesParams) => void | Promise<void>;
     onSaved?: () => void;
     ignoreDisplayFilters?: () => boolean | undefined;
     disabledFiltersMessage?: string;
@@ -194,22 +186,18 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         emptyText: computed(() => options.emptyText?.()),
         sqlInsertTableName: tableName,
         sqlInsertDialect: sqlDialect,
-        toolbarCopyAsCustomItems: computed(() => {
-            const connectionId = options.connectionId();
-            const currentTableName = tableName.value;
+        toolbarCopyAsCustomItems: computed(() =>
+            getDbGridToolbarCopyItems({
+                connectionId: options.connectionId(),
+                tableName: tableName.value,
+                onCopyAsDdl: () => {
+                    const connectionId = options.connectionId();
+                    const currentTableName = tableName.value;
 
-            if (!connectionId || !currentTableName) {
-                return [];
-            }
-
-            return [
-                {
-                    id: 'toolbar-copy-all-as-ddl',
-                    label: 'As DDL',
-                    action: async () => copyTableAsDdl(connectionId, currentTableName, sqlDialect.value),
-                } satisfies ContextMenuEntry,
-            ];
-        }),
+                    return connectionId && currentTableName ? copyTableAsDdl(connectionId, currentTableName, sqlDialect.value) : undefined;
+                },
+            })
+        ),
         copyTableAsDdl: () => {
             const connectionId = options.connectionId();
             const currentTableName = tableName.value;
@@ -335,154 +323,64 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
 
             return false;
         },
-        cellContextMenuCustomItems: (context) => {
-            const items: ContextMenuEntry[] = [];
-            const relation = fkPeek.getFkPeekRelation(context.columnName);
-            const connectionId = options.connectionId();
-            const currentTableName = tableName.value;
-            const value = getDisplayedCellValue(context.rowIndex, context.columnName);
-            const column = tableColumnByName.value.get(context.columnName);
-
-            if (relation) {
-                items.push({
-                    id: 'peek-relation',
-                    label: 'Peek Relation',
-                    action: async () => {
-                        if (connectionId && options.onPeekRelation) {
-                            await options.onPeekRelation({
-                                connectionId,
-                                rowIndex: context.rowIndex,
-                                columnIndex: context.columnIndex,
-                                columnName: context.columnName,
-                                relation,
-                                value,
-                                event: context.event,
-                            });
-                            return;
-                        }
-
-                        await fkPeek.openFkPeek(context.rowIndex, gridState.getColumnName(context.columnIndex), context.event);
-                    },
-                } satisfies ContextMenuEntry);
-            }
-
-            if (column?.isPrimaryKey && value != null && connectionId && currentTableName && options.onPeekUsages) {
-                items.push({
-                    id: 'peek-usages',
-                    label: 'Peek Usages',
-                    action: async () => {
-                        await options.onPeekUsages?.({
-                            connectionId,
-                            tableName: currentTableName,
-                            columnName: context.columnName,
-                            value,
-                            rowValues: Object.fromEntries(tableColumns.value.map((tableColumn) => [tableColumn.name, getDisplayedCellValue(context.rowIndex, tableColumn.name)])),
-                            event: context.event,
-                        });
-                    },
-                } satisfies ContextMenuEntry);
-            }
-
-            return items;
-        },
-        rowContextMenuCustomItems: (context) => {
-            const items: ContextMenuEntry[] = [];
-            const connectionId = options.connectionId();
-            const currentTableName = tableName.value;
-
-            if (!gridState.isTransposed && connectionId && currentTableName) {
-                const pkColumns = new Set(primaryKeyColumns.value);
-                const rowValues = Object.fromEntries(
-                    tableColumns.value.filter((col) => !pkColumns.has(col.name)).map((col) => [col.name, getDisplayedCellValue(context.rowIndex, col.name)])
-                );
-
-                // Compute effective multi-row selection: explicit row selection
-                // OR a cell-range spanning multiple rows (which the Delete key
-                // handler also recognises).
-                const explicitSelectedRowCount = gridState.selectedRowIndexes.length;
-                const cellRange = gridState.selectedCellRange;
-                const cellRangeRowCount = cellRange != null ? Math.abs(cellRange.endRowIndex - cellRange.startRowIndex) + 1 : 0;
-                const effectiveSelectedRowCount = explicitSelectedRowCount > 0 ? explicitSelectedRowCount : cellRangeRowCount;
-                const isMultiSelect = effectiveSelectedRowCount > 1;
-
-                if (!isMultiSelect) {
-                    items.push({
-                        id: 'edit-row',
-                        label: 'Edit Row',
-                        action: () => dbGridState.openEditRowDialog(context.rowIndex),
-                    } satisfies ContextMenuEntry);
+        cellContextMenuCustomItems: (context) =>
+            getDbGridCellMenuItems(
+                {
+                    connectionId: options.connectionId(),
+                    tableName: tableName.value,
+                    rowIndex: context.rowIndex,
+                    columnIndex: context.columnIndex,
+                    columnName: context.columnName,
+                    value: getDisplayedCellValue(context.rowIndex, context.columnName),
+                    isPrimaryKey: Boolean(tableColumnByName.value.get(context.columnName)?.isPrimaryKey),
+                    relation: fkPeek.getFkPeekRelation(context.columnName),
+                    event: context.event,
+                },
+                {
+                    onPeekRelation: options.onPeekRelation,
+                    onPeekUsages: options.onPeekUsages,
+                    openFkPeek: () => fkPeek.openFkPeek(context.rowIndex, gridState.getColumnName(context.columnIndex), context.event),
+                    getRowValues: () => Object.fromEntries(tableColumns.value.map((tableColumn) => [tableColumn.name, getDisplayedCellValue(context.rowIndex, tableColumn.name)])),
                 }
-
-                if (!isMultiSelect) {
-                    items.push({
-                        id: 'duplicate-row',
-                        label: 'Duplicate Row',
-                        action: () => dbGridState.openDuplicateRowDialog(rowValues),
-                    } satisfies ContextMenuEntry);
+            ),
+        rowContextMenuCustomItems: (context) =>
+            getDbGridRowMenuItems(
+                {
+                    connectionId: options.connectionId(),
+                    tableName: tableName.value,
+                    isTransposed: gridState.isTransposed,
+                    rowIndex: context.rowIndex,
+                    selectedRowIndexes: gridState.selectedRowIndexes,
+                    selectedCellRange: gridState.selectedCellRange,
+                    primaryKeyColumns: primaryKeyColumns.value,
+                    tableColumns: tableColumns.value,
+                    sortedRowIndexes: gridState.sortedRowIndexes,
+                    getCellValue: getDisplayedCellValue,
+                },
+                {
+                    openEditRowDialog: (rowIndex) => dbGridState.openEditRowDialog(rowIndex),
+                    openDuplicateRowDialog: (rowValues) => dbGridState.openDuplicateRowDialog(rowValues),
+                    selectRow: (rowIndex, selectOptions) => gridState.selectRow(rowIndex, selectOptions),
+                    clearSelectedRows: () => gridState.clearSelectedRows(),
+                    selectAllRows: () => gridState.selectAllRows(),
+                    deleteSelectedRows: () => gridState.deleteSelectedRows?.(),
                 }
-
-                items.push({
-                    id: 'delete-row',
-                    label: isMultiSelect ? `Delete ${effectiveSelectedRowCount} Rows` : 'Delete Row',
-                    action: () => {
-                        if (explicitSelectedRowCount === 0 && cellRange != null) {
-                            // Select rows from cell range (same logic as the Delete key handler).
-                            const startRowIndex = gridState.sortedRowIndexes[cellRange.startRowIndex];
-                            const endRowIndex = gridState.sortedRowIndexes[cellRange.endRowIndex];
-                            if (startRowIndex != null && endRowIndex != null) {
-                                gridState.selectRow(endRowIndex, { focus: true, mode: 'range', anchorRowIndex: startRowIndex });
-                            }
-                        } else if (!isMultiSelect) {
-                            gridState.clearSelectedRows();
-                            gridState.selectRow(context.rowIndex, { focus: true });
-                        }
-                        gridState.deleteSelectedRows?.();
-                    },
-                } satisfies ContextMenuEntry);
-
-                if (!isMultiSelect) {
-                    items.push({
-                        id: 'select-all',
-                        label: 'Select All Rows',
-                        action: () => gridState.selectAllRows(),
-                    } satisfies ContextMenuEntry);
-                }
-            }
-
-            return items;
-        },
+            ),
         canUseTimestampDisplayTypes: isColumnIntegerLike,
         getColumnDisplayType: getColumnDisplayType,
         headerContextMenuCustomItems: (context) =>
-            ((): ContextMenuEntry[] => {
-                const columnName: string = context.columnName;
-                const isIntegerColumn = isColumnIntegerLike(columnName);
-                const assignedFormatterId = gridFormatters.columnFormatterIds[columnName];
-
-                return [
-                    ...(isIntegerColumn
-                        ? []
-                        : [
-                              {
-                                  id: 'display-type-custom-default',
-                                  label: 'Default',
-                                  checked: !assignedFormatterId,
-                                  action: () => setColumnFormatter(columnName, undefined),
-                              } satisfies ContextMenuEntry,
-                          ]),
-                    ...gridFormatters.customFormatters.map((formatter: GridCustomFormatter) => ({
-                        id: `display-type-custom-${formatter.id}`,
-                        label: formatter.name,
-                        checked: assignedFormatterId === formatter.id,
-                        action: () => setColumnFormatter(columnName, formatter.id),
-                    })),
-                    {
-                        id: 'display-type-custom-manage',
-                        label: 'Manage Formatters...',
-                        action: () => gridFormatters.openManager(),
-                    },
-                ];
-            })(),
+            getDbGridHeaderMenuItems(
+                {
+                    columnName: context.columnName,
+                    isIntegerColumn: isColumnIntegerLike(context.columnName),
+                    assignedFormatterId: gridFormatters.columnFormatterIds[context.columnName],
+                    customFormatters: gridFormatters.customFormatters,
+                },
+                {
+                    setColumnFormatter: (columnName, formatterId) => void setColumnFormatter(columnName, formatterId),
+                    openFormatterManager: () => gridFormatters.openManager(),
+                }
+            ),
         parseEditingValue: (draftValue: string, originalValue: DataGridCellValue): DataGridCellValue => {
             if (draftValue === '__NULL__') {
                 return null;
