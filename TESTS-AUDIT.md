@@ -1,8 +1,8 @@
 # Test audit — what to test next
 
-**Status:** 827 unit tests (69 files) · 91 browser tests (24 files) · 2 Electron shell tests
+**Status:** 870 unit tests (70 files) · 91 browser tests (24 files) · 2 Electron shell tests
 (dev build + packaged `.app`) ·
-coverage over every source file **41.4 % statements / 33.2 % branches** · aggregate and per-area
+coverage over every source file **41.7 % statements / 33.7 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
 
@@ -82,7 +82,10 @@ CREATE TABLE/INSERT/read round trip, the metadata it reports back, and every col
 offers** · **the Access column-type mapping: the eight spellings UCanAccess refuses are mapped to the
 ones it accepts and no longer offered in the dropdown** · **stable Access column metadata: a currency
 column reports `CURRENCY` from the file's own Jackcess type instead of a `DECIMAL` precision that
-changed between reads, `NUMERIC` is folded into `DECIMAL`, and two reads of one table must agree**.
+changed between reads, `NUMERIC` is folded into `DECIMAL`, and two reads of one table must agree** ·
+**the `ps-probe` PowerShell lookup (`msAccessPsProbe.ts`: the native/bitness/`cmd.exe`-wrapper
+candidate order, the `ConvertTo-Json` probe-answer parsing, the CLIXML transient retry and the
+provider choice, all through an injected process boundary)**.
 
 ---
 
@@ -112,14 +115,6 @@ actions, TypeORM foreign keys, PostgreSQL statement preparation); the rest of `u
 server. Next slice: extract the pure DDL builders (index and ALTER statement generation) the way
 `sqliteTableDdl.ts` was, and cover the server-bound remainder through the write-path specs instead of
 unit tests. Extraction needs nothing; the remainder inherits e2e-13's dependency.
-
-### unit-12 · `ps-probe` PowerShell lookup on Windows (small)
-
-`useMsAccessWindowsDriver.ts` picks its PowerShell provider by probing the machine; the probe, its
-output parsing and the resulting choice are only driven on Windows. Inject the process boundary and
-cover the parse/choose logic on any platform, with the real spawn left to a Windows run.
-
-- _depends on_: a Windows runner for the real spawn.
 
 ### unit-10 · Windows runner verification (small)
 
