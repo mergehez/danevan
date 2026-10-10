@@ -4,9 +4,11 @@ import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo
 import { splitSqlStatements } from '../shared/utils/sqlStatements';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
 import { createTypeOrmForeignKey, normalizeCountValue, quoteMySqlIdentifier } from './dialectSql.ts';
+import { buildAlterStatements, buildDropForeignKeyStatement, buildTableOptionStatements, type MySqlTableDdlDeps } from './mysqlTableDdl.ts';
+import { foreignKeySignature, getCurrentPrimaryKey, getDesiredPrimaryKey, groupCurrentForeignKeys, keySignature } from './remoteTableDdl.ts';
 import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
 import { connectionPoolKey, remoteDataSourcePool, serverPoolKey } from './remoteDataSourcePool.ts';
-import type { ModifySchemaColumn, ModifySchemaForeignKey, ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
+import type { ModifySchemaPlan, ModifySchemaTable } from './useSqliteDriver.ts';
 
 type MySqlSchemaHelperDeps = {
     escapeSqlString: (value: string) => string;
@@ -418,169 +420,6 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         });
     }
 
-    function serializeColumns(columns: string[]) {
-        return columns.map((columnName) => columnName.toLowerCase()).join('|');
-    }
-
-    function serializeIndexColumns(columns: Array<{ columnName: string; order?: string | null }>) {
-        return columns.map((column) => `${column.columnName.toLowerCase()}:${(column.order ?? '').toUpperCase()}`).join('|');
-    }
-
-    function buildPrimaryKeyFromColumns(columns: ModifySchemaColumn[]) {
-        const primaryColumns = [...columns]
-            .filter((column) => column.isPrimaryKey)
-            .sort((left, right) => (left.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER) - (right.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER))
-            .map((column) => ({ columnName: column.name }));
-
-        if (!primaryColumns.length) {
-            return undefined;
-        }
-
-        return {
-            name: 'PRIMARY',
-            isPrimary: true,
-            columns: primaryColumns,
-        } satisfies ModifySchemaKey;
-    }
-
-    function getDesiredPrimaryKey(plan: ModifySchemaPlan) {
-        return plan.keys.find((key) => key.isPrimary) ?? buildPrimaryKeyFromColumns(plan.columns);
-    }
-
-    function getCurrentPrimaryKey(currentInfo: TableInfo) {
-        const primaryColumns = [...currentInfo.columns]
-            .filter((column) => column.isPrimaryKey)
-            .sort((left, right) => (left.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER) - (right.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER))
-            .map((column) => ({ columnName: column.name }));
-
-        if (!primaryColumns.length) {
-            return undefined;
-        }
-
-        return {
-            name: 'PRIMARY',
-            isPrimary: true,
-            columns: primaryColumns,
-        } satisfies ModifySchemaKey;
-    }
-
-    function getCurrentUniqueKeys(currentInfo: TableInfo) {
-        const primaryKey = getCurrentPrimaryKey(currentInfo);
-        const primarySignature = primaryKey ? serializeColumns(primaryKey.columns.map((column) => column.columnName)) : undefined;
-
-        return currentInfo.indexes
-            .filter((index) => index.isUnique && serializeColumns(index.columns) !== primarySignature)
-            .map((index) => ({
-                name: index.name,
-                isPrimary: false,
-                columns: index.columns.map((columnName) => ({ columnName })),
-            })) satisfies ModifySchemaKey[];
-    }
-
-    function getDesiredStandaloneIndexes(plan: ModifySchemaPlan) {
-        const excludedNames = new Set(plan.keys.map((key) => key.name.toLowerCase()));
-        excludedNames.add('primary');
-        return plan.indexes.filter((index) => !excludedNames.has(index.name.toLowerCase()));
-    }
-
-    function getCurrentStandaloneIndexes(currentInfo: TableInfo) {
-        const primaryKey = getCurrentPrimaryKey(currentInfo);
-        const primarySignature = primaryKey ? serializeColumns(primaryKey.columns.map((column) => column.columnName)) : undefined;
-
-        return currentInfo.indexes
-            .filter((index) => !(index.isUnique && serializeColumns(index.columns) !== primarySignature))
-            .filter((index) => serializeColumns(index.columns) !== primarySignature)
-            .map((index) => ({
-                name: index.name,
-                comment: index.comment ?? null,
-                isUnique: index.isUnique,
-                type: index.type ?? null,
-                columns: index.columns.map((columnName, indexPosition) => ({
-                    columnName,
-                    order: index.orders?.[indexPosition] ?? null,
-                })),
-            })) satisfies ModifySchemaIndex[];
-    }
-
-    function groupCurrentForeignKeys(currentInfo: TableInfo) {
-        const groups = new Map<string, TableForeignKeyInfo[]>();
-
-        currentInfo.foreignKeys.forEach((foreignKey) => {
-            const groupKey = foreignKey.name ?? `${foreignKey.id}`;
-            const nextGroup = groups.get(groupKey) ?? [];
-            nextGroup.push(foreignKey);
-            groups.set(groupKey, nextGroup);
-        });
-
-        return [...groups.entries()].map(([name, group]) => ({
-            name,
-            targetTable: group[0]?.table ?? '',
-            columns: [...group].sort((left, right) => left.sequence - right.sequence).map((foreignKey) => ({ columnName: foreignKey.from, targetName: foreignKey.to })),
-            onUpdate: group[0]?.onUpdate ?? null,
-            onDelete: group[0]?.onDelete ?? null,
-            match: group[0]?.match ?? null,
-        })) satisfies ModifySchemaForeignKey[];
-    }
-
-    function keySignature(key: Pick<ModifySchemaKey, 'columns'> | undefined) {
-        return key ? serializeColumns(key.columns.map((column) => column.columnName)) : '';
-    }
-
-    function foreignKeySignature(foreignKey: ModifySchemaForeignKey) {
-        return [
-            foreignKey.targetTable.toLowerCase(),
-            foreignKey.columns.map((column) => `${column.columnName.toLowerCase()}=>${column.targetName.toLowerCase()}`).join('|'),
-            (foreignKey.onDelete ?? '').toLowerCase(),
-            (foreignKey.onUpdate ?? '').toLowerCase(),
-            (foreignKey.match ?? '').toLowerCase(),
-        ].join('::');
-    }
-
-    function indexSignature(index: ModifySchemaIndex) {
-        return [serializeIndexColumns(index.columns), index.isUnique ? '1' : '0', (index.type ?? '').toLowerCase(), (index.comment ?? '').toLowerCase()].join('::');
-    }
-
-    function buildIndexColumns(columns: Array<{ columnName: string; order?: string | null }>) {
-        return columns.map((column) => `${quoteMySqlIdentifier(column.columnName)}${column.order && column.order !== 'NONE' ? ` ${column.order}` : ''}`).join(', ');
-    }
-
-    function buildTableOptionStatements(tableName: string, currentInfo: TableInfo, table: ModifySchemaTable) {
-        const quotedTableName = deps.quoteRemoteIdentifier('mysql', tableName);
-        const statements: string[] = [];
-
-        if ((table.comment ?? '') !== (currentInfo.comment ?? '')) {
-            statements.push(`ALTER TABLE ${quotedTableName} COMMENT = ${deps.escapeSqlString(table.comment ?? '')};`);
-        }
-
-        if (table.engine && table.engine !== currentInfo.engine) {
-            statements.push(`ALTER TABLE ${quotedTableName} ENGINE = ${table.engine};`);
-        }
-
-        if (table.collation && table.collation !== currentInfo.collation) {
-            statements.push(`ALTER TABLE ${quotedTableName} COLLATE = ${table.collation};`);
-        }
-
-        if (table.options && table.options !== currentInfo.options) {
-            statements.push(`ALTER TABLE ${quotedTableName} ${table.options};`);
-        }
-
-        return statements;
-    }
-
-    function getDroppedColumns(currentInfo: TableInfo, nextColumns: ModifySchemaColumn[]) {
-        const nextColumnsByOriginalName = new Map(nextColumns.filter((column) => column.originalName).map((column) => [column.originalName!, column]));
-
-        return currentInfo.columns.filter(
-            (column) => !nextColumnsByOriginalName.has(column.name) && !nextColumns.some((entry) => !entry.originalName && entry.name === column.name)
-        );
-    }
-
-    function buildDropColumnStatements(tableName: string, currentInfo: TableInfo, nextColumns: ModifySchemaColumn[]) {
-        const quotedTableName = deps.quoteRemoteIdentifier('mysql', tableName);
-
-        return getDroppedColumns(currentInfo, nextColumns).map((column) => `ALTER TABLE ${quotedTableName} DROP COLUMN ${deps.quoteRemoteIdentifier('mysql', column.name)};`);
-    }
-
     async function getTableMetadata(client: RemoteDriverClient, tableName: string): Promise<Partial<ModifySchemaTable>> {
         const tableInfoRow = await getMySqlTableInfoRow(client, tableName);
 
@@ -722,18 +561,19 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         return messages;
     }
 
+    function getTableDdlDeps(): MySqlTableDdlDeps {
+        return {
+            escapeSqlString: deps.escapeSqlString,
+            normalizeOptionalText: deps.normalizeOptionalText,
+            quoteIdentifier: (identifier) => deps.quoteRemoteIdentifier('mysql', identifier),
+        };
+    }
+
     async function buildModifyTableStatements(client: RemoteDriverClient, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) {
-        const nextColumns = nextPlan.columns;
-        const quotedTableName = deps.quoteRemoteIdentifier('mysql', tableName);
-        const currentColumnsByName = new Map(currentInfo.columns.map((column) => [column.name, column]));
-        const manualStatements: string[] = [];
+        const tableDdlDeps = getTableDdlDeps();
         const currentPrimaryKey = getCurrentPrimaryKey(currentInfo);
         const desiredPrimaryKey = getDesiredPrimaryKey(nextPlan);
-        const currentUniqueKeys = getCurrentUniqueKeys(currentInfo);
-        const desiredUniqueKeys = nextPlan.keys.filter((key) => !key.isPrimary);
         const currentForeignKeys = groupCurrentForeignKeys(currentInfo);
-        const desiredStandaloneIndexes = getDesiredStandaloneIndexes(nextPlan);
-        const currentStandaloneIndexes = getCurrentStandaloneIndexes(currentInfo);
         const queryRunner = getMySqlQueryRunnerClient(client).queryRunner;
         const typeOrmTable = await loadTypeOrmTable(client, tableName);
 
@@ -752,7 +592,7 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
                     if (typeOrmForeignKey) {
                         await queryRunner.dropForeignKey(typeOrmTable, typeOrmForeignKey);
                     } else {
-                        preManualStatements.push(`ALTER TABLE ${quotedTableName} DROP FOREIGN KEY ${deps.quoteRemoteIdentifier('mysql', foreignKey.name)};`);
+                        preManualStatements.push(buildDropForeignKeyStatement(tableDdlDeps, tableName, foreignKey.name));
                     }
                 }
             }
@@ -762,119 +602,7 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
             }
         });
 
-        currentUniqueKeys.forEach((key) => {
-            const desiredKey = desiredUniqueKeys.find((entry) => entry.name.toLowerCase() === key.name.toLowerCase());
-
-            if (!desiredKey || keySignature(key) !== keySignature(desiredKey)) {
-                manualStatements.push(`ALTER TABLE ${quotedTableName} DROP INDEX ${deps.quoteRemoteIdentifier('mysql', key.name)};`);
-            }
-        });
-
-        currentStandaloneIndexes.forEach((index) => {
-            const desiredIndex = desiredStandaloneIndexes.find((entry) => entry.name.toLowerCase() === index.name.toLowerCase());
-
-            if (!desiredIndex || indexSignature(index) !== indexSignature(desiredIndex)) {
-                manualStatements.push(`ALTER TABLE ${quotedTableName} DROP INDEX ${deps.quoteRemoteIdentifier('mysql', index.name)};`);
-            }
-        });
-
-        manualStatements.push(...buildDropColumnStatements(tableName, currentInfo, nextColumns));
-
-        // Column order the emitted statements leave behind, kept in step with them so a
-        // column that moves twice in one batch is still detected and anchored correctly.
-        const droppedColumnNames = new Set(getDroppedColumns(currentInfo, nextColumns).map((column) => column.name));
-        const simulatedOrder = currentInfo.columns.filter((column) => !droppedColumnNames.has(column.name)).map((column) => column.name);
-
-        nextColumns.forEach((column, index) => {
-            const currentColumn = column.originalName ? currentColumnsByName.get(column.originalName) : undefined;
-            const definitionParts = [deps.quoteRemoteIdentifier('mysql', column.name), column.type];
-
-            definitionParts.push(column.notNull ? 'NOT NULL' : 'NULL');
-
-            if (column.defaultValue) {
-                definitionParts.push(`DEFAULT ${column.defaultValue}`);
-            } else if (!column.notNull && !column.isAutoIncrement) {
-                definitionParts.push('DEFAULT NULL');
-            }
-
-            if (column.isAutoIncrement) {
-                definitionParts.push('AUTO_INCREMENT');
-            }
-
-            if (column.onUpdate) {
-                definitionParts.push(`ON UPDATE ${column.onUpdate}`);
-            }
-
-            if (column.collation) {
-                definitionParts.push(`COLLATE ${column.collation}`);
-            }
-
-            definitionParts.push(`COMMENT ${deps.escapeSqlString(column.comment ?? '')}`);
-            const definition = definitionParts.join(' ');
-            const previousDesiredColumn = index > 0 ? nextColumns[index - 1] : undefined;
-            const placementClause = previousDesiredColumn ? ` AFTER ${deps.quoteRemoteIdentifier('mysql', previousDesiredColumn.name)}` : ' FIRST';
-
-            if (!currentColumn) {
-                manualStatements.push(`ALTER TABLE ${quotedTableName} ADD COLUMN ${definition}${placementClause};`);
-                simulatedOrder.splice(index, 0, column.name);
-                return;
-            }
-
-            const metadataChanged =
-                column.name !== currentColumn.name ||
-                column.type !== currentColumn.type ||
-                column.notNull !== currentColumn.notNull ||
-                column.defaultValue !== deps.normalizeOptionalText(currentColumn.defaultValue) ||
-                column.isAutoIncrement !== currentColumn.isAutoIncrement ||
-                column.comment !== deps.normalizeOptionalText(currentColumn.comment) ||
-                column.collation !== deps.normalizeOptionalText(currentColumn.collation) ||
-                column.onUpdate !== deps.normalizeOptionalText(currentColumn.onUpdate);
-
-            const positionChanged = simulatedOrder[index] !== currentColumn.name;
-
-            if (metadataChanged || positionChanged) {
-                manualStatements.push(`ALTER TABLE ${quotedTableName} CHANGE COLUMN ${deps.quoteRemoteIdentifier('mysql', currentColumn.name)} ${definition}${placementClause};`);
-            }
-
-            if (positionChanged) {
-                simulatedOrder.splice(simulatedOrder.indexOf(currentColumn.name), 1);
-                simulatedOrder.splice(index, 0, currentColumn.name);
-            }
-        });
-
-        desiredUniqueKeys.forEach((key) => {
-            const currentKey = currentUniqueKeys.find((entry) => entry.name.toLowerCase() === key.name.toLowerCase());
-
-            if (!currentKey || keySignature(currentKey) !== keySignature(key)) {
-                manualStatements.push(
-                    `ALTER TABLE ${quotedTableName} ADD CONSTRAINT ${deps.quoteRemoteIdentifier('mysql', key.name)} UNIQUE (${key.columns
-                        .map((column) => deps.quoteRemoteIdentifier('mysql', column.columnName))
-                        .join(', ')});`
-                );
-            }
-        });
-
-        desiredStandaloneIndexes.forEach((index) => {
-            const currentIndex = currentStandaloneIndexes.find((entry) => entry.name.toLowerCase() === index.name.toLowerCase());
-
-            if (!currentIndex || indexSignature(currentIndex) !== indexSignature(index)) {
-                const clauses = [
-                    `ALTER TABLE ${quotedTableName} ADD ${index.isUnique ? 'UNIQUE ' : ''}INDEX ${deps.quoteRemoteIdentifier('mysql', index.name)}`,
-                    `(${buildIndexColumns(index.columns)})`,
-                ];
-
-                if (index.type) {
-                    clauses.push(`USING ${index.type}`);
-                }
-
-                if (index.comment) {
-                    clauses.push(`COMMENT ${deps.escapeSqlString(index.comment)}`);
-                }
-
-                manualStatements.push(`${clauses.join(' ')};`);
-            }
-        });
-
+        const manualStatements = buildAlterStatements(tableDdlDeps, tableName, currentInfo, nextPlan);
         const postStatements = await collectSqlMemoryStatements(queryRunner, async () => {
             if (desiredPrimaryKey && keySignature(currentPrimaryKey) !== keySignature(desiredPrimaryKey)) {
                 await queryRunner.createPrimaryKey(
@@ -903,13 +631,12 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
             ...preStatements,
             ...manualStatements,
             ...postStatements,
-            ...buildTableOptionStatements(tableName, currentInfo, nextPlan.table),
+            ...buildTableOptionStatements(tableDdlDeps, tableName, currentInfo, nextPlan.table),
             ...renameStatements,
         ];
     }
 
     return {
-        buildDropColumnStatements,
         getTableMetadata: getTableMetadata,
         buildReadTableStatement(tableName: string, limit: number, offset: number, orderBy?: SortOrder): RemoteStatement {
             const orderClause = orderBy ? ` ORDER BY ${quoteMySqlIdentifier(orderBy.column)} ${orderBy.direction}` : '';
@@ -942,7 +669,6 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
             return `CREATE DATABASE ${quotedName}${collationClause}`;
         },
     } satisfies RemoteDriverHelper & {
-        buildDropColumnStatements: typeof buildDropColumnStatements;
         collectForeignKeyViolationMessages: typeof collectForeignKeyViolationMessages;
     };
 }
