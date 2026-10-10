@@ -162,8 +162,13 @@ reproduced or read out of the code path named; each needs a spec that fails firs
 - **MySQL: editing a table without a primary key overwrites every row sharing the first column's
   value.** `useDbDataGrid.ts` falls back to `allColumns[0]` as the match column for an update, while
   the delete path refuses to run without a key. Every MySQL fixture declares a primary key.
-- **MySQL: changing an existing index emits `ADD INDEX ix (\`col\` A);`.** `information_schema.statistics`reports`COLLATION`as`A`/`D`, the driver keeps it as the sort order and MySQL rejects the statement
-(`ER_PARSE_ERROR`) — after the `DROP INDEX`has already committed. Index fixtures only pass`order: null`.
+- **SQLite: 64-bit integers are silently corrupted.** Neither `useSqliteDriver.ts` nor
+  `bunTypeOrmSqliteDriver.ts` enables `safeIntegers`, so `9007199254740993` comes back as
+  `9007199254740992`, and a saved edit writes the rounded value. No fixture uses a value above 2^53.
+- **MySQL: changing an existing index emits an `ADD INDEX` with `A` as the sort order**.
+  The catalog reports the index sort order as `A` or `D`, the driver passes it
+  through, and MySQL rejects the statement with `ER_PARSE_ERROR` — after the
+  `DROP INDEX` has already committed. Index fixtures only pass `order: null`.
 - **MySQL: a column with a string default cannot be altered.** `column_default` comes back as the bare
   literal (`guest`) and is rendered unquoted (`DEFAULT guest`, rejected); `DEFAULT ''` becomes the empty
   string and is then normalised to `DEFAULT NULL`. Fixtures only use `DEFAULT NULL` / `DEFAULT 0`.
