@@ -26,11 +26,11 @@ export default defineConfig({
             // regression, not to look good. The per-area floors keep a gap from hiding behind
             // well-covered code once the aggregate average swallows it.
             thresholds: {
-                statements: 37,
-                branches: 29,
-                functions: 35,
-                lines: 38,
-                'src/backend/**': { statements: 34, branches: 25, functions: 33, lines: 35 },
+                statements: 39,
+                branches: 31,
+                functions: 37,
+                lines: 40,
+                'src/backend/**': { statements: 46, branches: 38, functions: 45, lines: 46 },
                 'src/datagrid/**': { statements: 56, branches: 47, functions: 62, lines: 56 },
                 'src/shared/**': { statements: 66, branches: 49, functions: 61, lines: 66 },
                 'src/directives/**': { statements: 87, branches: 78, functions: 94, lines: 88 },
