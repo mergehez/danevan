@@ -80,7 +80,9 @@ alter, the append-only statements and the rebuild through a temporary table) · 
 itself (`msAccessBridge.spec.ts` spawns the JVM against `assets/test-access-db.mdb`: a real
 CREATE TABLE/INSERT/read round trip, the metadata it reports back, and every column type the editor
 offers** · **the Access column-type mapping: the eight spellings UCanAccess refuses are mapped to the
-ones it accepts and no longer offered in the dropdown**.
+ones it accepts and no longer offered in the dropdown** · **stable Access column metadata: a currency
+column reports `CURRENCY` from the file's own Jackcess type instead of a `DECIMAL` precision that
+changed between reads, `NUMERIC` is folded into `DECIMAL`, and two reads of one table must agree**.
 
 ---
 
@@ -110,17 +112,6 @@ actions, TypeORM foreign keys, PostgreSQL statement preparation); the rest of `u
 server. Next slice: extract the pure DDL builders (index and ALTER statement generation) the way
 `sqliteTableDdl.ts` was, and cover the server-bound remainder through the write-path specs instead of
 unit tests. Extraction needs nothing; the remainder inherits e2e-13's dependency.
-
-### unit-11 · Access `CURRENCY` metadata is not stable (small)
-
-The bridge spec found it: a column created as `CURRENCY` is reported back as `DECIMAL(8,4)` or
-`DECIMAL(100,4)` depending on which metadata path answers first, so the type a user sees can change
-between two reads of the same table. `getMsAccessExplicitPlanErrors` compares column signatures, so a
-flip can also make an untouched table look altered and refuse the save. Pin which path answers (or
-normalise the precision) and assert one value.
-
-- _depends on_: nothing; the finding comes from `msAccessBridge.spec.ts`, which already reproduces
-  both values.
 
 ### unit-12 · `ps-probe` PowerShell lookup on Windows (small)
 
