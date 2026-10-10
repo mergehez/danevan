@@ -1,7 +1,7 @@
 # Test audit
 
-**Status:** 983 unit tests (79 files) · 103 browser tests (27 files) · 10 Electron shell tests
-(dev build ×9 + packaged `.app`) · coverage over every source file **44.6 % statements / 36.8 % branches** ·
+**Status:** 989 unit tests (80 files) · 111 browser tests (32 files) · 13 Electron shell tests
+(dev build ×12 + packaged `.app`) · coverage over every source file **45.0 % statements / 37.0 % branches** ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails.
 
 The long survey that drove the earlier rounds is recoverable from git:
@@ -164,6 +164,43 @@ Each item is work a green run already proves; do not redo it.
   then the managed venv) and fails with the command that provisions it. On a fresh data dir the first
   diagnostics or format request built the venv and ran `pip install` inside the spec — minutes under a
   15 s timeout — and the `Problems` count was wrong until the install finished.
+- **The shipped shell's own flows** (`flows.spec.ts`, `playwright.electron.config.ts`): the built app
+  opens a SQLite table, edits a cell, saves it and reads the row back through the API; it applies a
+  modify-table change and reads the new column back; it runs a MySQL query in the editor and reads the
+  result out of the grid. Every request a user makes goes over `electronAPI.invoke`, which had no flow
+  coverage at all — the browser suite drives the dev server's HTTP API — so the shared
+  `expectPreloadBridge` assertion comes first in each flow. The Electron config now uses the same
+  fail-on-skip reporter as the browser config, because these specs share its `require*` preconditions.
+- **Hostile values** (`hostile-input.spec.ts`): a reserved table name and reserved column names, quotes
+  and statement separators in the text, CJK and an emoji outside the BMP, a newline, a BLOB, a trigger
+  and a view — on SQLite and on a live MySQL. The grid edits a row and adds one, and every result is
+  read back exactly: the text, the untouched binary column (byte for byte, straight out of the file on
+  SQLite), the row the trigger recorded and the view that reports the new value.
+- **The grid's copy menu** (`grid-clipboard.spec.ts`): the cell, row and column menus put the value
+  their label promises on the system clipboard — `Copy`, `As JSON`, `As SQL Literal`,
+  `As SQL INSERT`/`SELECT` for the dialect, `Copy Row`, `Copy Column Name` and `As CSV` over a
+  multi-row selection — with the clipboard emptied before each copy so a copy that does nothing cannot
+  read the previous value. (The grid has no paste counterpart; values come in through the cell editor.)
+- **Column formatters** (`grid-formatter.spec.ts`, `useGridFormatters.spec.ts`,
+  `gridFormatter.worker.spec.ts`): the manager creates and deletes a formatter, the column header
+  assigns it and marks the assignment, the grid's search proves the displayed text became the formatted
+  one (the raw value stops matching), and a reload keeps both. Writing this found a real bug: a request
+  posted before the worker's script had run was thrown away, so the first render of every freshly
+  assigned formatter kept the raw value. The worker now announces that it is listening and the page
+  holds its requests until it does; the unit spec fails against the old code.
+- **The editor with SQLFluff missing** (`sqlfluff-unavailable.spec.ts`, `sqlDiagnostics.spec.ts`): the
+  backend's degraded answers are asserted directly (the lint reason comes back as a _warning_ marker,
+  `formatSql` refuses with the reason), and the UI that renders them is driven over the network
+  boundary: Problems names the reason without disabling Format, a Format click reports the failure and
+  leaves the SQL alone, and Copy as DDL still copies the DDL.
+- **The Monaco editor's settings** (`editor-settings.spec.ts`): the header's dropdown changes the font
+  size the editor paints its text with, keeps its range and number controls in step, closes on Escape
+  and survives a restart.
+- **The sticky sidebar spec measures instead of assuming** (`sidebar-sticky.spec.ts`): it reads the
+  rows the browser drew and uses the sidebar's own "this row is pinned" test (its section starts above
+  it) instead of assuming a row height and a panel with no padding, which is why it failed on a clean
+  checkout. Two mutations — pinned rows made to overlap, and a pinned click made to toggle instead of
+  scrolling back — each make it fail.
 
 ## Open
 
