@@ -1,6 +1,6 @@
 # Test audit
 
-**Status:** 976 unit tests (76 files) · 103 browser tests (27 files) · 10 Electron shell tests
+**Status:** 983 unit tests (79 files) · 103 browser tests (27 files) · 10 Electron shell tests
 (dev build ×9 + packaged `.app`) · coverage over every source file **44.6 % statements / 36.8 % branches** ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails.
 
@@ -17,8 +17,9 @@ still does not.
   `createFileSource(request, { label, schema })` (a temp SQLite file + source; `schema` seeds tables),
   `createMySqlServerAndConnection(request, MYSQL.database, label)`, `post(request, method, data)`
   (throws with the endpoint and body on failure), `requireMySqlDatabase(db, 'spec file')`,
-  `requireMySqlExecutable`, `requireFixtureData(value, message)`, `MYSQL`, `API`, plus the sidebar
-  navigation helpers (`reloadSidebarRow`, `expandSidebarRow`, `openSidebarRowMenu`, `openSidebarTable`) —
+  `requireMySqlExecutable`, `requireSqlFluffRuntime('spec file')`, `requireFixtureData(value, message)`,
+  `MYSQL`, `API`, plus the sidebar navigation helpers (`reloadSidebarRow`, `expandSidebarRow`,
+  `openSidebarRowMenu`, `openSidebarTable`) —
   sidebar rows are sticky, so navigation dispatches events instead of hit-testing a pinned row.
 - Never `test.skip` — call a `require*` precondition so a missing dependency fails loudly.
 - No `waitForTimeout`, no inline timeouts. Use `await expect(locator)…` or `await expect.poll(…)`.
@@ -150,20 +151,23 @@ Each item is work a green run already proves; do not redo it.
   and the packaged `.app` with separate configs, because `appConfig` hard-codes the API port. The
   browser suite and every shell spec boot a test-owned app DB under `.e2e-data` (only its DB files are
   wiped per run, so the provisioned runtimes survive) — never the developer's real one.
+- **A failed request shows its message, not the API's JSON envelope** (`errorMessage.ts`,
+  `readonly-connection.spec.ts`, `failure-modes.spec.ts`): a non-2xx answer is unwrapped where it is
+  read, so the error carries the `{ "error": … }` message itself, and the
+  `Error invoking remote method 'x': Error:` wrapper Electron puts around a rejected handler is peeled
+  where the failure reaches the screen. The save bar prints the target and the refusal — the read-only
+  spec asserts that text exactly — instead of `Backend error (500): {"error":"…"}` with its escaped
+  quotes.
+- **The formatter specs require a provisioned SQLFluff runtime** (`helpers.ts`,
+  `sql-editor-panels.spec.ts`, `table-lifecycle.spec.ts`): `requireSqlFluffRuntime()` probes the same
+  candidates the backend resolves (a system `sqlfluff`, `python3 -m sqlfluff`, `python -m sqlfluff`,
+  then the managed venv) and fails with the command that provisions it. On a fresh data dir the first
+  diagnostics or format request built the venv and ran `pip install` inside the spec — minutes under a
+  15 s timeout — and the `Problems` count was wrong until the install finished.
 
 ## Open
 
-The audited list is empty: every unblocked item of the last round is closed. What this round turned
-up and did not fix:
-
-- **A failed save shows the backend's JSON envelope (small)** — the save bar prints
-  `Backend error (500): {"error":"…"}` with the message inside escaped JSON
-  (`readonly-connection.spec.ts` and `failure-modes.spec.ts` assert around it). The user can read the
-  message, but it should be the message alone.
-- **The formatter specs assume a provisioned SQLFluff runtime (small)** — `formatSql` creates
-  `sqlfluff-runtime` under the app data dir on first use (a venv plus an install), so the first spec
-  to format SQL on a fresh data dir fails while it installs, and the parser-problem count is wrong
-  until it exists. They should require it like the MySQL specs require their database.
+The audited list is empty: every unblocked item of the last round is closed.
 
 ## Open (blocked)
 
