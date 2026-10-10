@@ -55,7 +55,14 @@ export const MonacoEditorSettingsButton = component(
 
         return () => (
             <div ref={diffSettingsRef} class="relative flex items-center gap-1">
-                <IconButton icon="icon-[mdi--tune-variant]" v-tooltip={'Diff settings'} smaller={true} aria-haspopup="dialog" onClick={prevented(toggleDiffSettings)}>
+                <IconButton
+                    icon="icon-[mdi--tune-variant]"
+                    v-tooltip={'Diff settings'}
+                    smaller={true}
+                    aria-haspopup="dialog"
+                    data-testid="editor-settings-button"
+                    onClick={prevented(toggleDiffSettings)}
+                >
                     <span class="icon icon-[mdi--tune-variant]" />
                 </IconButton>
                 {isDiffSettingsOpen.value ? (

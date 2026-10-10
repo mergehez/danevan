@@ -111,4 +111,57 @@ describe('sqlDiagnostics managed runtime', () => {
 
         expect(mocks.executeTextCommand.mock.calls.filter(([params]) => isVersionProbe(params.args))).toHaveLength(1);
     });
+
+    // A machine without SQLFluff still has to lint: the editor shows the reason instead of pretending
+    // the SQL is clean, and it must not look like a parser error (that would disable Format).
+    it('reports why SQLFluff could not run as a warning marker', async () => {
+        mocks.executeTextCommand.mockImplementation(async ({ args }) => {
+            if (isVersionProbe(args)) {
+                return ['', 'No module named sqlfluff', 1];
+            }
+
+            if (args.includes('pip')) {
+                return ['', 'Could not find a version that satisfies the requirement sqlfluff', 1];
+            }
+
+            throw new Error(`unexpected command: ${args.join(' ')}`);
+        });
+
+        const { getSqlDiagnostics } = await loadDiagnostics();
+
+        const result = await getSqlDiagnostics({ sql: 'select 1', dialect: 'mysql', userDataDir });
+        const expected = [
+            {
+                message: 'Could not find a version that satisfies the requirement sqlfluff',
+                severity: 'warning',
+                startLineNumber: 1,
+                startColumn: 1,
+                endLineNumber: 1,
+                endColumn: 2,
+                source: 'sqlfluff',
+            },
+        ];
+
+        expect(result.markers).toEqual(expected);
+        // The Problems panel reads `problemMarkers`, and the SQL is just as unformatted either way.
+        expect(result.problemMarkers).toEqual(expected);
+    });
+
+    it('refuses to format with the reason instead of leaving the SQL as it was', async () => {
+        mocks.executeTextCommand.mockImplementation(async ({ args }) => {
+            if (isVersionProbe(args)) {
+                return ['', 'No module named sqlfluff', 1];
+            }
+
+            if (args.includes('pip')) {
+                return ['', 'Could not find a version that satisfies the requirement sqlfluff', 1];
+            }
+
+            throw new Error(`unexpected command: ${args.join(' ')}`);
+        });
+
+        const { formatSql } = await loadDiagnostics();
+
+        await expect(formatSql({ sql: 'select 1', dialect: 'mysql', userDataDir })).rejects.toThrow('Could not find a version that satisfies the requirement sqlfluff');
+    });
 });
