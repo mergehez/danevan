@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     decodeQueryRows,
+    parseWorkerFrameFromOutput,
     drainWorkerResponseBuffer,
     encodeBase64Utf8,
     encodeSqlValue,
@@ -141,10 +142,10 @@ describe('worker response frames', () => {
         expect((settled[0] as { error: Error }).error.message).toBe('table is locked');
     });
 
-    it('rejects an invalid frame with the operation named', () => {
+    it('rejects a frame that our bridge wrote but broke', () => {
         const { worker, settled } = workerStub('modifyTable');
 
-        handleWorkerResponseLine(worker, 'not json at all');
+        handleWorkerResponseLine(worker, '{"ok":true,"result":');
 
         expect((settled[0] as { error: Error }).error.message).toContain('MS Access worker returned invalid JSON during modifyTable');
         expect(worker.activeRequest).toBeUndefined();
@@ -168,6 +169,22 @@ describe('worker response frames', () => {
         worker.activeRequest = undefined;
         handleWorkerResponseLine(worker, '{"ok":true,"result":1}');
         expect(settled).toEqual([]);
+    });
+
+    it('ignores the JVM logging that shares the bridge stdout', () => {
+        // Regression: log4j writes this to stdout while a query is in flight. It starts with a
+        // number, so parsing it as JSON used to fail the pending request with a bogus error.
+        const { worker, settled } = workerStub('runQuery');
+
+        handleWorkerResponseLine(worker, '2026-10-10T00:08:02.917853Z main ERROR Log4j API could not find a logging provider.');
+
+        expect(settled).toEqual([]);
+        expect(worker.activeRequest).toBeDefined();
+
+        // The real frame behind the noise still settles the request.
+        handleWorkerResponseLine(worker, '{"ok":true,"result":{"rows":[]}}');
+
+        expect(settled).toEqual([{ kind: 'resolve', value: { rows: [] } }]);
     });
 
     it('rejects the pending request when the worker dies', () => {
@@ -314,5 +331,25 @@ describe('getMsAccessInboundForeignKeyError', () => {
 
         expect(message).toContain('(unnamed constraint) on items (items.order_id -> orders.id)');
         expect(message).toContain('fk_other on shipments');
+    });
+});
+
+describe('parseWorkerFrameFromOutput', () => {
+    it('finds the frame in a stream that also carries logging', () => {
+        const output = [
+            '2026-10-10T00:08:02.917853Z main ERROR Log4j API could not find a logging provider.',
+            'WARNING: something from the JVM',
+            '{"ok":true,"result":{"rows":[]}}',
+        ].join('\n');
+
+        expect(parseWorkerFrameFromOutput(output)).toEqual({ ok: true, result: { rows: [] } });
+    });
+
+    it('reports a stream that carries no frame at all', () => {
+        expect(() => parseWorkerFrameFromOutput('nothing but logging\n')).toThrow('MS Access bridge produced no response frame.');
+    });
+
+    it('reports a frame the bridge wrote but broke', () => {
+        expect(() => parseWorkerFrameFromOutput('{"ok":true,"result":')).toThrow();
     });
 });
