@@ -1,8 +1,8 @@
 # Test audit — what to test next
 
-**Status:** 747 unit tests (66 files) · 91 browser tests (24 files) · 2 Electron shell tests
+**Status:** 808 unit tests (68 files) · 91 browser tests (24 files) · 2 Electron shell tests
 (dev build + packaged `.app`) ·
-coverage over every source file **38.6 % statements / 30.7 % branches** · aggregate and per-area
+coverage over every source file **40.3 % statements / 32.6 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
 
@@ -71,7 +71,12 @@ failed" panel instead of an empty shell and recovers on reload · a `mysqldump` 
 reported in the export modal · an unwritable app data directory reports the path it could not use** ·
 **dialect SQL (`dialectSql.ts`: quoting per dialect, referential actions, TypeORM foreign keys,
 PostgreSQL statement preparation) and the Windows MySQL client lookup (`where.exe`, `Program Files`
-candidates, `bin\<command>.exe` scan)**.
+candidates, `bin\<command>.exe` scan)** · **the MS Access bridge protocol (`msAccessProtocol.ts`:
+value tagging and decoding, bracket quoting, the line-delimited worker frames, Java version parsing,
+the inbound-foreign-key guard) and runtime discovery (`msAccessRuntimeManifest.ts`: bundled versus
+downloaded runtime, JRE folders, `DANEVAN_MSACCESS_*` overrides) · the Access modify-table contract
+(`getMsAccessExplicitPlanErrors` and `buildMsAccessModifyTableStatements`: what UCanAccess cannot
+alter, the append-only statements and the rebuild through a temporary table)**.
 
 ---
 
@@ -102,17 +107,17 @@ server. Next slice: extract the pure DDL builders (index and ALTER statement gen
 `sqliteTableDdl.ts` was, and cover the server-bound remainder through the write-path specs instead of
 unit tests. Extraction needs nothing; the remainder inherits e2e-13's dependency.
 
-### unit-9 · MS Access driver and bridge (medium)
+### unit-9 · MS Access bridge integration (medium)
 
-`useMsAccessDriver.ts` runs only through the Java bridge, which no spec drives: worker mode versus
-direct mode, the JSON protocol frames, the JAR/runtime manifest and download path, the type mapping
-for MEMO/OLEOBJECT/CURRENCY/DATETIME, and the `ps-probe` PowerShell lookup in
-`useMsAccessWindowsDriver.ts`. Cover the frames, the mapping tables and the manifest/`clientExecutables`
-interaction as units, injecting the process boundary for the Java and PowerShell spawns.
+The protocol, the runtime discovery and the modify-table DDL contract are covered; what is still
+driven only by hand is the Java bridge itself — compiling `MsAccessBridge.java`, the worker handshake
+and a real query against `assets/test-access-db.mdb`. The pieces are on this machine (Java 17, the
+`msaccess-runtime` jars under the app data directory, the fixture), so a spec can spawn the bridge
+with the injected process boundary and assert a table list plus one row read. The `ps-probe` lookup in
+`useMsAccessWindowsDriver.ts` still needs a Windows run.
 
-- _depends on_: a Windows runner for the `ps-probe` PowerShell path. The macOS side needs nothing
-  missing: Java 17 is installed, the `msaccess-runtime` jars are already cached under the app data
-  directory, and `assets/test-access-db.mdb` is the fixture.
+- _depends on_: a Windows runner for the `ps-probe` PowerShell path (the macOS bridge integration
+  needs nothing missing).
 
 ### unit-10 · Windows runner verification (small)
 
