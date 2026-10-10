@@ -212,6 +212,10 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
     - _Verify_: count API calls while opening "Compare database…" and while triggering autocomplete on
       the `etwp` connection (target: ~1–2 calls, today 1 + N). `src/mainview/composables/useQuery.ts:112`
       already logs per-load timings and the backend logs `withTimedAppOperation` per request.
+    - _Blocked for_: PostgreSQL and SQL Server verification — no reachable server on this machine, the
+      same condition `TESTS-AUDIT.md` records as `e2e-13`. The batched call can be written for those
+      drivers, but only the MySQL half can be proven here (SQLite is not in this task's scope: its
+      metadata comes from pragmas, not from a catalog query).
 - **U5 — Modify Table: Undo does not restore a changed column type (bug).** Repro: open a table's
   "Modify Table…" popup → **columns** → select `name` → change its type to `varchar(500)` → press
   **Undo**: the type input still shows `varchar(500)`. The Undo button is enabled and the click runs;
