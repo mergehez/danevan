@@ -3,7 +3,7 @@ import { DataSource, type QueryRunner, type Table, type View } from 'typeorm';
 import type { ServerSchemaRecord, SqlValue, TableColumnInfo, TableForeignKeyInfo, TableInfo, TableSummary, TestConnectionParams, TestConnectionResult } from '../shared/types';
 import { splitSqlStatements } from '../shared/utils/sqlStatements';
 import type { DriverTools, RemoteConnectionTarget, SortOrder } from './db-tools.ts';
-import { createTypeOrmForeignKey, normalizeCountValue, quoteMySqlIdentifier } from './dialectSql.ts';
+import { createTypeOrmForeignKey, formatMySqlDefaultValue, normalizeCountValue, normalizeMySqlIndexOrder, quoteMySqlIdentifier } from './dialectSql.ts';
 import { buildAlterStatements, buildDropForeignKeyStatement, buildTableOptionStatements, type MySqlTableDdlDeps } from './mysqlTableDdl.ts';
 import { foreignKeySignature, getCurrentPrimaryKey, getDesiredPrimaryKey, groupCurrentForeignKeys, keySignature } from './remoteTableDdl.ts';
 import { resolveListedRowCount, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper, type RemoteStatement } from './useRemoteDriverTools.ts';
@@ -353,7 +353,7 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
                 name: String(row.name ?? ''),
                 type: String(row.columnType ?? ''),
                 notNull: String(row.isNullable ?? '').toUpperCase() !== 'YES',
-                defaultValue: deps.normalizeOptionalText(row.columnDefault),
+                defaultValue: formatMySqlDefaultValue(row.columnType, row.columnDefault),
                 isPrimaryKey,
                 primaryKeyOrdinal: isPrimaryKey ? ++primaryKeyOrdinal : null,
                 isAutoIncrement: extra.includes('auto_increment'),
@@ -385,7 +385,7 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
             return {
                 name,
                 columns: sortedGroup.map((row) => String(row.columnName ?? '')),
-                orders: sortedGroup.map((row) => deps.normalizeOptionalText(row.columnOrder)?.toUpperCase() ?? 'NONE'),
+                orders: sortedGroup.map((row) => normalizeMySqlIndexOrder(row.columnOrder)),
                 comment: deps.normalizeOptionalText(sortedGroup[0]?.comment),
                 isUnique: Number(sortedGroup[0]?.nonUnique ?? 1) === 0,
                 origin: deps.normalizeOptionalText(sortedGroup[0]?.type) ?? 'BTREE',

@@ -29,6 +29,52 @@ export function quoteMySqlIdentifier(identifier: string) {
         .join('.');
 }
 
+/**
+ * A MySQL string literal. MySQL reads a backslash as an escape unless `NO_BACKSLASH_ESCAPES` is
+ * set, so doubling only the quotes turns `C:\temp` into a tab and lets a trailing backslash
+ * swallow the closing quote.
+ */
+export function quoteMySqlStringLiteral(value: string) {
+    return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "''")}'`;
+}
+
+/** The sort order MySQL accepts in DDL. Its catalog encodes those as `A` and `D`. */
+export function normalizeMySqlIndexOrder(value: string | null | undefined) {
+    switch (value?.trim().toUpperCase()) {
+        case 'A':
+        case 'ASC':
+            return 'ASC';
+        case 'D':
+        case 'DESC':
+            return 'DESC';
+        default:
+            return 'NONE';
+    }
+}
+
+const MYSQL_LITERAL_DEFAULT_TYPE =
+    /^(char|varchar|tinytext|text|mediumtext|longtext|enum|set|binary|varbinary|tinyblob|blob|mediumblob|longblob|date|datetime|timestamp|time|year|json|geometry)/i;
+/** The defaults MySQL reports as SQL rather than as a literal. */
+const MYSQL_DEFAULT_EXPRESSION = /^(current_timestamp|current_date|current_time|localtime|localtimestamp|now)\b|^\(/i;
+
+/**
+ * The SQL for a column default MySQL reported. The catalog hands back the literal itself for the
+ * character, binary and temporal types — an empty string for `DEFAULT ''`, which used to collapse
+ * to `DEFAULT NULL` — and only the expression (a keyword, or a parenthesized one since 8.0.13) for
+ * the types that have no literal defaults.
+ */
+export function formatMySqlDefaultValue(columnType: string | null | undefined, columnDefault: string | null | undefined) {
+    if (columnDefault == null) {
+        return null;
+    }
+
+    if (!MYSQL_LITERAL_DEFAULT_TYPE.test(columnType ?? '') || MYSQL_DEFAULT_EXPRESSION.test(columnDefault)) {
+        return columnDefault;
+    }
+
+    return quoteMySqlStringLiteral(columnDefault);
+}
+
 export function quotePostgresIdentifier(identifier: string) {
     return identifier
         .split('.')

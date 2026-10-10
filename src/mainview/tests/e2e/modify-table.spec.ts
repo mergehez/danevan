@@ -56,18 +56,26 @@ function newColumnParams(name: string, type: string) {
 function buildParams(info: any, connectionId: number, table: string) {
     const pkColumns = info.columns.filter((c: any) => c.isPrimaryKey).sort((a: any, b: any) => (a.primaryKeyOrdinal ?? 0) - (b.primaryKeyOrdinal ?? 0));
     const pkNames = new Set(pkColumns.map((c: any) => c.name));
+    const isPrimaryIndex = (index: any) => index.name.toLowerCase() === 'primary' || (index.columns.length === pkNames.size && index.columns.every((c: string) => pkNames.has(c)));
 
-    const keys = pkColumns.length ? [{ originalName: 'PRIMARY', name: 'PRIMARY', isPrimary: true, columns: pkColumns.map((c: any) => ({ columnName: c.name })) }] : [];
+    // What the dialog posts: the primary key and the unique indexes as keys, the rest as indexes.
+    const keys = [
+        ...(pkColumns.length ? [{ originalName: 'PRIMARY', name: 'PRIMARY', isPrimary: true, columns: pkColumns.map((c: any) => ({ columnName: c.name })) }] : []),
+        ...info.indexes
+            .filter((i: any) => i.isUnique && !isPrimaryIndex(i))
+            .map((i: any) => ({ originalName: i.name, name: i.name, isPrimary: false, columns: i.columns.map((c: string) => ({ columnName: c })) })),
+    ];
 
     const indexes = info.indexes
-        .filter((i: any) => !(i.name.toLowerCase() === 'primary' || (i.columns.length === pkNames.size && i.columns.every((c: string) => pkNames.has(c)))))
+        .filter((i: any) => !isPrimaryIndex(i) && !keys.some((key) => key.name === i.name))
         .map((i: any) => ({
             originalName: i.name,
             name: i.name,
             comment: i.comment ?? null,
             isUnique: i.isUnique,
             type: i.type ?? null,
-            columns: i.columns.map((col: string) => ({ columnName: col, order: null })),
+            // The dialog posts the sort order it read from the catalog, letter and all.
+            columns: i.columns.map((col: string, position: number) => ({ columnName: col, order: i.orders?.[position] ?? null })),
         }));
 
     const foreignKeys = info.foreignKeys.map((f: any) => ({
@@ -214,6 +222,20 @@ test.describe('Modify table popup', () => {
         expect(fk.from.split(',').map((s: string) => s.trim())).toEqual(['foo_user_id']);
     });
 
+    test('changes an existing index without a parse error', async ({ request }) => {
+        // The catalog reports an ascending column as "A"; MySQL only accepts ASC/DESC, and its DDL
+        // is not transactional, so the DROP that precedes the rejected ADD is already committed.
+        await applyModify(request, (p) => {
+            const index = p.indexes.find((i: any) => i.name === 'caps_created_by_foreign');
+            index.columns.push({ columnName: 'size', order: null });
+        });
+
+        const info = await getInfo(request);
+        const index = info.indexes.find((i: any) => i.name === 'caps_created_by_foreign');
+        expect(index.columns).toEqual(['created_by', 'size']);
+        expect(index.orders).toEqual(['ASC', 'ASC']);
+    });
+
     test('changes a column type (name -> varchar(500))', async ({ request }) => {
         await applyModify(request, (p) => {
             const name = p.columns.find((c: any) => c.name === 'name');
@@ -249,6 +271,8 @@ test.describe('Modify table popup', () => {
 
     test('deletes both simple indices (caps_path_unique and caps_created_by_foreign)', async ({ request }) => {
         await applyModify(request, (p) => {
+            // The dialog drops a unique index from its keys and a plain one from its indexes.
+            p.keys = p.keys.filter((k: any) => k.name !== 'caps_path_unique');
             p.indexes = p.indexes.filter((i: any) => i.name !== 'caps_path_unique' && i.name !== 'caps_created_by_foreign');
         });
 
@@ -381,12 +405,59 @@ test.describe('Modify table popup', () => {
 
         const info = await getInfo(request);
         const description = info.columns.find((c: any) => c.name === 'description');
-        expect((description.defaultValue ?? '').toLowerCase()).toContain('e2e-default');
+        expect(description.defaultValue).toBe("'e2e-default'");
+    });
+
+    test('keeps a string default quoted when the column is altered', async ({ request }) => {
+        // MySQL's catalog reports the literal itself rather than the SQL, so re-emitting it as a
+        // bare word (`DEFAULT guest`) is a syntax error and `DEFAULT ''` used to become DEFAULT NULL.
+        const defaultsTable = `caps_e2e_defaults_${Date.now()}`;
+        await post(request, 'runQuery', {
+            connectionId,
+            sql: `CREATE TABLE \`${defaultsTable}\` (
+                \`id\` bigint unsigned NOT NULL AUTO_INCREMENT,
+                \`label\` varchar(50) NOT NULL DEFAULT 'guest',
+                \`note\` varchar(50) DEFAULT '',
+                \`path\` varchar(50) DEFAULT 'C:\\\\temp',
+                PRIMARY KEY (\`id\`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        });
+
+        try {
+            const before = await post(request, 'getTableInfo', { connectionId, tableName: defaultsTable });
+            expect(before.columns.map((column: any) => [column.name, column.defaultValue])).toEqual([
+                ['id', null],
+                ['label', "'guest'"],
+                ['note', "''"],
+                ['path', "'C:\\\\temp'"],
+            ]);
+
+            // Widening the column repeats its default in the CHANGE COLUMN clause.
+            const params = buildParams(before, connectionId, defaultsTable);
+            params.columns.find((column: any) => column.name === 'label').type = 'varchar(80)';
+            await post(request, 'modifyTable', params);
+
+            const after = await post(request, 'getTableInfo', { connectionId, tableName: defaultsTable });
+            expect(after.columns.find((column: any) => column.name === 'label').type).toBe('varchar(80)');
+            expect(after.columns.map((column: any) => [column.name, column.defaultValue])).toEqual([
+                ['id', null],
+                ['label', "'guest'"],
+                ['note', "''"],
+                ['path', "'C:\\\\temp'"],
+            ]);
+
+            // The declared defaults still apply, which is what the escaping is there to protect.
+            await post(request, 'runQuery', { connectionId, sql: `INSERT INTO \`${defaultsTable}\` (\`id\`) VALUES (1)` });
+            const inserted = await post(request, 'runQuery', { connectionId, sql: `SELECT \`label\`, \`note\`, \`path\` FROM \`${defaultsTable}\`` });
+            expect(inserted.rows).toEqual([{ label: 'guest', note: '', path: 'C:\\temp' }]);
+        } finally {
+            await request.post(`${API}/runQuery`, { data: { connectionId, sql: `DROP TABLE IF EXISTS \`${defaultsTable}\`` } }).catch(() => {});
+        }
     });
 
     test('deletes a single index (caps_path_unique)', async ({ request }) => {
         await applyModify(request, (p) => {
-            p.indexes = p.indexes.filter((i: any) => i.name !== 'caps_path_unique');
+            p.keys = p.keys.filter((k: any) => k.name !== 'caps_path_unique');
         });
 
         const info = await getInfo(request);
