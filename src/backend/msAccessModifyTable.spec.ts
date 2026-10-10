@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TableColumnInfo, TableInfo } from '../shared/types';
 import type { ModifySchemaColumn, ModifySchemaPlan } from './useSqliteDriver.ts';
-import { buildMsAccessModifyTableStatements, getMsAccessExplicitPlanErrors } from './useMsAccessDriver.ts';
+import { buildMsAccessModifyTableStatements, getMsAccessExplicitPlanErrors, normalizeMsAccessColumnType } from './useMsAccessDriver.ts';
 
 function column(overrides: Partial<ModifySchemaColumn> = {}): ModifySchemaColumn {
     return {
@@ -247,5 +247,38 @@ describe('buildMsAccessModifyTableStatements', () => {
 
         expect(statements[1]).toContain('([id], [label]) SELECT [id], [note] FROM [orders];');
         expect(statements[1]).not.toContain('added');
+    });
+});
+
+describe('normalizeMsAccessColumnType', () => {
+    // Verified against the bridge: UCanAccess refuses these names in a CREATE TABLE and accepts
+    // the replacement (see msAccessBridge.spec.ts).
+    it.each([
+        ['LONGCHAR', 'MEMO'],
+        ['NTEXT', 'MEMO'],
+        ['MONEY', 'CURRENCY'],
+        ['SMALLDATETIME', 'DATETIME'],
+        ['LONGBINARY', 'VARBINARY'],
+        ['IMAGE', 'VARBINARY'],
+        ['OLEOBJECT', 'VARBINARY'],
+        ['UNIQUEIDENTIFIER', 'GUID'],
+    ])('maps %s to %s', (type, expected) => {
+        expect(normalizeMsAccessColumnType(type)).toBe(expected);
+    });
+
+    it('maps case-insensitively and keeps a declared size', () => {
+        expect(normalizeMsAccessColumnType('  money  ')).toBe('CURRENCY');
+        expect(normalizeMsAccessColumnType('LongChar(255)')).toBe('MEMO(255)');
+    });
+
+    it('leaves the types the bridge accepts as written', () => {
+        expect(normalizeMsAccessColumnType('TEXT(255)')).toBe('TEXT(255)');
+        expect(normalizeMsAccessColumnType(' counter ')).toBe('counter');
+    });
+
+    it('emits the mapped type in the statements it builds', () => {
+        const next = plan({ columns: [...plan().columns, column({ name: 'amount', type: 'MONEY' })] });
+
+        expect(buildMsAccessModifyTableStatements('orders', currentInfo, next)).toEqual(['ALTER TABLE [orders] ADD COLUMN [amount] CURRENCY;']);
     });
 });
