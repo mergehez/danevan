@@ -11,6 +11,9 @@ import { appConfig, callApiPost } from './helpers';
 
 const config = appConfig;
 
+/** The channel the renderer sends its console/window diagnostics on, both ends of it. */
+const RENDERER_DIAGNOSTIC_CHANNEL = 'renderer:diagnostic';
+
 // __dirname: CJS provides it directly; ESM needs fileURLToPath(import.meta.url)
 const __dirname = typeof __filename !== 'undefined' ? dirname(__filename) : dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
@@ -58,6 +61,9 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
 
     function registerIpcHandlers(handlers: Record<string, any>) {
         for (const [name, handler] of Object.entries(handlers)) {
+            // A window can be recreated (`activate` after the last one closed): the handlers of the
+            // window that is gone must be replaced, not registered a second time, which throws.
+            ipcMain.removeHandler(name);
             ipcMain.handle(name, async (_event, ps) => (handler as (ps?: unknown) => Promise<unknown>)(ps));
         }
 
@@ -65,8 +71,9 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
         const ANSI_GREEN = '\x1b[32m';
         const ANSI_YELLOW = '\x1b[33m';
         const ANSI_RED = '\x1b[31m';
-        // ipcMain.on('renderer-diagnostic', (_event, diagnostic: RendererDiagnosticPayload) => {
-        ipcMain.on('renderer:diagnostic', (_event, diagnostic: RendererDiagnosticPayload) => {
+        // Same for the listener: it does not belong to a window, so it is registered once.
+        ipcMain.removeAllListeners(RENDERER_DIAGNOSTIC_CHANNEL);
+        ipcMain.on(RENDERER_DIAGNOSTIC_CHANNEL, (_event, diagnostic: RendererDiagnosticPayload) => {
             const write =
                 diagnostic.type === 'console-debug'
                     ? console.debug
@@ -198,7 +205,7 @@ export function createPreloadApi<NativeCommand>(ipcRenderer: Electron.IpcRendere
                 ipcRenderer.removeListener('native-command', handler);
             };
         },
-        sendDiagnostic: (payload: unknown) => ipcRenderer.send('renderer-diagnostic', payload),
+        sendDiagnostic: (payload: unknown) => ipcRenderer.send(RENDERER_DIAGNOSTIC_CHANNEL, payload),
     };
     contextBridge.exposeInMainWorld('electronAPI', api);
     return api;
