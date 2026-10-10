@@ -1,5 +1,16 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { API, MYSQL, createFileSource, createMySqlServerAndConnection, openSidebarRowMenu, post, reloadSidebarRow, requireFixtureData, requireMySqlDatabase } from './helpers';
+import {
+    API,
+    MYSQL,
+    createFileSource,
+    createMySqlServerAndConnection,
+    openSidebarRowMenu,
+    post,
+    reloadSidebarRow,
+    requireFixtureData,
+    requireMySqlDatabase,
+    requireSqlFluffRuntime,
+} from './helpers';
 
 /** A source that already has one table, so the connection it creates really works. */
 const SEED_SCHEMA = `
@@ -76,6 +87,7 @@ test.describe('Table lifecycle', () => {
     });
 
     test('copies the table DDL to the clipboard', async ({ page, request }) => {
+        requireSqlFluffRuntime('table-lifecycle.spec.ts');
         const source = await createFileSource(request, { label: 'table-ddl', schema: SEED_SCHEMA });
 
         try {

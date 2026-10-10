@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { createFileSource, post } from './helpers';
+import { createFileSource, post, requireSqlFluffRuntime } from './helpers';
 
 const MESSY_SQL = 'select  1  as ok ,2 as two from (select 1) t;';
 const FORMATTED_SQL = 'select\n    1 as ok,\n    2 as two\nfrom (select 1) t';
@@ -165,6 +165,7 @@ test.describe('SQL editor panels', () => {
     });
 
     test('lists the parser problems of the current SQL', async ({ page, request }) => {
+        requireSqlFluffRuntime('sql-editor-panels.spec.ts');
         const { source, scriptId } = await openSourceWithScript(request, 'script-problems', 'select 1 as fine;');
 
         try {
@@ -190,6 +191,7 @@ test.describe('SQL editor panels', () => {
     });
 
     test('formats the SQL and runs the formatted text', async ({ page, request }) => {
+        requireSqlFluffRuntime('sql-editor-panels.spec.ts');
         const { source, scriptId } = await openSourceWithScript(request, 'script-format', 'select 1 as fine;');
 
         try {

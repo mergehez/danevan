@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
+import { execFileSync } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -94,6 +95,48 @@ export function requireFixtureData<T>(value: T, message: string): NonNullable<T>
     }
 
     return value as NonNullable<T>;
+}
+
+/** The data dir the suite boots with; `playwright.config.ts` owns the same value. */
+function e2eAppDataDir() {
+    return process.env.APP_DATA_DIR || join(process.cwd(), '.e2e-data');
+}
+
+/**
+ * Fails unless SQLFluff really runs, the way the MySQL specs require their database. On a fresh
+ * data dir the first diagnostics or format request provisions a venv and runs `pip install`:
+ * far longer than a spec may wait, and the marker counts of the run before it are wrong.
+ */
+export function requireSqlFluffRuntime(what = 'this spec') {
+    const runtimeDir = join(e2eAppDataDir(), 'sqlfluff-runtime');
+    const managedPython = process.platform === 'win32' ? join(runtimeDir, 'Scripts', 'python.exe') : join(runtimeDir, 'bin', 'python');
+    const python = process.platform === 'win32' ? 'py' : 'python3';
+    const pythonArgs = process.platform === 'win32' ? ['-3'] : [];
+
+    // The backend resolves the runtime in this order; a system install is as good as the managed one.
+    const candidates: Array<[string, string[]]> = [
+        ['sqlfluff', ['--version']],
+        [python, [...pythonArgs, '-m', 'sqlfluff', '--version']],
+        ['python', ['-m', 'sqlfluff', '--version']],
+        [managedPython, ['-m', 'sqlfluff', '--version']],
+    ];
+
+    const answered = candidates.some(([command, args]) => {
+        try {
+            execFileSync(command, args, { stdio: 'ignore' });
+            return true;
+        } catch {
+            return false;
+        }
+    });
+
+    if (!answered) {
+        missingEnvironment(
+            `${what} needs a runnable SQLFluff runtime; none of ${candidates.map(([command]) => command).join(', ')} answered \`--version\`. ` +
+                `The managed runtime at ${runtimeDir} is provisioned once and kept across runs: ` +
+                `\`python3 -m venv "${runtimeDir}" && "${managedPython}" -m pip install sqlfluff\`.`
+        );
+    }
 }
 
 /** The bootstrap response must echo the row that was just created, or the setup is broken. */
