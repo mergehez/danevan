@@ -1,11 +1,28 @@
 import express from 'express';
+import type { Server } from 'node:http';
 import { appConfig } from './helpers.ts';
 import type { RendererDiagnosticPayload } from './mainProloadHelpers.ts';
 /**
  * Browser-only dev server that exposes backend app methods as HTTP endpoints.
  * Run with: tsx src/backend/devServer.ts
  */
-export function createBrowserOnlyDevServer<GitClientRequestApi extends object>(app: GitClientRequestApi, apiMethods: readonly string[], db: { configureDatabase: () => void }) {
+/** Why the API could not take its port, in the words the person starting the app needs. */
+export function describeApiListenError(port: number, error: NodeJS.ErrnoException) {
+    if (error.code === 'EADDRINUSE') {
+        return `Port ${port} is already in use: another Danevan window (or "bun run dev") is running. Close it and start again.`;
+    }
+
+    return `The backend API could not listen on port ${port}: ${error.message}`;
+}
+
+export function createBrowserOnlyDevServer<GitClientRequestApi extends object>(
+    app: GitClientRequestApi,
+    apiMethods: readonly string[],
+    db: { configureDatabase: () => void },
+    options: { port?: number } = {}
+) {
+    const port = options.port ?? appConfig.apiPort;
+
     // Initialize database (normally done by the Electrobun entrypoint)
     db.configureDatabase();
 
@@ -95,10 +112,20 @@ export function createBrowserOnlyDevServer<GitClientRequestApi extends object>(a
         res.status(404).send('Not found');
     });
 
-    return new Promise<void>((resolve) => {
-        serverApp.listen(appConfig.apiPort, () => {
-            console.log(`[devServer] Backend API running at http://localhost:${appConfig.apiPort}`);
-            resolve();
+    return new Promise<Server>((resolve, reject) => {
+        const server = serverApp.listen(port, () => {
+            // A bind that fails reports this callback first and the error right after it, so the
+            // address — not the callback — is what says the API is really listening.
+            if (server.address()) {
+                console.log(`[devServer] Backend API running at http://localhost:${port}`);
+                resolve(server);
+            }
+        });
+
+        // A busy port used to surface as an unhandled 'error' event: the backend never came up and
+        // the window waited forever, so the reason is reported instead.
+        server.on('error', (error: NodeJS.ErrnoException) => {
+            reject(new Error(describeApiListenError(port, error)));
         });
     });
 }

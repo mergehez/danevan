@@ -137,6 +137,26 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
     function start() {
         const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
+        // A second launch of the same app cannot take the API port the first one owns, and it never
+        // reached `createWindow` — the EADDRINUSE had nowhere to go. The launch is handed to the
+        // window that is already open instead.
+        if (!app.requestSingleInstanceLock()) {
+            app.quit();
+            return;
+        }
+
+        app.on('second-instance', () => {
+            const [mainWindow] = BrowserWindow.getAllWindows();
+
+            if (!mainWindow) {
+                return;
+            }
+
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+        });
+
         app.whenReady().then(async () => {
             console.log('Starting backend server...');
             await ((): Promise<void> => {

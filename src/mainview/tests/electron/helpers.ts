@@ -4,7 +4,9 @@
 // namespaced by that dir (`auth.ts`), so one spec cannot reach another's secrets.
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -55,15 +57,35 @@ export function shellEnv(appDataDir: string): Record<string, string> {
     return env;
 }
 
+/**
+ * The switches every launch shares: `--user-data-dir` keeps Electron's own profile — and the
+ * DevTools port file Playwright attaches through — inside the throwaway dir instead of the
+ * developer's `~/Library/Application Support`, and the other two are what the renderer needs where
+ * the host cannot give Chromium a sandbox or a GPU process, as in a CI container.
+ */
+export function shellArgs(appDataDir: string) {
+    return [SHELL_ENTRY, '--no-sandbox', '--disable-gpu', `--user-data-dir=${join(appDataDir, 'electron')}`];
+}
+
+/** The Electron binary Playwright launches; a raw process lets a spec read the exit code. */
+function electronBinary() {
+    return createRequire(import.meta.url)('electron') as unknown as string;
+}
+
 export function launchShell(appDataDir: string) {
-    return electron.launch({
-        // `--user-data-dir` keeps Electron's own profile — and the DevTools port file Playwright
-        // attaches through — inside the throwaway dir instead of the developer's
-        // `~/Library/Application Support`. `--no-sandbox` and `--disable-gpu` are what the renderer
-        // needs where the host cannot give Chromium a sandbox or a GPU process, as in a CI container.
-        args: [SHELL_ENTRY, '--no-sandbox', '--disable-gpu', `--user-data-dir=${join(appDataDir, 'electron')}`],
-        env: shellEnv(appDataDir),
+    return electron.launch({ args: shellArgs(appDataDir), env: shellEnv(appDataDir) });
+}
+
+/** Starts the shell outside Playwright's control and collects what it printed. */
+export function spawnShell(appDataDir: string) {
+    const child: ChildProcess = spawn(electronBinary(), shellArgs(appDataDir), { env: shellEnv(appDataDir), stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
     });
+
+    return { child, stderr: () => stderr };
 }
 
 export async function closeShell(app: ElectronApplication, appDataDir: string) {
