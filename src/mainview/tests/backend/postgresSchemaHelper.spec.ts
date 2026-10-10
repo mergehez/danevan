@@ -108,6 +108,70 @@ describe('usePostgresSchemaHelper.getTableNames', () => {
     });
 });
 
+describe('usePostgresSchemaHelper.buildModifyTableStatements', () => {
+    // The PostgreSQL plan is generated locally, so the helper's own quoting, escaping and
+    // normalisation are what a user's table gets; assert them through the wrapper.
+    const sqlDeps = {
+        ...schemaHelperDeps,
+        escapeSqlString: (value: string) => `'${value.replaceAll("'", "''")}'`,
+    };
+
+    it('generates the plan with the connection quoting and escaping', () => {
+        const statements = usePostgresSchemaHelper(sqlDeps).buildModifyTableStatements(
+            createClient(rowsQuery([])),
+            'orders',
+            {
+                name: 'orders',
+                columns: [
+                    {
+                        cid: 0,
+                        name: 'note',
+                        type: 'text',
+                        notNull: false,
+                        defaultValue: null,
+                        isPrimaryKey: false,
+                        primaryKeyOrdinal: null,
+                        isAutoIncrement: false,
+                        comment: 'old',
+                        collation: null,
+                        onUpdate: null,
+                    },
+                ],
+                indexes: [],
+                foreignKeys: [],
+                rowCount: 0,
+            },
+            {
+                table: { name: 'orders', comment: "owner's notes", engine: null, collation: null, options: null },
+                columns: [
+                    {
+                        originalName: 'note',
+                        name: 'memo',
+                        type: 'text',
+                        notNull: false,
+                        defaultValue: null,
+                        isPrimaryKey: false,
+                        primaryKeyOrdinal: null,
+                        isAutoIncrement: false,
+                        comment: 'memo column',
+                        collation: null,
+                        onUpdate: null,
+                    },
+                ],
+                keys: [],
+                foreignKeys: [],
+                indexes: [],
+            }
+        );
+
+        expect(statements).toEqual([
+            'ALTER TABLE "orders" RENAME COLUMN "note" TO "memo";',
+            'COMMENT ON COLUMN "orders"."memo" IS \'memo column\';',
+            "COMMENT ON TABLE \"orders\" IS 'owner''s notes';",
+        ]);
+    });
+});
+
 describe('usePostgresSchemaHelper row counts', () => {
     it('counts an opened table exactly with COUNT(*)', async () => {
         const queryRows = rowsQuery([{ count: 765_432n }]);
