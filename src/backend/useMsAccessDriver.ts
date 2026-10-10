@@ -26,6 +26,7 @@ import {
     msAccessRuntimeArtifacts,
 } from './msAccessRuntimeManifest.ts';
 import type { ModifySchemaColumn, ModifySchemaKey, ModifySchemaPlan } from './useSqliteDriver.ts';
+import { statementWrites } from './useRemoteDriverTools.ts';
 import { spawn, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
@@ -58,6 +59,8 @@ export type MsAccessServerRecord = {
 };
 
 type MsAccessDriverToolsDeps = {
+    /** Throws when the connection refuses writes (a read-only connection). */
+    assertWritable?: (connectionId: number) => void;
     getConnection: (connectionId: number) => MsAccessConnectionRecord | undefined;
     getServer: (serverId: number) => MsAccessServerRecord | undefined;
     listConnections: (serverId: number) => MsAccessConnectionRecord[];
@@ -1303,6 +1306,12 @@ export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverToo
         },
         getTableData,
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
+            // A read on a read-only connection still runs; anything that writes is refused before
+            // it reaches the database.
+            if (statementWrites(sql)) {
+                deps.assertWritable?.(connectionId);
+            }
+
             const databasePath = getMsAccessDatabasePath(deps, connectionId);
             const bridgeResponse = await runWorkerBridge<{
                 kind?: unknown;
@@ -1340,6 +1349,8 @@ export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverToo
             } satisfies QueryExecutionResult;
         },
         async modifyTable(connectionId: number, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan): Promise<void> {
+            deps.assertWritable?.(connectionId);
+
             const explicitPlanErrors = getMsAccessExplicitPlanErrors(currentInfo, nextPlan);
 
             if (nextPlan.allowTableRebuild && explicitPlanErrors.length > 0) {
@@ -1362,6 +1373,8 @@ export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverToo
             await runWorkerBridge(deps, databasePath, ['executeStatements', ...statements]);
         },
         async updateColumn(params: UpdateColumnParams): Promise<TableData> {
+            deps.assertWritable?.(params.connectionId);
+
             const result = await applyChanges({
                 connectionId: params.connectionId,
                 tableName: params.tableName,
@@ -1381,6 +1394,8 @@ export function useMsAccessDriverTools(deps: MsAccessDriverToolsDeps): DriverToo
             return result.tableData;
         },
         async applyTableChanges(params: NormalizedApplyTableChanges): Promise<ApplyTableChangesResult> {
+            deps.assertWritable?.(params.connectionId);
+
             return applyChanges(params);
         },
     } satisfies DriverTools;

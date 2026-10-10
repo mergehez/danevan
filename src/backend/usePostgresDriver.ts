@@ -24,6 +24,8 @@ type PostgresDataSourceConfig = {
 };
 
 type PostgresDriverToolsDeps = {
+    /** Throws when the connection refuses writes (a read-only connection). */
+    assertWritable?: (connectionId: number) => void;
     escapeSqlString: (value: string) => string;
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     quoteIdentifier: (identifier: string) => string;
@@ -444,6 +446,7 @@ export function usePostgresDriverTools(deps: PostgresDriverToolsDeps): DriverToo
     }
 
     const baseTools = useRemoteDriverTools({
+        assertWritable: deps.assertWritable,
         testConnection: testConnection,
         withRemoteClient: withPostgresClient,
         withServerClient: withPostgresServerClient,

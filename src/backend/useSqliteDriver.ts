@@ -17,6 +17,7 @@ import type {
 import { BunTypeOrmSqliteDriver } from './bunTypeOrmSqliteDriver.ts';
 import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
 import { normalizeCountValue } from './dialectSql.ts';
+import { statementWrites } from './useRemoteDriverTools.ts';
 import { buildSqliteCreateTableSql, enrichSqliteColumns, getSqliteAutoIncrementColumn, normalizeOptionalText } from './sqliteTableDdl.ts';
 import { mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata, mapTypeOrmTableMetadata } from './typeOrmMappers.ts';
 
@@ -108,6 +109,8 @@ type SqliteServerRecord = {
 };
 
 export type SqliteDriverToolsDeps = {
+    /** Throws when the connection refuses writes (a read-only connection). */
+    assertWritable?: (connectionId: number) => void;
     getConnection: (connectionId: number) => SqliteConnectionRecord | undefined;
     getServer: (serverId: number) => SqliteServerRecord | undefined;
     listConnections: (serverId: number) => SqliteConnectionRecord[];
@@ -686,6 +689,12 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
             return withSqliteTypeOrm(connectionId, async ({ queryRunner }) => getSqliteTableData(queryRunner, tableName, limit, offset, orderBy, returnQuery));
         },
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
+            // A read on a read-only connection still runs; anything that writes is refused before
+            // it reaches the file.
+            if (statementWrites(sql)) {
+                deps.assertWritable?.(connectionId);
+            }
+
             return withSqliteTypeOrm(connectionId, async (client) => {
                 const result = (await client.queryRunner.query(sql, params ?? [], true)) as {
                     raw: unknown;
@@ -718,9 +727,12 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
             });
         },
         async modifyTable(connectionId: number, tableName: string, currentInfo: TableInfo, nextColumns) {
+            deps.assertWritable?.(connectionId);
             sqliteSchemaHelper.applyModifyTable(connectionId, tableName, currentInfo, nextColumns);
         },
         async updateColumn(params: UpdateColumnParams): Promise<TableData> {
+            deps.assertWritable?.(params.connectionId);
+
             const normalizedTableName = deps.normalizeTableName(params.tableName);
             const normalizedTargetColumn = deps.normalizeColumnName(params.targetColumn, 'Target column');
             const normalizedMatchColumn = deps.normalizeColumnName(params.matchColumn, 'Match column');
@@ -739,6 +751,8 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
             });
         },
         async applyTableChanges(params: NormalizedApplyTableChanges): Promise<ApplyTableChangesResult> {
+            deps.assertWritable?.(params.connectionId);
+
             return withSqliteTypeOrm(params.connectionId, async ({ queryRunner }) => {
                 let transactionOpen = false;
 

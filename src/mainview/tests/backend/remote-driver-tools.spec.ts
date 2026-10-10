@@ -3,14 +3,15 @@
 // from), falling back to the plain row query when a driver cannot supply them.
 // It also decides when a table is too large to count exactly.
 import { describe, expect, it, vi } from 'vitest';
-import { useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper } from '../../../backend/useRemoteDriverTools';
+import { isRowReturningSql, statementWrites, useRemoteDriverTools, type RemoteDriverClient, type RemoteDriverHelper } from '../../../backend/useRemoteDriverTools';
 
-function createTools(client: Partial<RemoteDriverClient>) {
+function createTools(client: Partial<RemoteDriverClient>, assertWritable?: (connectionId: number) => void) {
     const queryRows = vi.fn(async () => [{ id: 1 }]);
 
     return {
         queryRows,
         tools: useRemoteDriverTools({
+            assertWritable,
             testConnection: vi.fn(),
             withRemoteClient: async <T>(_connectionId: number, callback: (remoteClient: RemoteDriverClient) => Promise<T>) =>
                 callback({ queryRows, execute: vi.fn(), withTransaction: vi.fn(), ...client } as RemoteDriverClient),
@@ -182,5 +183,50 @@ describe('useRemoteDriverTools row counts', () => {
         expect(queryRowCount).not.toHaveBeenCalled();
         expect(info.rowCount).toBe(1_000_000);
         expect(info.columns).toEqual([{ name: 'id' }]);
+    });
+});
+
+// A read-only connection is a policy, not a permission: the statement must not reach the server.
+describe('statements that write', () => {
+    it('reads the statements that only read', () => {
+        expect(statementWrites('select 1')).toBe(false);
+        expect(statementWrites('  -- overnight report\n SELECT count(*) FROM orders')).toBe(false);
+        expect(statementWrites('PRAGMA table_info(orders)')).toBe(false);
+        expect(statementWrites('EXPLAIN SELECT 1')).toBe(false);
+        expect(statementWrites('with recent as (select 1) select * from recent')).toBe(false);
+        expect(isRowReturningSql('with recent as (select 1) select * from recent')).toBe(true);
+    });
+
+    it('sees a write, behind a comment or inside a CTE', () => {
+        expect(statementWrites('/* cleanup */ delete from orders')).toBe(true);
+        expect(statementWrites('INSERT INTO orders VALUES (1)')).toBe(true);
+        expect(statementWrites('create table orders (id int)')).toBe(true);
+        expect(statementWrites('with recent as (select 1) insert into orders select * from recent')).toBe(true);
+    });
+});
+
+describe('a read-only connection', () => {
+    it('refuses a write before it reaches the server', async () => {
+        const execute = vi.fn(async () => ({ affectedRows: 1 }));
+        const queryRows = vi.fn(async () => [{ id: 1 }]);
+        const assertWritable = vi.fn((connectionId: number) => {
+            throw new Error(`connection ${connectionId} is read-only`);
+        });
+        const { tools } = createTools({ queryRows, execute } as Partial<RemoteDriverClient>, assertWritable);
+
+        await expect(tools.runQuery(7, "update orders set name = 'Ada'")).rejects.toThrow('connection 7 is read-only');
+        expect(execute).not.toHaveBeenCalled();
+        expect(queryRows).not.toHaveBeenCalled();
+    });
+
+    it('still runs the reads', async () => {
+        const execute = vi.fn(async () => ({ affectedRows: 0 }));
+        const queryRows = vi.fn(async () => [{ id: 1 }]);
+        const assertWritable = vi.fn();
+        const { tools } = createTools({ queryRows, execute } as Partial<RemoteDriverClient>, assertWritable);
+
+        expect(await tools.runQuery(7, 'SELECT id FROM orders')).toMatchObject({ kind: 'rows', rows: [{ id: 1 }] });
+        expect(assertWritable).not.toHaveBeenCalled();
+        expect(queryRows).toHaveBeenCalledOnce();
     });
 });

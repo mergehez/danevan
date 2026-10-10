@@ -145,7 +145,7 @@ function createConnectionParams(serverId: number, overrides: Partial<CreateConne
 }
 
 /** A real SQLite file plus its file source and one connection. Nothing remote is involved. */
-async function createFileSource(name = 'Local SQLite') {
+async function createFileSource(name = 'Local SQLite', options: { readonly?: boolean } = {}) {
     const filePath = createSqliteFile(`${name.replaceAll(/[^a-zA-Z0-9]+/g, '-')}.sqlite`);
     const created = await app.createServer(createServerParams({ name, filePath }));
     const serverId = created.servers.find((server) => server.name === name)?.id;
@@ -154,7 +154,7 @@ async function createFileSource(name = 'Local SQLite') {
         throw new Error(`fixture: server ${name} was not created`);
     }
 
-    const withConnection = await app.createConnection(createConnectionParams(serverId, { name: `${name} connection` }));
+    const withConnection = await app.createConnection(createConnectionParams(serverId, { name: `${name} connection`, readonly: options.readonly }));
     const connectionId = withConnection.connections.find((connection) => connection.server_id === serverId)?.id;
 
     if (connectionId === undefined) {
@@ -668,6 +668,49 @@ describe('connection round trips', () => {
             { name: 'Second' },
             { name: 'Local DB connection' },
         ]);
+    });
+});
+
+// A read-only connection is the app's own policy: the statement must not reach the driver.
+describe('a read-only connection', () => {
+    function readWidgetLabels(filePath: string) {
+        const file = new Database(filePath);
+
+        try {
+            return file
+                .prepare('SELECT label FROM widgets ORDER BY id')
+                .all()
+                .map((row) => (row as { label: string }).label);
+        } finally {
+            file.close();
+        }
+    }
+
+    it('refuses the writes and still runs the reads', async () => {
+        const { connectionId, filePath } = await createFileSource('Read-only DB', { readonly: true });
+
+        await expect(app.runQuery({ connectionId, sql: "INSERT INTO widgets (label) VALUES ('blocked')" })).rejects.toThrow(
+            'The connection "Read-only DB connection" is read-only, so the write was refused. Allow writes from its sidebar menu to change that.'
+        );
+        await expect(app.runQuery({ connectionId, sql: 'DROP TABLE widgets' })).rejects.toThrow('is read-only');
+        await expect(app.updateColumn({ connectionId, tableName: 'widgets', targetColumn: 'label', value: 'blocked', matchColumn: 'id', matchValue: 1 })).rejects.toThrow(
+            'is read-only'
+        );
+        await expect(
+            app.applyTableChanges({ connectionId, tableName: 'widgets', changes: [{ targetColumn: 'label', value: 'blocked', matchColumn: 'id', matchValue: 1 }] })
+        ).rejects.toThrow('is read-only');
+
+        expect(readWidgetLabels(filePath)).toEqual([]);
+
+        expect(await app.runQuery({ connectionId, sql: 'SELECT label FROM widgets' })).toMatchObject({ kind: 'rows', rows: [] });
+    });
+
+    it('lets the same statements through once the connection allows writes', async () => {
+        const { connectionId, filePath } = await createFileSource('Writable DB');
+
+        await app.runQuery({ connectionId, sql: "INSERT INTO widgets (label) VALUES ('saved')" });
+
+        expect(readWidgetLabels(filePath)).toEqual(['saved']);
     });
 });
 

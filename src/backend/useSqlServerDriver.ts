@@ -17,6 +17,8 @@ type SqlServerDataSourceConfig = {
 };
 
 type SqlServerDriverToolsDeps = {
+    /** Throws when the connection refuses writes (a read-only connection). */
+    assertWritable?: (connectionId: number) => void;
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     getRemoteConnectionTarget: (connectionId: number) => RemoteConnectionTarget;
     getRemoteServerTarget: (serverId: number) => RemoteConnectionTarget;
@@ -464,6 +466,7 @@ export function useSqlServerDriverTools(deps: SqlServerDriverToolsDeps): DriverT
         normalizeOptionalText: deps.normalizeOptionalText,
     });
     const baseTools = useRemoteDriverTools({
+        assertWritable: deps.assertWritable,
         testConnection,
         withRemoteClient: withSqlServerClient,
         withServerClient: withSqlServerServerClient,

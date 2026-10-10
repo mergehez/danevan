@@ -56,6 +56,8 @@ type MySqlForeignKeyRow = {
 };
 
 type MySqlDriverToolsDeps = {
+    /** Throws when the connection refuses writes (a read-only connection). */
+    assertWritable?: (connectionId: number) => void;
     escapeSqlString: (value: string) => string;
     normalizeOptionalText: (value: string | null | undefined) => string | null;
     getRemoteConnectionTarget: (connectionId: number) => RemoteConnectionTarget;
@@ -798,6 +800,7 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
     });
 
     const baseTools = useRemoteDriverTools({
+        assertWritable: deps.assertWritable,
         testConnection,
         withRemoteClient: withMySqlClient,
         withServerClient: withMySqlServerClient,

@@ -103,6 +103,26 @@ export function stripLeadingSqlComments(sql: string) {
     }
 }
 
+/** Whether a statement's first keyword is one the drivers report rows for. */
+export function isRowReturningSql(sql: string) {
+    return /^(select|show|describe|pragma|with|explain)\b/i.test(stripLeadingSqlComments(sql));
+}
+
+/**
+ * Whether a statement would write to the database. A read-only connection only takes the statements
+ * that plainly read: `WITH` is scanned for a write verb because its own keyword is the CTE's, and
+ * everything that is not a read keyword counts as a write.
+ */
+export function statementWrites(sql: string) {
+    const statement = stripLeadingSqlComments(sql);
+
+    if (/^with\b/i.test(statement)) {
+        return /\b(insert|update|delete|replace|merge|create|drop|alter|truncate)\b/i.test(statement);
+    }
+
+    return !/^(select|show|describe|desc|pragma|explain|table|values)\b/i.test(statement);
+}
+
 type RemoteForeignKeyController = {
     disable: (client: RemoteDriverClient) => Promise<void>;
     enable: (client: RemoteDriverClient) => Promise<void>;
@@ -121,6 +141,8 @@ type RemoteDriverToolsDeps = {
     helper: RemoteDriverHelper;
     foreignKeyController?: RemoteForeignKeyController;
     unsupportedForeignKeyDisableMessage?: string;
+    /** Throws when the connection refuses writes (a read-only connection). */
+    assertWritable?: (connectionId: number) => void;
 };
 
 export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
@@ -222,6 +244,8 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             const statement = deps.helper.buildCreateDatabaseStatement(databaseName, collation);
 
             if (typeof resolvedConnectionId === 'number') {
+                deps.assertWritable?.(resolvedConnectionId);
+
                 return deps.withRemoteClient(resolvedConnectionId, async (client) => {
                     await client.execute({ sql: statement });
                 });
@@ -238,8 +262,14 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
         getTableData: getTableData,
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
             return deps.withRemoteClient(connectionId, async (client) => {
+                // A read on a read-only connection still runs; anything that writes is refused
+                // before it reaches the server.
+                if (statementWrites(sql)) {
+                    deps.assertWritable?.(connectionId);
+                }
+
                 const bindings = params ?? [];
-                const isRowReturningQuery = /^(select|show|describe|pragma|with|explain)\b/i.test(stripLeadingSqlComments(sql));
+                const isRowReturningQuery = isRowReturningSql(sql);
                 const statement = { sql, params: bindings } satisfies RemoteStatement;
 
                 if (isRowReturningQuery) {
@@ -263,6 +293,8 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             });
         },
         async modifyTable(connectionId: number, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan): Promise<void> {
+            deps.assertWritable?.(connectionId);
+
             await deps.withRemoteClient(connectionId, async (client) => {
                 const statements = await deps.helper.buildModifyTableStatements(client, tableName, currentInfo, nextPlan);
 
@@ -278,6 +310,8 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             });
         },
         async updateColumn(params: UpdateColumnParams): Promise<TableData> {
+            deps.assertWritable?.(params.connectionId);
+
             const normalizedTableName = deps.normalizeTableName(params.tableName);
             const normalizedTargetColumn = deps.normalizeColumnName(params.targetColumn, 'Target column');
             const normalizedMatchColumn = deps.normalizeColumnName(params.matchColumn, 'Match column');
@@ -289,6 +323,8 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             });
         },
         async applyTableChanges(params: NormalizedApplyTableChanges): Promise<ApplyTableChangesResult> {
+            deps.assertWritable?.(params.connectionId);
+
             return deps.withRemoteClient(params.connectionId, async (client) => {
                 if (params.disableForeignKeyChecks && !deps.foreignKeyController) {
                     throw new Error(deps.unsupportedForeignKeyDisableMessage ?? 'Disabling foreign key checks is not supported for this driver.');

@@ -300,6 +300,24 @@ function normalizeModifyPlan(params: ModifyTableParams): ModifySchemaPlan {
     } satisfies ModifySchemaPlan;
 }
 
+/**
+ * A connection's own policy: a read-only connection is there to be looked at, so a statement that
+ * writes is refused with the connection named instead of being sent.
+ */
+function assertConnectionWritable(connectionId: number) {
+    const connection = appDb.getConnection(connectionId);
+
+    if (!connection) {
+        throw new Error('The selected connection could not be found.');
+    }
+
+    if (!connection.readonly) {
+        return;
+    }
+
+    throw new Error(`The connection "${connection.name}" is read-only, so the write was refused. Allow writes from its sidebar menu to change that.`);
+}
+
 function getConnectionContext(connectionId: number): ConnectionContext {
     const connection = appDb.getConnection(connectionId);
 
@@ -482,6 +500,7 @@ function resolveServerConnectionId(serverId: number, connectionId?: number): num
 
 const driverRegistry: Record<DbType, DriverTools> = {
     sqlite: useSqliteDriverTools({
+        assertWritable: assertConnectionWritable,
         getConnection: (connectionId) => appDb.getConnection(connectionId),
         getServer: (serverId) => appDb.getServer(serverId),
         listConnections: (serverId) => appDb.listConnections(serverId),
@@ -512,6 +531,7 @@ const driverRegistry: Record<DbType, DriverTools> = {
                   buildColumnStats,
               }),
     mysql: useMySqlDriverTools({
+        assertWritable: assertConnectionWritable,
         escapeSqlString,
         normalizeOptionalText,
         getRemoteConnectionTarget: getConnectionRemoteTarget,
@@ -525,6 +545,7 @@ const driverRegistry: Record<DbType, DriverTools> = {
         remoteMutationId,
     }),
     postgresql: usePostgresDriverTools({
+        assertWritable: assertConnectionWritable,
         escapeSqlString,
         normalizeOptionalText,
         quoteIdentifier,
@@ -539,6 +560,7 @@ const driverRegistry: Record<DbType, DriverTools> = {
         remoteMutationId,
     }),
     sqlserver: useSqlServerDriverTools({
+        assertWritable: assertConnectionWritable,
         normalizeOptionalText,
         getRemoteConnectionTarget: getConnectionRemoteTarget,
         getRemoteServerTarget: getServerRemoteTarget,
