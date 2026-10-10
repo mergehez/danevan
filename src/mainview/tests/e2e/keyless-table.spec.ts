@@ -1,7 +1,7 @@
 // A table without a primary key has no WHERE clause that names a row. The grid used to fall back
 // to the first column, so saving one edit overwrote every row sharing that value. The edit is now
-// refused where the user made it, on a real MySQL table (the drivers that reach a server are the
-// ones whose save is built from the staged change).
+// refused where the user makes it; the spec drives it on a real MySQL table, because a server-side
+// save is the one built from the staged change.
 import { expect, test } from '@playwright/test';
 import { API, MYSQL, createMySqlServerAndConnection, openMySqlTable, post, requireMySqlDatabase } from './helpers';
 
