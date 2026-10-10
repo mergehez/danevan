@@ -138,6 +138,21 @@ function createSqliteDataSource(databasePath: string) {
     });
 }
 
+/**
+ * A BigInt cannot survive `JSON.stringify` and a JS number cannot hold it exactly, so a SQLite
+ * integer leaves the driver as its exact decimal text: the grid shows it and saves it unchanged.
+ */
+function mapSqliteRowValues(rows: Array<Record<string, SqlValue>>): Array<Record<string, SqlValue>> {
+    return rows.map(
+        (row) => Object.fromEntries(Object.entries(row).map(([column, value]) => [column, typeof value === 'bigint' ? value.toString() : value])) satisfies Record<string, SqlValue>
+    );
+}
+
+/** Schema metadata (a cid, a `notnull`/`pk` flag) stays a number even though the driver reads it as a BigInt. */
+function toSqliteNumber(value: number | bigint | string | null | undefined) {
+    return value == null ? 0 : Number(value);
+}
+
 /** The AUTOINCREMENT counter of a table, absent when the table has no AUTOINCREMENT column. */
 function readSqliteAutoIncrementSequence(database: Database.Database, tableName: string) {
     const sequenceTable = database.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'").get() as { present: number } | undefined;
@@ -366,7 +381,7 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
         const columns = (await queryRunner.query(`PRAGMA table_info(${deps.quoteIdentifier(tableName)})`)) as Array<{ name: string }>;
         const orderClause = buildSqliteOrderBy(orderBy, deps.quoteIdentifier);
         const sql = `SELECT * FROM ${deps.quoteIdentifier(tableName)}${orderClause} LIMIT ?` + (offset > 0 ? ` OFFSET ?` : '');
-        const rows = (await queryRunner.query(sql, offset > 0 ? [limit, offset] : [limit])) as Array<Record<string, SqlValue>>;
+        const rows = mapSqliteRowValues((await queryRunner.query(sql, offset > 0 ? [limit, offset] : [limit])) as Array<Record<string, SqlValue>>);
         const columnNames = columns.map((column) => column.name);
         const sqlWithParams = sql.replace('?', limit.toString()).replace('?', offset.toString());
         return {
@@ -526,15 +541,25 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
                     throw new Error(`Table '${tableName}' was not found.`);
                 }
 
-                const columns = (await queryRunner.query(`PRAGMA table_xinfo(${deps.quoteIdentifier(tableName)})`)) as Array<{
-                    cid: number;
-                    name: string;
-                    type: string;
-                    notnull: number;
-                    dflt_value: string | null;
-                    pk: number;
-                    hidden: number;
-                }>;
+                const columns = (
+                    (await queryRunner.query(`PRAGMA table_xinfo(${deps.quoteIdentifier(tableName)})`)) as Array<{
+                        cid: number | bigint;
+                        name: string;
+                        type: string;
+                        notnull: number | bigint;
+                        dflt_value: string | null;
+                        pk: number | bigint;
+                        hidden: number | bigint;
+                    }>
+                ).map((column) => ({
+                    cid: toSqliteNumber(column.cid),
+                    name: column.name,
+                    type: column.type,
+                    notnull: toSqliteNumber(column.notnull),
+                    dflt_value: column.dflt_value,
+                    pk: toSqliteNumber(column.pk),
+                    hidden: toSqliteNumber(column.hidden),
+                }));
 
                 return {
                     name: tableName,
@@ -629,18 +654,20 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
 
                 if (rows) {
                     const columns = rows.length > 0 ? Object.keys(rows[0] ?? {}) : readSqliteResultColumns(client, sql);
+                    const mappedRows = mapSqliteRowValues(rows);
 
                     return {
                         kind: 'rows',
                         columns,
-                        columnStats: deps.buildColumnStats(columns, rows),
-                        rows,
+                        columnStats: deps.buildColumnStats(columns, mappedRows),
+                        rows: mappedRows,
                     } satisfies QueryExecutionResult;
                 }
 
                 return {
                     kind: 'mutation',
-                    lastInsertRowid: sqliteMutationId({ lastInsertRowid: (result.raw as number | bigint | undefined) ?? 0 }),
+                    // A row id is a counter the UI displays, not user data, and JSON cannot carry a BigInt.
+                    lastInsertRowid: Number(sqliteMutationId({ lastInsertRowid: (result.raw as number | bigint | undefined) ?? 0 })),
                 } satisfies QueryExecutionResult;
             });
         },

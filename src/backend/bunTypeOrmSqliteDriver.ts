@@ -7,6 +7,24 @@ type BunTypeOrmSqliteOptions = {
     verbose?: ((sql: string) => void) | null;
 };
 
+/** `safeIntegers` hands every SQLite integer back as a BigInt; schema metadata (a cid, a
+ *  `notnull`/`pk` flag) is read by TypeORM as a plain number, so pragma results are downcast. */
+function toPragmaNumbers(result: unknown): unknown {
+    if (Array.isArray(result)) {
+        return result.map(toPragmaNumbers);
+    }
+
+    if (typeof result === 'bigint') {
+        return Number(result);
+    }
+
+    if (result && typeof result === 'object') {
+        return Object.fromEntries(Object.entries(result).map(([key, value]) => [key, toPragmaNumbers(value)]));
+    }
+
+    return result;
+}
+
 class BunTypeOrmSqliteStatement {
     readonly reader: boolean;
 
@@ -50,6 +68,9 @@ export class BunTypeOrmSqliteDriver {
         });
         this.logQuery = typeof options.verbose === 'function' ? options.verbose : undefined;
 
+        // A JS number cannot hold every 64-bit SQLite integer: reading one without this returns
+        // a rounded value, and saving an edit then writes the rounded value back.
+        this.database.defaultSafeIntegers(true);
         this.database.pragma('journal_mode = WAL');
     }
 
@@ -59,7 +80,7 @@ export class BunTypeOrmSqliteDriver {
 
     pragma(statement: string) {
         this.logQuery?.(`PRAGMA ${statement}`);
-        return this.database.pragma(statement, { simple: false });
+        return toPragmaNumbers(this.database.pragma(statement, { simple: false }));
     }
 
     exec(sql: string) {

@@ -56,6 +56,7 @@ describe('sqlite runQuery columns', () => {
         const result = await tools.runQuery(1, 'SELECT id, message FROM filled_log');
 
         expect(result.kind === 'rows' ? result.columns : []).toEqual(['id', 'message']);
-        expect(result.kind === 'rows' ? result.rows : []).toEqual([{ id: 1, message: 'hello' }]);
+        // SQLite integers leave the driver as exact decimal text (see `useSqliteDriver.spec.ts`).
+        expect(result.kind === 'rows' ? result.rows : []).toEqual([{ id: '1', message: 'hello' }]);
     });
 });

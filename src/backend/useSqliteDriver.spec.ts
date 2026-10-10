@@ -182,3 +182,43 @@ describe('SQLite modify-table rebuild', () => {
         expect(probe((database) => database.prepare('SELECT count(*) AS count FROM orders').get())).toEqual({ count: 2 });
     });
 });
+
+// A SQLite integer holds 64 bits, but a JS number only counts to 2^53 exactly. Without
+// `safeIntegers` a value above that came back rounded and a saved edit wrote the rounded value.
+describe('SQLite 64-bit integers', () => {
+    it('reads a value above 2^53 exactly and writes an edited value back unrounded', async () => {
+        const file = new Database(databasePath);
+        file.exec(`
+            CREATE TABLE readings (id integer primary key, value integer);
+            INSERT INTO readings (id, value) VALUES (1, 9007199254740993);
+        `);
+        file.close();
+
+        expect((await tools.getTableData(1, 'readings', 100, 0)).rows).toEqual([{ id: '1', value: '9007199254740993' }]);
+
+        await tools.updateColumn({
+            connectionId: 1,
+            tableName: 'readings',
+            targetColumn: 'value',
+            matchColumn: 'id',
+            value: '9007199254740995',
+            matchValue: '1',
+        });
+
+        expect((await tools.getTableData(1, 'readings', 100, 0)).rows).toEqual([{ id: '1', value: '9007199254740995' }]);
+        expect(probe((database) => database.prepare('SELECT value FROM readings WHERE id = 1').safeIntegers(true).get())).toEqual({ value: 9007199254740995n });
+    });
+
+    it('reports the values a query returns exactly, up to the largest 64-bit integer', async () => {
+        const file = new Database(databasePath);
+        file.exec('CREATE TABLE readings (value integer); INSERT INTO readings (value) VALUES (9223372036854775807);');
+        file.close();
+
+        expect(await tools.runQuery(1, 'SELECT value FROM readings')).toEqual({
+            kind: 'rows',
+            columns: ['value'],
+            columnStats: { value: 1 },
+            rows: [{ value: '9223372036854775807' }],
+        });
+    });
+});
