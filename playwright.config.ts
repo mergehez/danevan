@@ -1,26 +1,6 @@
 import { defineConfig } from '@playwright/test';
-import { rmSync } from 'node:fs';
-import { join } from 'node:path';
 
 const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '3263', 10);
-
-/**
- * The browser suite gets its own app DB instead of the developer's real
- * `~/Library/Application Support/danevan`. The real one carries sources, scripts and a selected
- * connection from previous sessions, which leaked into the assertions (a stale selection whose
- * temp SQLite file is gone made specs wait for a panel that never appeared); writing to it is a
- * side effect on the machine. A run therefore starts from an empty DB in the workspace.
- */
-function workspaceAppDataDir() {
-    if (process.env.APP_DATA_DIR) {
-        return process.env.APP_DATA_DIR;
-    }
-
-    const appDataDir = join(process.cwd(), '.e2e-data');
-    rmSync(appDataDir, { recursive: true, force: true });
-
-    return appDataDir;
-}
 
 export default defineConfig({
     testDir: './src/mainview/tests/e2e',
@@ -48,6 +28,5 @@ export default defineConfig({
         timeout: 60_000,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { APP_DATA_DIR: workspaceAppDataDir() },
     },
 });

@@ -35,8 +35,6 @@ dist-ssr
 # Playwright
 test-results/
 playwright-report/
-# The app DB the browser suite boots against (see playwright.config.ts)
-.e2e-data/
 
 # Vitest coverage
 coverage/
