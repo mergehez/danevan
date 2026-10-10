@@ -1,7 +1,7 @@
 # todos — findings and fix list
 
-**Status:** 14 entries closed (T1, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U4) · 2 open
-(T2 deferred, U5 bug) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12,
+**Status:** 15 entries closed (T1, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5) · 1 open
+(T2 deferred) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12,
 T14's tree work) · the measured before-state is in `## Ground rules for whoever picks a task up` ·
 severity framed for the developer's setup: local + 3 remote MySQL servers (portal, gateway, hetzner),
 2 SQLite files, 2 MS Access files, databases up to 30 GB and 163 tables, 28 saved connections, grid
@@ -184,6 +184,15 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   re-serialise the draft through `setModalEditingValue` and no-op on invalid JSON, and `Save` is
   unaffected. Guarded by `src/mainview/tests/e2e/cell-editor-modal.spec.ts` and "offers JSON prettify
   and compact only for a value that is a JSON object".
+- **U5 — Modify Table: Undo restores the column type.** The field is a `ListBox` with `freeEdit`,
+  whose text is driven by the component's own `searchQuery`; a free-edit commit (or a pick from the
+  list) left that query behind, so every later render re-applied the stale text over the selection the
+  draft had restored — the draft and the preview were already correct, only the field disagreed. The
+  `props.selection` watcher now takes the text back whenever the selection changes outside the field
+  (`src/shared/components/ListBox.tsx`). Guarded by "shows a selection that changes after a free-edit
+  value was committed" (`src/mainview/tests/components/ListBox.spec.ts`) and by the undo/redo test in
+  `src/mainview/tests/e2e/modify-table-popup.spec.ts`, which now asserts the field reverts to
+  `varchar(200)` and the preview reads "No change yet" before Redo re-applies the change.
 
 ## Open
 
@@ -216,21 +225,6 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
       same condition `TESTS-AUDIT.md` records as `e2e-13`. The batched call can be written for those
       drivers, but only the MySQL half can be proven here (SQLite is not in this task's scope: its
       metadata comes from pragmas, not from a catalog query).
-- **U5 — Modify Table: Undo does not restore a changed column type (bug).** Repro: open a table's
-  "Modify Table…" popup → **columns** → select `name` → change its type to `varchar(500)` → press
-  **Undo**: the type input still shows `varchar(500)`. The Undo button is enabled and the click runs;
-  only the column-type draft does not come back, and it reproduces on the pre-T10 code too, so it
-  predates the history-snapshot rewrite.
-    - _Evidence_: `src/mainview/composables/useModifyTable.ts`, the watcher around
-      `captureHistorySnapshot`/`applyHistorySnapshot`. The browser spec "offers undo and redo while a
-      draft change is pending" (`src/mainview/tests/e2e/modify-table-popup.spec.ts:185`) deliberately
-      stops short of asserting the revert because of this bug — it clicks Undo then Redo and asserts
-      the database, so the spec stays green while the bug lives.
-    - _Fix_: check whether the type input keeps its own local copy of the value (the popup binds it
-      through a component that may not re-read the draft after the columns array is replaced), or
-      whether the type change is committed to a draft the snapshot does not carry.
-    - _Verify_: browser spec — change the type, Undo, assert the input **and** the generated preview
-      SQL show the original type; Redo brings the change back.
 
 ## Not planned
 

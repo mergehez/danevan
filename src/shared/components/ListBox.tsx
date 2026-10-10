@@ -414,7 +414,19 @@ export const ListBox = componentGeneric(
 
         const dropdownZIndex = ref(90);
 
-        watch(() => props.selection, setSelectionFromProps);
+        // A selection that changes outside the field (an undo, a revert, a reload) owns the text.
+        // The query left behind by an earlier selection or free-edit commit has to be replaced too,
+        // because the render would otherwise keep re-applying that stale text over the selection
+        // the user just restored.
+        watch(
+            () => props.selection,
+            (selection) => {
+                const selectedText = selection !== undefined && selection !== null ? getSelectionTextByValue(selection) : undefined;
+                searchQuery.value = selectedText ?? (props.freeEdit && typeof selection === 'string' ? selection : '');
+                noInputAfterSelection.value = true;
+                setSelectionFromProps(selection);
+            }
+        );
         watch(isDropdownOpen, (nv) => {
             dropdownZIndex.value = nv ? overlayState.claimZIndex() : overlayState.releaseZIndex(dropdownZIndex.value);
         });

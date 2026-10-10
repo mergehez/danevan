@@ -68,6 +68,53 @@ describe('ListBox', () => {
         wrapper.unmount();
     });
 
+    it('shows a selection that changes after a free-edit value was committed', async () => {
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+            configurable: true,
+            value: vi.fn(),
+        });
+
+        const wrapper = mount(
+            defineComponent({
+                components: { ListBox },
+                setup() {
+                    const selection = ref('alpha');
+
+                    return {
+                        items,
+                        selection,
+                        onSelect: (item: { value?: string } | undefined | null, query?: string) => {
+                            selection.value = String(item?.value ?? query ?? '');
+                        },
+                    };
+                },
+                template: '<ListBox :items="items" :selection="selection" :onSelect="onSelect" :freeEdit="true" />',
+            }),
+            {
+                attachTo: document.body,
+            }
+        );
+
+        const input = wrapper.get('input');
+
+        await input.trigger('focus');
+        await input.setValue('custom_type');
+        await input.trigger('keyup', { key: 'Enter' });
+
+        expect(wrapper.vm.selection).toBe('custom_type');
+        expect((input.element as HTMLInputElement).value).toBe('custom_type');
+
+        // A selection changed outside the field (an undo, a revert) is authoritative: the text the
+        // free-edit commit left behind must not keep masking it.
+        wrapper.vm.selection = 'alpha';
+        await wrapper.vm.$nextTick();
+        await wrapper.vm.$nextTick();
+
+        expect((input.element as HTMLInputElement).value).toBe('Alpha');
+
+        wrapper.unmount();
+    });
+
     it('applies rich option text and selects the first editable argument', async () => {
         Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
             configurable: true,

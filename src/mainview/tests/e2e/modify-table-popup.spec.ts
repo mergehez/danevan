@@ -192,19 +192,30 @@ test.describe('Modify table popup (e2e)', () => {
         await columnItem(page, 'name').click();
 
         const originalType = await columnTypeInput(page).inputValue();
+        expect(originalType).toBe('varchar(200)');
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+
         await setColumnType(page, 'varchar(500)');
         await expect(columnTypeInput(page)).toHaveValue('varchar(500)');
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
 
         // Both buttons are offered while there is history to walk.
         await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
 
-        // Undo/redo revisit the draft; nothing reaches the database until Apply.
+        // Undo has to bring the draft field back, not just the stored history: the field is what
+        // the user is looking at, and the preview has to follow it.
         await page.getByRole('button', { name: 'Undo' }).click();
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+        await expect(columnTypeInput(page)).toHaveValue('varchar(200)');
+
+        // Redo re-applies it; nothing reaches the database until Apply.
+        await expect(page.getByRole('button', { name: 'Redo' })).toBeEnabled();
         await page.getByRole('button', { name: 'Redo' }).click();
+        await expect(columnTypeInput(page)).toHaveValue('varchar(500)');
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
 
         const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
         expect(info.columns.find((c: any) => c.name === 'name').type.toLowerCase()).toContain('varchar(200)');
-        expect(originalType).toBe('varchar(200)');
     });
 
     test('moves a column down once through the popup', async ({ page }) => {
