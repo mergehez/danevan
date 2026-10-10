@@ -129,6 +129,61 @@ describe('SQLite modify-table rebuild', () => {
         expect(probe((database) => database.prepare('SELECT people_id FROM orders').all())).toEqual([{ people_id: 1 }]);
     });
 
+    it('renames a column so a child foreign key follows it', async () => {
+        const file = new Database(databasePath);
+        file.exec(`
+            CREATE TABLE people (id integer primary key, code text not null);
+            CREATE UNIQUE INDEX people_code_unique ON people(code);
+            CREATE TABLE orders (id integer primary key, people_code text REFERENCES people(code));
+            CREATE VIEW people_codes AS SELECT code FROM people;
+            INSERT INTO people (id, code) VALUES (1, 'ada');
+            INSERT INTO orders (id, people_code) VALUES (1, 'ada');
+        `);
+        file.close();
+
+        const info = await tools.getTableInfoFresh(1, 'people');
+        const plan = planFrom(info, (nextPlan) => {
+            nextPlan.columns.find((column) => column.name === 'code')!.name = 'label';
+            nextPlan.indexes.push({
+                originalName: 'people_code_unique',
+                name: 'people_code_unique',
+                comment: null,
+                isUnique: true,
+                type: null,
+                columns: [{ columnName: 'code', order: null }],
+            });
+        });
+
+        await tools.modifyTable(1, 'people', info, plan);
+
+        // A rebuild alone leaves the child's REFERENCES naming the column that no longer exists,
+        // which makes every write to `orders` fail with "foreign key mismatch".
+        expect(probe((database) => database.prepare('PRAGMA foreign_key_list(orders)').all())).toMatchObject([{ table: 'people', from: 'people_code', to: 'label' }]);
+        expect(probe((database) => database.prepare('SELECT label FROM people').all())).toEqual([{ label: 'ada' }]);
+        expect(probe((database) => database.prepare('SELECT label FROM people_codes').all())).toEqual([{ label: 'ada' }]);
+        probe((database) => database.exec("INSERT INTO orders (id, people_code) VALUES (2, 'ada')"));
+    });
+
+    it('refuses a rename whose target name is still held by another column', async () => {
+        const file = new Database(databasePath);
+        file.exec(`
+            CREATE TABLE people (id integer primary key, code text not null, legacy text);
+            INSERT INTO people (id, code, legacy) VALUES (1, 'ada', 'old');
+        `);
+        file.close();
+
+        const info = await tools.getTableInfoFresh(1, 'people');
+        const plan = planFrom(info, (nextPlan) => {
+            nextPlan.columns = nextPlan.columns.filter((column) => column.name !== 'legacy');
+            nextPlan.columns.find((column) => column.name === 'code')!.name = 'legacy';
+        });
+
+        // SQLite cannot rename onto a name the table still holds, and rebuilding alone would
+        // silently point a "REFERENCES people(legacy)" at the renamed column instead.
+        await expect(tools.modifyTable(1, 'people', info, plan)).rejects.toThrow(/another column still holds the target name/);
+        expect(probe((database) => database.prepare('SELECT code, legacy FROM people').all())).toEqual([{ code: 'ada', legacy: 'old' }]);
+    });
+
     it('keeps the AUTOINCREMENT counter so a deleted id is not handed out again', async () => {
         const file = new Database(databasePath);
         file.exec(`

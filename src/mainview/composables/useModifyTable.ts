@@ -322,15 +322,23 @@ function buildSqlitePreviewSql(tableName: string, tableInfo: TableInfo, nextColu
 
     const tempTableName = `${tableName}__modified`;
     const transferableColumns = nextColumns.filter((column) => column.originalName && tableInfo.columns.some((entry) => entry.name === column.originalName));
-    const statements = ['PRAGMA foreign_keys = OFF;', 'BEGIN IMMEDIATE;', `CREATE TABLE ${quoteSqlIdentifier(tempTableName, 'sqlite')} (\n    ${createParts.join(',\n    ')}\n);`];
+    const statements = ['PRAGMA foreign_keys = OFF;', 'BEGIN IMMEDIATE;'];
+    // The rebuild renames nothing by itself: SQLite has to do it, which is what makes the child
+    // foreign keys and the views that name the column follow along.
+    nextColumns
+        .filter((column) => column.originalName && column.originalName !== column.name && tableInfo.columns.some((entry) => entry.name === column.originalName))
+        .forEach((column) => {
+            statements.push(
+                `ALTER TABLE ${quoteSqlIdentifier(tableName, 'sqlite')} RENAME COLUMN ${quoteSqlIdentifier(column.originalName!, 'sqlite')} TO ${quoteSqlIdentifier(column.name, 'sqlite')};`
+            );
+        });
+    statements.push(`CREATE TABLE ${quoteSqlIdentifier(tempTableName, 'sqlite')} (\n    ${createParts.join(',\n    ')}\n);`);
 
     if (transferableColumns.length > 0) {
         statements.push(
             `INSERT INTO ${quoteSqlIdentifier(tempTableName, 'sqlite')} (${transferableColumns
                 .map((column) => quoteSqlIdentifier(column.name, 'sqlite'))
-                .join(', ')}) SELECT ${transferableColumns
-                .map((column) => quoteSqlIdentifier(column.originalName!, 'sqlite'))
-                .join(', ')} FROM ${quoteSqlIdentifier(tableName, 'sqlite')};`
+                .join(', ')}) SELECT ${transferableColumns.map((column) => quoteSqlIdentifier(column.name, 'sqlite')).join(', ')} FROM ${quoteSqlIdentifier(tableName, 'sqlite')};`
         );
     }
 

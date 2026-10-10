@@ -186,6 +186,38 @@ function restoreSqliteAutoIncrementSequence(database: Database.Database, tableNa
     database.prepare('INSERT INTO sqlite_sequence(name, seq) VALUES(?, ?)').run(tableName, previousSequence);
 }
 
+/**
+ * Renames columns through SQLite itself, which is what makes the foreign keys and views naming
+ * them follow along. SQLite refuses a rename onto a name another column still holds, so the
+ * renames are applied in dependency order; a swap, or a name that only a dropped column frees,
+ * has no order and is refused instead of silently leaving a reference behind.
+ */
+function renameSqliteColumns(
+    database: Database.Database,
+    tableName: string,
+    renames: Array<{ from: string; to: string }>,
+    currentColumnNames: Set<string>,
+    quoteIdentifier: (identifier: string) => string
+) {
+    const pending = [...renames];
+    const freedNames = new Set<string>();
+
+    while (pending.length > 0) {
+        const nextIndex = pending.findIndex((rename) => !currentColumnNames.has(rename.to) || freedNames.has(rename.to));
+
+        if (nextIndex < 0) {
+            throw new Error(
+                `SQLite cannot rename ${pending.map((rename) => `"${rename.from}" to "${rename.to}"`).join(' and ')}: ` +
+                    'another column still holds the target name. Apply that rename in its own Modify Table step.'
+            );
+        }
+
+        const [rename] = pending.splice(nextIndex, 1);
+        database.exec(`ALTER TABLE ${quoteIdentifier(tableName)} RENAME COLUMN ${quoteIdentifier(rename.from)} TO ${quoteIdentifier(rename.to)};`);
+        freedNames.add(rename.from);
+    }
+}
+
 export function useSqliteSchemaHelper(deps: SqliteSchemaHelperDeps) {
     function applyModifyTable(connectionId: number, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) {
         return deps.withSqliteDatabase(connectionId, (database) => {
@@ -205,9 +237,15 @@ export function useSqliteSchemaHelper(deps: SqliteSchemaHelperDeps) {
             }
 
             const nextColumnNames = new Set(nextColumns.map((column) => column.name));
+            const currentColumnNames = new Set(currentInfo.columns.map((column) => column.name));
+            // A rename goes through ALTER TABLE before the rebuild: SQLite then rewrites the child
+            // foreign keys and views that name the column, which a rebuild alone leaves behind.
+            const columnRenames = nextColumns
+                .filter((column) => column.originalName && column.originalName !== column.name && currentColumnNames.has(column.originalName))
+                .map((column) => ({ from: column.originalName!, to: column.name }));
             const transferableColumns = nextColumns
-                .filter((column) => column.originalName && currentInfo.columns.some((currentColumn) => currentColumn.name === column.originalName))
-                .map((column) => ({ target: column.name, source: column.originalName! }))
+                .filter((column) => column.originalName && currentColumnNames.has(column.originalName))
+                .map((column) => ({ target: column.name, source: column.name }))
                 .filter((column) => nextColumnNames.has(column.target));
 
             if (transferableColumns.length === 0 && currentInfo.rowCount > 0) {
@@ -230,10 +268,13 @@ export function useSqliteSchemaHelper(deps: SqliteSchemaHelperDeps) {
                 // SQLite rewrites the foreign keys, views and triggers that point at a table when
                 // that table is renamed, so rename first: the rebuild below then swaps the columns
                 // of a table whose name never disappears.
+                database.exec('PRAGMA legacy_alter_table = OFF;');
+
                 if (finalTableName !== tableName) {
-                    database.exec('PRAGMA legacy_alter_table = OFF;');
                     database.exec(`ALTER TABLE ${deps.quoteIdentifier(tableName)} RENAME TO ${deps.quoteIdentifier(finalTableName)};`);
                 }
+
+                renameSqliteColumns(database, finalTableName, columnRenames, currentColumnNames, deps.quoteIdentifier);
 
                 database.exec(createSql);
 

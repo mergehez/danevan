@@ -48,6 +48,7 @@ function buildParams(info: any, connectionId: number, tableName: string) {
         .filter((column: any) => column.isPrimaryKey)
         .sort((left: any, right: any) => (left.primaryKeyOrdinal ?? 0) - (right.primaryKeyOrdinal ?? 0));
 
+    // What the dialog posts: the primary key as a key, every other index as an index.
     return {
         connectionId,
         tableName,
@@ -57,7 +58,14 @@ function buildParams(info: any, connectionId: number, tableName: string) {
             ? [{ originalName: 'PRIMARY', name: 'PRIMARY', isPrimary: true, columns: primaryKeyColumns.map((column: any) => ({ columnName: column.name })) }]
             : [],
         foreignKeys: [],
-        indexes: [],
+        indexes: info.indexes.map((index: any) => ({
+            originalName: index.name,
+            name: index.name,
+            comment: index.comment ?? null,
+            isUnique: index.isUnique,
+            type: index.type ?? null,
+            columns: index.columns.map((columnName: string, position: number) => ({ columnName, order: index.orders?.[position] ?? null })),
+        })),
     };
 }
 
@@ -107,7 +115,42 @@ test.describe('SQLite modify table', () => {
             // The dangling reference used to make this insert fail with "no such table: main.people".
             await post(request, 'runQuery', { connectionId: source.connectionId, sql: 'INSERT INTO orders (id, people_id) VALUES (1, 1)' });
             const orders = await post(request, 'runQuery', { connectionId: source.connectionId, sql: 'SELECT people_id FROM orders' });
-            expect(orders.rows).toEqual([{ people_id: 1 }]);
+            // SQLite integers arrive as exact decimal text: a JS number cannot hold every 64-bit value.
+            expect(orders.rows).toEqual([{ people_id: '1' }]);
+        } finally {
+            await source.cleanup();
+        }
+    });
+
+    test('a column rename keeps the child foreign key that pointed at it', async ({ request }) => {
+        const source = await createFileSource(request, {
+            label: 'sqlite-column-rename',
+            schema: `
+                CREATE TABLE people (id integer primary key, code text not null);
+                CREATE UNIQUE INDEX people_code_unique ON people(code);
+                CREATE TABLE orders (id integer primary key, people_code text REFERENCES people(code));
+                CREATE VIEW people_codes AS SELECT code FROM people;
+                INSERT INTO people (id, code) VALUES (1, 'ada');
+                INSERT INTO orders (id, people_code) VALUES (1, 'ada');
+            `,
+        });
+
+        try {
+            await applyModify(request, source.connectionId, 'people', (params) => {
+                params.columns.find((column: any) => column.name === 'code').name = 'label';
+            });
+
+            const ordersInfo = await tableInfo(request, source.connectionId, 'orders');
+            expect(ordersInfo.foreignKeys.map((foreignKey: any) => foreignKey.to)).toEqual(['label']);
+
+            // The dangling reference used to fail this insert with "foreign key mismatch".
+            await post(request, 'runQuery', { connectionId: source.connectionId, sql: "INSERT INTO orders (id, people_code) VALUES (2, 'ada')" });
+
+            const renamed = await post(request, 'runQuery', { connectionId: source.connectionId, sql: 'SELECT label FROM people' });
+            expect(renamed.rows).toEqual([{ label: 'ada' }]);
+
+            const view = await post(request, 'runQuery', { connectionId: source.connectionId, sql: 'SELECT label FROM people_codes' });
+            expect(view.rows).toEqual([{ label: 'ada' }]);
         } finally {
             await source.cleanup();
         }
@@ -133,10 +176,10 @@ test.describe('SQLite modify table', () => {
 
             await post(request, 'runQuery', { connectionId: source.connectionId, sql: "INSERT INTO people (name, note) VALUES ('Barbara', NULL)" });
             const inserted = await post(request, 'runQuery', { connectionId: source.connectionId, sql: "SELECT id FROM people WHERE name = 'Barbara'" });
-            expect(inserted.rows).toEqual([{ id: 4 }]);
+            expect(inserted.rows).toEqual([{ id: '4' }]);
 
             const view = await post(request, 'runQuery', { connectionId: source.connectionId, sql: 'SELECT count(*) AS count FROM people_view' });
-            expect(view.rows).toEqual([{ count: 3 }]);
+            expect(view.rows).toEqual([{ count: '3' }]);
         } finally {
             await source.cleanup();
         }
