@@ -152,8 +152,17 @@ export function rejectActiveWorkerRequest(worker: MsAccessWorkerFrames, error: u
     activeRequest.reject(new Error(getWorkerErrorMessage(error, `MS Access worker request failed during ${activeRequest.op}.`)));
 }
 
+/** Every frame this protocol writes starts with this, nothing else on the bridge's stdout does. */
+export const MS_ACCESS_FRAME_PREFIX = '{"ok":';
+
+/**
+ * The JVM and its libraries also write to stdout (log4j reports a missing logging provider there),
+ * so only our own frames may settle a pending request. A line like
+ * `2026-10-10T00:08:02Z main ERROR ...` would otherwise parse as the number 2026 and fail the query
+ * it happened to arrive during.
+ */
 export function handleWorkerResponseLine(worker: MsAccessWorkerFrames, line: string) {
-    if (!line) {
+    if (!line.startsWith(MS_ACCESS_FRAME_PREFIX)) {
         return;
     }
 
@@ -179,6 +188,20 @@ export function handleWorkerResponseLine(worker: MsAccessWorkerFrames, line: str
         const detail = getWorkerErrorMessage(error, '');
         activeRequest.reject(new Error(`MS Access worker returned invalid JSON during ${activeRequest.op}.${detail ? ` ${detail}` : ''}`));
     }
+}
+
+/** Finds the protocol frame in a stdout stream that may also carry JVM logging. */
+export function parseWorkerFrameFromOutput(output: string) {
+    const frameLine = output
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => line.startsWith(MS_ACCESS_FRAME_PREFIX));
+
+    if (!frameLine) {
+        throw new Error('MS Access bridge produced no response frame.');
+    }
+
+    return JSON.parse(frameLine) as MsAccessWorkerResponse<unknown>;
 }
 
 export function drainWorkerResponseBuffer(worker: MsAccessWorkerFrames, flush = false) {

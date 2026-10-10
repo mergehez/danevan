@@ -3,6 +3,7 @@ import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-t
 import { MS_ACCESS_BRIDGE_SOURCE } from './msAccessBridgeSource.ts';
 import {
     decodeQueryRows,
+    parseWorkerFrameFromOutput,
     drainWorkerResponseBuffer,
     encodeBase64Utf8,
     encodeSqlValue,
@@ -154,8 +155,36 @@ function getMsAccessPrimaryKeyConstraintName(primaryKey: ModifySchemaKey | undef
     return normalizedName;
 }
 
+/**
+ * UCanAccess rejects some Access type names in DDL ("type not found or user lacks privilege"), so
+ * the equivalent it can create is used instead. A size or scale is kept.
+ */
+const MS_ACCESS_UNSUPPORTED_COLUMN_TYPES: Record<string, string> = {
+    LONGCHAR: 'MEMO',
+    NTEXT: 'MEMO',
+    MONEY: 'CURRENCY',
+    SMALLDATETIME: 'DATETIME',
+    LONGBINARY: 'VARBINARY',
+    IMAGE: 'VARBINARY',
+    OLEOBJECT: 'VARBINARY',
+    UNIQUEIDENTIFIER: 'GUID',
+};
+
+export function normalizeMsAccessColumnType(type: string) {
+    const trimmedType = type.trim();
+    const parenthesisIndex = trimmedType.indexOf('(');
+    const baseName = (parenthesisIndex >= 0 ? trimmedType.slice(0, parenthesisIndex) : trimmedType).trim().toUpperCase();
+    const replacement = MS_ACCESS_UNSUPPORTED_COLUMN_TYPES[baseName];
+
+    if (!replacement) {
+        return trimmedType;
+    }
+
+    return `${replacement}${parenthesisIndex >= 0 ? trimmedType.slice(parenthesisIndex) : ''}`;
+}
+
 function buildMsAccessColumnDefinition(column: ModifySchemaColumn, primaryKeyConstraintName?: string) {
-    const parts = [quoteMsAccessIdentifier(column.name), column.isAutoIncrement ? 'AUTOINCREMENT' : column.type.trim()];
+    const parts = [quoteMsAccessIdentifier(column.name), column.isAutoIncrement ? 'AUTOINCREMENT' : normalizeMsAccessColumnType(column.type)];
 
     if (column.isAutoIncrement && primaryKeyConstraintName) {
         parts.push(`CONSTRAINT ${quoteMsAccessIdentifier(primaryKeyConstraintName)} PRIMARY KEY`);
@@ -189,7 +218,7 @@ function buildMsAccessForeignKeyActionClause(kind: 'update' | 'delete', action: 
 function buildMsAccessColumnSignature(column: Pick<ModifySchemaColumn, 'name' | 'type' | 'notNull' | 'defaultValue' | 'isPrimaryKey' | 'primaryKeyOrdinal' | 'isAutoIncrement'>) {
     return [
         column.name.trim().toLowerCase(),
-        column.type.trim().toLowerCase(),
+        normalizeMsAccessColumnType(column.type).toLowerCase(),
         column.notNull ? 'not-null' : 'nullable',
         normalizeOptionalText(column.defaultValue) ?? '',
         column.isPrimaryKey ? 'primary' : 'plain',
@@ -846,7 +875,8 @@ async function ensureRuntimeBridge(runtimeDir: string, classPath: string, javaCo
     }
 
     return {
-        bridgeLaunchArgs: ['--class-path', getBridgeRuntimeClassPath(classPath, runtimeDir), MS_ACCESS_BRIDGE_CLASS_NAME],
+        // stdout carries the protocol frames, so the JVM's own logging is kept off it.
+        bridgeLaunchArgs: ['-Dlog4j2.statusLoggerLevel=OFF', '--class-path', getBridgeRuntimeClassPath(classPath, runtimeDir), MS_ACCESS_BRIDGE_CLASS_NAME],
     };
 }
 
@@ -1109,7 +1139,7 @@ async function runBridgeOnce<T>(deps: MsAccessDriverToolsDeps, args: string[]): 
     }
 
     try {
-        return JSON.parse(stdout) as T;
+        return parseWorkerFrameFromOutput(stdout).result as T;
     } catch (error) {
         throw new Error(`MS Access bridge returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
     } finally {

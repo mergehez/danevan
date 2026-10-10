@@ -46,18 +46,24 @@ describe('getDbColumnDataTypeOptions', () => {
         expect(options).not.toContainEqual({ value: 'clob', label: 'clob' });
     });
 
-    it('lists the MS Access data types in the uppercase names the driver reports', () => {
+    it('offers only the MS Access types UCanAccess can create, in uppercase', () => {
         const options = getDbColumnDataTypeOptions('msaccess');
 
-        expect(options).toHaveLength(38);
+        expect(options).toHaveLength(31);
         expect(options.slice(0, 4)).toEqual([
             { value: 'TEXT', label: 'TEXT' },
             { value: 'CHAR', label: 'CHAR' },
             { value: 'VARCHAR', label: 'VARCHAR' },
-            { value: 'LONGCHAR', label: 'LONGCHAR' },
+            { value: 'MEMO', label: 'MEMO' },
         ]);
-        expect(options).toContainEqual({ value: 'MEMO', label: 'MEMO' });
+        expect(options).toContainEqual({ value: 'CURRENCY', label: 'CURRENCY' });
         expect(options).toContainEqual({ value: 'COUNTER', label: 'COUNTER' });
+
+        // Every one of these fails the CREATE TABLE with "type not found or user lacks privilege",
+        // which is what the bridge spec proves; none of them may be offered.
+        for (const rejected of ['LONGCHAR', 'NTEXT', 'MONEY', 'SMALLDATETIME', 'LONGBINARY', 'IMAGE', 'OLEOBJECT', 'UNIQUEIDENTIFIER']) {
+            expect(options).not.toContainEqual({ value: rejected, label: rejected });
+        }
 
         // Regression: MS Access used to be offered the SQLite types.
         expect(options).not.toContainEqual({ value: 'varying character', label: 'varying character' });

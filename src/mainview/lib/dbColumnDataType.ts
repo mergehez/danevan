@@ -213,16 +213,18 @@ const SQLSERVER_DATA_TYPES = [
 ];
 
 // Uppercase because the MS Access driver reports and generates these names in uppercase.
+// Only the names UCanAccess can actually create: every other spelling fails the CREATE TABLE with
+// "type not found or user lacks privilege". The driver maps the ones it still recognises (see
+// `normalizeMsAccessColumnType`), and a column that already exists keeps its own name wherever
+// `getDbColumnDataTypeOptions` prepends the current value.
 const MSACCESS_DATA_TYPES = [
     // Text
     'TEXT',
     'CHAR',
     'VARCHAR',
-    'LONGCHAR',
     'MEMO',
     'NCHAR',
     'NVARCHAR',
-    'NTEXT',
     // Numeric
     'BIT',
     'BYTE',
@@ -237,13 +239,12 @@ const MSACCESS_DATA_TYPES = [
     'FLOAT',
     'DECIMAL',
     'NUMERIC',
-    'MONEY',
+    'CURRENCY',
     'COUNTER',
     // Date and time
     'DATE',
     'TIME',
     'DATETIME',
-    'SMALLDATETIME',
     'TIMESTAMP',
     // Logical
     'YESNO',
@@ -251,12 +252,8 @@ const MSACCESS_DATA_TYPES = [
     // Binary and large objects
     'BINARY',
     'VARBINARY',
-    'LONGBINARY',
-    'IMAGE',
-    'OLEOBJECT',
     // Other
     'GUID',
-    'UNIQUEIDENTIFIER',
     'HYPERLINK',
 ];
 
