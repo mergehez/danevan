@@ -30,7 +30,7 @@ export default defineConfig({
                 branches: 32,
                 functions: 38,
                 lines: 41,
-                'src/backend/**': { statements: 50, branches: 41, functions: 49, lines: 51 },
+                'src/backend/**': { statements: 51, branches: 43, functions: 50, lines: 52 },
                 'src/datagrid/**': { statements: 56, branches: 47, functions: 62, lines: 56 },
                 'src/shared/**': { statements: 66, branches: 49, functions: 61, lines: 66 },
                 'src/directives/**': { statements: 87, branches: 78, functions: 94, lines: 88 },
