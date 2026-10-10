@@ -1,10 +1,10 @@
 # todos — findings, fix list and test audit
 
-**Status:** 15 fix-list entries closed (T1, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5) · 1 open
-(T2) · 2 blocked (e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11,
-T12, T14's tree work) · suite: **991 unit tests (81 files) · 111 browser tests (32 files) · 13 Electron
+**Status:** 16 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5) · 0 open
+· 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11,
+T12, T14's tree work) · suite: **997 unit tests (82 files) · 112 browser tests (33 files) · 13 Electron
 shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source file
-**45.1 % statements / 37.2 % branches** · aggregate and per-area floors enforced in `vitest.config.js` ·
+**45.2 % statements / 37.2 % branches** · aggregate and per-area floors enforced in `vitest.config.js` ·
 a run that skips a precondition fails.
 
 This file is the single source for the project's tasks and for what the tests already prove. It merges
@@ -14,8 +14,9 @@ surveys are recoverable from git — `git show a14a25d:todos.md` and `git show a
 
 `## Done` is what is already implemented and verified, or work a green run already proves — do not redo
 it. `## Open` is what is left. `## Open (blocked)` is what needs a machine this one is not.
-`## Not planned` records what was investigated and deliberately closed. The test-audit round closed its
-whole unblocked list, which is why `## Open` holds only the deferred T2.
+`## Not planned` records what was investigated and deliberately closed. Nothing is open and unblocked:
+the last one, T2, shipped as T2a for MySQL and SQLite, and what remains waits on a machine this one is
+not (`## Open (blocked)`).
 
 ## Ground rules for whoever picks a task up
 
@@ -136,6 +137,29 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   20.2 ms for a local `SELECT 1` and 40–50 ms of overhead per call over the network, times the 3–7
   calls the UI issues per interaction. Guarded by
   `src/mainview/tests/backend/remoteDataSourcePool.spec.ts` and `auth.spec.ts`.
+- **T2a — one batched metadata sweep for MySQL and SQLite.** `db-tools` gained
+  `getTableInfos(connectionId, tableNames?, refresh?)` over a session cache
+  (`Map<connectionId, Map<tableName, TableInfo>>`): a sweep reads only the tables it does not hold yet
+  and answers them in one backend call. Every write path drops what it touched — `modifyTable` (the
+  whole connection: a rename or a new foreign key can reach other tables), `dropTable`,
+  `applyTableChanges` (row counts), `refreshTableInfo`, `refreshConnectionSchema`, `disconnect*`, any
+  `runQuery` whose statement writes (that is how `CREATE TABLE`/`ALTER` arrive from the editor), and
+  the `invalidateAllMetadataCaches` handler. MySQL answers a sweep from **four** `information_schema`
+  queries — columns, statistics, the `key_column_usage` + `referential_constraints` join, and the
+  table/estimate row — instead of five per table, grouped in JS through the existing mappers, with the
+  catalog estimate as `rowCount`; SQLite loads every table with one `queryRunner.getTables()` plus one
+  `sqlite_master` read (row counts stay per table — SQLite has no catalog estimate). PostgreSQL and
+  SQL Server keep the per-table fallback inside one client (T2b). The FK peek (`app.ts`), the
+  comparison dialog, the SQL autocomplete and the schema hydration now ask once
+  (`useConnections.ensureTableDetailsBatch`). Guarded by
+  `src/mainview/tests/backend/sqliteTableInfos.spec.ts` (the batched read equals the single-table read,
+  for tables and for a view), the "batched metadata reads" tests in `appApi.spec.ts` (a sweep answers
+  several tables; a writing `runQuery` drops the cached table — verified to fail without the
+  invalidation), the batched-helper test in `remote-driver-tools.spec.ts`, and
+  `src/mainview/tests/e2e/metadata-batching.spec.ts` (comparing two MySQL databases issues exactly
+  **one** `getTableInfos` per side and no per-table request). Measured live against the local server: a
+  whole-schema sweep of `tirsik3_test` (85 tables) and of `eezytool` took **4** catalog queries each,
+  and every table's columns, indexes and foreign keys were identical to the per-table path.
 - **T3b — table lists answer from the catalog, not from one `COUNT(*)` per table.**
   MySQL/PostgreSQL/SQL Server `getTableNames` now report `resolveListedRowCount`
   (`src/backend/useRemoteDriverTools.ts`) with `rowCountIsEstimated: true`, so the sidebar keeps its
@@ -397,38 +421,24 @@ Each item is work a green run already proves; do not redo it.
 
 ## Open
 
-- **T2 — replace the metadata N+1 fan-outs with one batched call (large, deferred).** T1 removed the
-  multiplier that made this hurt (one connection and one keychain spawn per `getTableInfo` instead of
-  163 of each), so what remains is the fan-out itself: an FK peek on `etwp` (163 tables) is 163 backend
-  round trips and ~650 `information_schema` queries in **0.92 s** locally, with `usages=0` — over the
-  network, a connection storm against production servers. It was left out of the last pass
-  deliberately: a batched `getTableInfos` per driver plus a session metadata cache is a larger change
-  than the rest of this list.
-    - _Sites_: `getPeekUsageRelations` (`src/backend/app.ts:140-147`,
-      `Promise.all(tables.map((t) => dbTools.getTableInfo(connectionId, t.name)))`); `ensureTableDetails(…, force)`
-      for every table on every "Compare database…" open (`src/mainview/composables/useComparison.ts:88`,
-      `:122`, `:282`, which bypasses the `loaded` guard at `src/mainview/composables/useConnections.ts:182`);
-      the first autocomplete of every editor instance (`src/mainview/components/MonacoEditor.tsx:119-122`);
-      `ensureConnectionSchema` (`useConnections.ts:160-170`). There is no cross-request cache:
-      `invalidateAllMetadataCaches` is an empty stub (`src/backend/db-tools.ts:456`) and `getTableInfo`
-      always calls `getTableInfoFresh` (`:710-718`).
-    - _Fix_: one batched backend method, e.g. `getTableInfos({ connectionId, tableNames? })`, answering
-      from a single catalog query per driver (`information_schema.columns/statistics/key_column_usage`
-      for MySQL, `pg_catalog` for Postgres, `sys.*` for SQL Server) — and for the FK peek specifically
-      one query over `key_column_usage` + `referential_constraints` for the whole schema — plus a
-      session-level `Map<connectionId, Map<tableName, TableInfo>>` in `db-tools` with explicit
-      invalidation on `modifyTable`/`dropTable`/`applyTableChanges`/`refreshTableInfo`/
-      `refreshConnectionSchema`. Point comparison, autocomplete and peek at the batched method.
-    - _Verify_: count API calls while opening "Compare database…" and while triggering autocomplete on
-      the `etwp` connection (target: ~1–2 calls, today 1 + N). `src/mainview/composables/useQuery.ts:112`
-      already logs per-load timings and the backend logs `withTimedAppOperation` per request.
-    - _Blocked for_: PostgreSQL and SQL Server verification — no reachable server on this machine, the
-      same condition the `e2e-13` entry below records. The batched call can be written for those
-      drivers, but only the MySQL half can be proven here (SQLite is not in this task's scope: its
-      metadata comes from pragmas, not from a catalog query).
+Nothing unblocked is left: T2a shipped (see `## Done`), and every remaining entry waits on a machine
+this one is not — T2b and the two test-audit items are in `## Open (blocked)`.
 
 ## Open (blocked)
 
+- **T2b · the PostgreSQL and SQL Server half of T2 (medium)** — T2a batched the sweep for MySQL and
+  SQLite; those two dialects still take the per-table fallback in `useRemoteDriverTools.ts` (with no
+  `helper.getTableInfos`, `getTableInfosFresh` builds one `TableInfo` per table inside a single
+  client), so a sweep there is one backend call but still five catalog queries per table. Implement
+  `getTableInfos` for `usePostgresDriver.ts` from `pg_catalog` and for `useSqlServerDriver.ts` from
+  `sys.*`, in the shape of the MySQL one: one query per catalog (columns, indexes, the foreign-key
+  join, the table/estimate row), grouped in JS through the existing mappers, `rowCount` from the
+  catalog estimate, and a `remote-driver-tools.spec.ts` case asserting the sweep costs a bounded
+  number of queries.
+    - _blocked by_: a reachable PostgreSQL and SQL Server to prove the queries against — the same
+      condition the `e2e-13` entry below records. The code can be written blind, but `pg_catalog` and
+      `sys.*` differ enough from `information_schema` that an unverified implementation would be
+      guesswork.
 - **e2e-13 · PostgreSQL and SQL Server write paths (medium)** — every spec that writes builds its source
   with `createFileSource` (SQLite) or `createMySqlServerAndConnection` (MySQL), so no test edits a row,
   saves a pending change or applies a DDL change on PostgreSQL or SQL Server. Add a spec that edits,
