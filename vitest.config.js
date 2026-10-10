@@ -27,10 +27,10 @@ export default defineConfig({
             // well-covered code once the aggregate average swallows it.
             thresholds: {
                 statements: 42,
-                branches: 34,
-                functions: 40,
-                lines: 42,
-                'src/backend/**': { statements: 58, branches: 52, functions: 59, lines: 59 },
+                branches: 35,
+                functions: 41,
+                lines: 43,
+                'src/backend/**': { statements: 60, branches: 53, functions: 61, lines: 60 },
                 'src/datagrid/**': { statements: 56, branches: 47, functions: 62, lines: 56 },
                 'src/shared/**': { statements: 66, branches: 49, functions: 61, lines: 66 },
                 'src/directives/**': { statements: 87, branches: 78, functions: 94, lines: 88 },
