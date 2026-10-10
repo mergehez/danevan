@@ -104,7 +104,7 @@ export function formatUsageRelationColumns(relation: FkUsageRelation, side: 'sou
 
 function buildMatchPredicate(columnName: string, value: SqlValue, sqlDialect: DbType) {
     const identifier = quoteSqlIdentifier(columnName, sqlDialect);
-    return value == null ? `${identifier} IS NULL` : `${identifier} = ${formatValue(value, { mode: 'sql', binaryMode: 'hex' })}`;
+    return value == null ? `${identifier} IS NULL` : `${identifier} = ${formatValue(value, { mode: 'sql', binaryMode: 'hex', dialect: sqlDialect })}`;
 }
 
 export async function runFkPeekQuery(params: { connectionId: number; sqlDialect: DbType; relation: FkPeekRelation; value: SqlValue; limit: number }) {

@@ -16,6 +16,7 @@ import {
     type DataGridRow,
     type TDataGridState,
 } from '../../../datagrid';
+import type { DbType } from '../../../shared/types';
 import { DATA_GRID_MODAL_PREFERENCES_KEY } from '#datagrid/dataGridModalPreferences.ts';
 import { resetCacheState } from '#shared/utils/useCache.ts';
 
@@ -29,6 +30,7 @@ type GridStateOptions = {
     limit?: number;
     searchable?: boolean;
     sqlInsertTableName?: string;
+    sqlInsertDialect?: DbType;
     primaryKeyColumns?: string[];
     layoutStorageKey?: string;
     addRow?: () => void | Promise<void>;
@@ -155,6 +157,7 @@ function createGridState(options: GridStateOptions = {}) {
         editable: true,
         enableTranspose: true,
         sqlInsertTableName: options.sqlInsertTableName ?? 'people',
+        sqlInsertDialect: options.sqlInsertDialect ?? 'sqlite',
         primaryKeyColumns: options.primaryKeyColumns ?? ['id'],
         tableData: computed(() => ({
             columns: columns.value,
@@ -449,6 +452,18 @@ describe('DataGrid', () => {
         await state.copyAllCellsAsSqlSelect?.();
         expect(writeClipboardText.mock.calls.at(-1)?.[0]).toContain('SELECT');
         expect(writeClipboardText.mock.calls.at(-1)?.[0]).toContain('WHERE');
+    });
+
+    it('writes the copied statements as literals the target dialect reads back', async () => {
+        // MySQL reads a backslash as an escape, so a copied INSERT for it has to double it; the
+        // standard-conforming drivers keep it, and doubling there would change the value.
+        const { state: mysqlState } = createGridState({ rows: [{ id: 1, name: 'C:\\temp', city: 'Paris' }], sqlInsertDialect: 'mysql' });
+        await mysqlState.copyAllCellsAsSqlInsert?.();
+        expect(writeClipboardText.mock.calls.at(-1)?.[0]).toBe("INSERT INTO `people`\n(`id`, `name`, `city`)\nVALUES\n(1, 'C:\\\\temp', 'Paris');");
+
+        const { state: sqliteState } = createGridState({ rows: [{ id: 1, name: 'C:\\temp', city: 'Paris' }] });
+        await sqliteState.copyAllCellsAsSqlInsert?.();
+        expect(writeClipboardText.mock.calls.at(-1)?.[0]).toBe(`INSERT INTO "people"\n("id", "name", "city")\nVALUES\n(1, 'C:\\temp', 'Paris');`);
     });
 
     it('falls back to execCommand copy when async clipboard access is denied', async () => {

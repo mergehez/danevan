@@ -1,8 +1,13 @@
+import type { DbType } from '../types';
+
 export type FormatValueOptions = {
     mode?: 'display' | 'sql';
     binaryMode?: 'json' | 'hex';
     functionMode?: 'name' | 'empty';
     nullText?: string;
+    /** The dialect the literal is written for. MySQL reads a backslash as an escape, the
+     *  standard-conforming drivers do not, so `C:\temp` only survives one of them unescaped. */
+    dialect?: DbType;
 };
 
 function bytesToHex(value: Uint8Array) {
@@ -11,8 +16,10 @@ function bytesToHex(value: Uint8Array) {
         .join('');
 }
 
-function escapeSqlString(value: string) {
-    return value.replaceAll("'", "''");
+function escapeSqlString(value: string, dialect: DbType | undefined) {
+    const escapedBackslashes = dialect === 'mysql' ? value.replaceAll('\\', '\\\\') : value;
+
+    return escapedBackslashes.replaceAll("'", "''");
 }
 
 export function formatValue(value: unknown, options: FormatValueOptions = {}) {
@@ -32,7 +39,7 @@ export function formatValue(value: unknown, options: FormatValueOptions = {}) {
         }
 
         if (typeof value === 'object') {
-            return `'${escapeSqlString(JSON.stringify(value))}'`;
+            return `'${escapeSqlString(JSON.stringify(value), options.dialect)}'`;
         }
 
         const text =
@@ -43,7 +50,7 @@ export function formatValue(value: unknown, options: FormatValueOptions = {}) {
                 : typeof value === 'string' || typeof value === 'boolean' || typeof value === 'symbol'
                   ? value.toString()
                   : '';
-        return `'${escapeSqlString(text)}'`;
+        return `'${escapeSqlString(text, options.dialect)}'`;
     }
 
     if (typeof value === 'string') {

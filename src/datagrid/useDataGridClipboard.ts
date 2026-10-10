@@ -272,7 +272,7 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
     }
 
     async function copySelectionAsSql(fallbackRowIndex?: number, fallbackColumnIndex?: number) {
-        const text = buildSelectionText((value) => formatValue(value, { mode: 'sql' }), fallbackRowIndex, fallbackColumnIndex);
+        const text = buildSelectionText((value) => formatValue(value, { mode: 'sql', dialect: internalState.sqlInsertDialect }), fallbackRowIndex, fallbackColumnIndex);
 
         if (!text) {
             return;
@@ -293,7 +293,7 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
                 selection.columnIndexes
                     .map((columnIndex: number) => {
                         const columnName = transposedState.getColumnName(columnIndex);
-                        return columnName ? formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql' }) : '';
+                        return columnName ? formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql', dialect: internalState.sqlInsertDialect }) : '';
                     })
                     .join('\t')
             )
@@ -354,7 +354,9 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         }
 
         const insertRows = selection.rowIndexes.map((rowIndex: number) => {
-            const values = columnNames.map((columnName: string) => formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql' }));
+            const values = columnNames.map((columnName: string) =>
+                formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql', dialect: internalState.sqlInsertDialect })
+            );
             return `(${values.join(', ')})`;
         });
 
@@ -388,7 +390,9 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         }
 
         const insertRows = selection.rowIndexes.map((rowIndex: number) => {
-            const values = columnNames.map((columnName: string) => formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql' }));
+            const values = columnNames.map((columnName: string) =>
+                formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql', dialect: internalState.sqlInsertDialect })
+            );
             return `(${values.join(', ')})`;
         });
 
@@ -430,12 +434,14 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         if (resolvedPks.length === 1) {
             const pkColumn = resolvedPks[0] as string;
             const pkIdentifier = quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect);
-            const inValues = selection.rowIndexes.map((rowIndex: number) => formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' }));
+            const inValues = selection.rowIndexes.map((rowIndex: number) =>
+                formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql', dialect: internalState.sqlInsertDialect })
+            );
             statement = `SELECT ${selectColumns} FROM ${tableName} WHERE ${pkIdentifier} IN (${inValues.join(', ')});`;
         } else {
             const whereClauses = selection.rowIndexes.map((rowIndex: number) => {
                 const conditions = resolvedPks.map((pkColumn: string) => {
-                    const val = formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' });
+                    const val = formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql', dialect: internalState.sqlInsertDialect });
                     return `${quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect)} = ${val}`;
                 });
                 return `(${conditions.join(' AND ')})`;
@@ -470,12 +476,14 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         if (resolvedPks.length === 1) {
             const pkColumn = resolvedPks[0] as string;
             const pkIdentifier = quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect);
-            const inValues = selection.rowIndexes.map((rowIndex: number) => formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' }));
+            const inValues = selection.rowIndexes.map((rowIndex: number) =>
+                formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql', dialect: internalState.sqlInsertDialect })
+            );
             statement = `SELECT ${selectColumns} FROM ${tableName} WHERE ${pkIdentifier} IN (${inValues.join(', ')});`;
         } else {
             const whereClauses = selection.rowIndexes.map((rowIndex: number) => {
                 const conditions = resolvedPks.map((pkColumn: string) => {
-                    const val = formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' });
+                    const val = formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql', dialect: internalState.sqlInsertDialect });
                     return `${quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect)} = ${val}`;
                 });
                 return `(${conditions.join(' AND ')})`;
@@ -567,7 +575,9 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         if (!columnNames.length) return;
 
         const insertRows = rowIndexes.map((rowIndex: number) => {
-            const values = columnNames.map((columnName: string) => formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql' }));
+            const values = columnNames.map((columnName: string) =>
+                formatValue(transposedState.getDisplayedCellValue(rowIndex, columnName), { mode: 'sql', dialect: internalState.sqlInsertDialect })
+            );
             return `(${values.join(', ')})`;
         });
 
@@ -597,12 +607,14 @@ export function createDataGridClipboard(args: DataGridClipboardArgs) {
         if (resolvedPks.length === 1) {
             const pkColumn = resolvedPks[0] as string;
             const pkIdentifier = quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect);
-            const inValues = rowIndexes.map((rowIndex: number) => formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' }));
+            const inValues = rowIndexes.map((rowIndex: number) =>
+                formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql', dialect: internalState.sqlInsertDialect })
+            );
             statement = `SELECT ${selectColumns} FROM ${tableName} WHERE ${pkIdentifier} IN (${inValues.join(', ')});`;
         } else {
             const whereClauses = rowIndexes.map((rowIndex: number) => {
                 const conditions = resolvedPks.map((pkColumn: string) => {
-                    const val = formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql' });
+                    const val = formatValue(transposedState.getDisplayedCellValue(rowIndex, pkColumn), { mode: 'sql', dialect: internalState.sqlInsertDialect });
                     return `${quoteSqlIdentifier(pkColumn, internalState.sqlInsertDialect)} = ${val}`;
                 });
                 return `(${conditions.join(' AND ')})`;

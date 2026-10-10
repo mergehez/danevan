@@ -1,7 +1,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useDataGrid, type DataGridCellValue, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
 import { getDataGridLayoutStorageKey } from '../../datagrid/dataGridLayoutStorage';
-import type { ApplyTableChangesParams, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
+import type { ApplyTableChangesParams, DbType, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { toast } from '../../shared/utils/useToast';
 import { formatValue } from '../../shared/utils/valueFormatting';
@@ -689,16 +689,12 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         );
     }
 
-    function escapeSqlStringLiteral(value: string) {
-        return value.replaceAll("'", "''");
-    }
-
     /**
      * Format an SQL value with awareness of the column type.
      * For datetime columns, ISO strings (e.g. "2026-07-21T14:04:58.000Z")
      * are converted to a format the database understands.
      */
-    function formatSqlValue(value: unknown, columnType: string | undefined, _sqlDialect: string): string {
+    function formatSqlValue(value: unknown, columnType: string | undefined, sqlDialectName: string): string {
         if (value == null) return 'NULL';
 
         // For datetime columns, convert ISO strings to DB-friendly format.
@@ -708,10 +704,11 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                 .replace('T', ' ')
                 .replace(/\s*Z$/i, '')
                 .replace(/([+-]\d{2}:\d{2})$/, '');
-            return `'${escapeSqlStringLiteral(cleaned)}'`;
+            return formatValue(cleaned, { mode: 'sql', dialect: sqlDialectName as DbType });
         }
 
-        return formatValue(value as SqlValue, { mode: 'sql', binaryMode: 'hex' });
+        // The statement is executed as it is written, so its literal is escaped for that dialect.
+        return formatValue(value as SqlValue, { mode: 'sql', binaryMode: 'hex', dialect: sqlDialectName as DbType });
     }
 
     function buildInsertStatement(rowIndex: number) {
@@ -1025,8 +1022,8 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
 
                 return [
                     `UPDATE ${quoteSqlIdentifier(tableName.value, sqlDialect.value)}`,
-                    `SET ${quoteSqlIdentifier(change.columnName, sqlDialect.value)} = ${formatValue(change.nextValue, { mode: 'sql' })}`,
-                    `WHERE ${quoteSqlIdentifier(change.matchColumn, sqlDialect.value)} = ${formatValue(change.matchValue, { mode: 'sql' })};`,
+                    `SET ${quoteSqlIdentifier(change.columnName, sqlDialect.value)} = ${formatValue(change.nextValue, { mode: 'sql', dialect: sqlDialect.value })}`,
+                    `WHERE ${quoteSqlIdentifier(change.matchColumn, sqlDialect.value)} = ${formatValue(change.matchValue, { mode: 'sql', dialect: sqlDialect.value })};`,
                 ].join(' ');
             });
             const insertQueries = overlayTableData.value.rows.map((_, rowIndex) => buildInsertStatement(rowIndex)).filter((statement): statement is string => !!statement);

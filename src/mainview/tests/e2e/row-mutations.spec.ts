@@ -330,4 +330,44 @@ test.describe('Row mutations on MySQL', () => {
             await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
         }
     });
+
+    test('keeps a backslash in the insert and the delete it builds', async ({ page, request }) => {
+        // An update sends its values as parameters; an insert and a delete are hand-built text, so
+        // those are where MySQL reads a backslash as an escape: `C:\temp` stored a tab, and a
+        // trailing backslash swallowed the closing quote of the statement.
+        const tableName = `e2e_escapes_${Date.now()}`;
+        const source = await mysqlSource(request, 'escapes');
+        const storedKeys = async () =>
+            ((await post(request, 'getTableData', { connectionId: source.connectionId, tableName, limit: 50, offset: 0 })).rows as Array<{ id: string }>)
+                .map((row) => row.id)
+                .sort();
+
+        try {
+            await runSql(request, source.connectionId, `CREATE TABLE \`${tableName}\` (id varchar(200) NOT NULL, note varchar(50), PRIMARY KEY (id))`);
+            await runSql(request, source.connectionId, `INSERT INTO \`${tableName}\` VALUES ('C:\\\\temp\\\\', 'first')`);
+
+            await page.goto('/');
+            await openMySqlTable(page, source, tableName);
+
+            // The delete names the row by its key, which ends in a backslash.
+            await rowMenu(page, 0, 'Delete Row');
+            await expect(page.getByText('1 pending change')).toBeVisible();
+            await saveChanges(page);
+            await expect.poll(storedKeys).toEqual([]);
+
+            // The insert writes a key that ends in a backslash too.
+            await page.getByTestId('grid-add-row').click();
+            const form = page.getByTestId('add-row-form');
+            await form.getByTestId('add-row-value-id').fill('D:\\data\\');
+            await form.getByTestId('add-row-value-note').fill('second');
+            await form.getByTestId('add-row-submit').click();
+            await expect(page.getByText('1 pending change')).toBeVisible();
+            await saveChanges(page);
+
+            await expect.poll(storedKeys).toEqual(['D:\\data\\']);
+        } finally {
+            await request.post(`${API}/runQuery`, { data: { connectionId: source.connectionId, sql: `DROP TABLE IF EXISTS \`${tableName}\`` } }).catch(() => {});
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
+        }
+    });
 });
