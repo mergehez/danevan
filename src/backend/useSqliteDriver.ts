@@ -17,7 +17,7 @@ import type {
 import { BunTypeOrmSqliteDriver } from './bunTypeOrmSqliteDriver.ts';
 import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
 import { normalizeCountValue } from './dialectSql.ts';
-import { buildSqliteCreateTableSql, enrichSqliteColumns, normalizeOptionalText } from './sqliteTableDdl.ts';
+import { buildSqliteCreateTableSql, enrichSqliteColumns, getSqliteAutoIncrementColumn, normalizeOptionalText } from './sqliteTableDdl.ts';
 import { mapTypeOrmColumns, mapTypeOrmForeignKeys, mapTypeOrmIndexesWithoutMetadata, mapTypeOrmTableMetadata } from './typeOrmMappers.ts';
 
 export type ModifySchemaColumn = {
@@ -138,6 +138,39 @@ function createSqliteDataSource(databasePath: string) {
     });
 }
 
+/** The AUTOINCREMENT counter of a table, absent when the table has no AUTOINCREMENT column. */
+function readSqliteAutoIncrementSequence(database: Database.Database, tableName: string) {
+    const sequenceTable = database.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'").get() as { present: number } | undefined;
+
+    if (!sequenceTable) {
+        return undefined;
+    }
+
+    const row = database.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(tableName) as { seq: number } | undefined;
+    return row?.seq;
+}
+
+/**
+ * A rebuild copies rows into a fresh table, which leaves the AUTOINCREMENT counter at the highest
+ * surviving id — so a deleted id would be handed out again. Put the old counter back.
+ */
+function restoreSqliteAutoIncrementSequence(database: Database.Database, tableName: string, previousSequence: number | undefined) {
+    if (previousSequence == null) {
+        return;
+    }
+
+    const row = database.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(tableName) as { seq: number } | undefined;
+
+    if (row) {
+        if (previousSequence > row.seq) {
+            database.prepare('UPDATE sqlite_sequence SET seq = ? WHERE name = ?').run(previousSequence, tableName);
+        }
+        return;
+    }
+
+    database.prepare('INSERT INTO sqlite_sequence(name, seq) VALUES(?, ?)').run(tableName, previousSequence);
+}
+
 export function useSqliteSchemaHelper(deps: SqliteSchemaHelperDeps) {
     function applyModifyTable(connectionId: number, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) {
         return deps.withSqliteDatabase(connectionId, (database) => {
@@ -167,25 +200,45 @@ export function useSqliteSchemaHelper(deps: SqliteSchemaHelperDeps) {
             }
 
             const tempTableName = `__danevan_modify_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const finalTableName = nextPlan.table.name;
             const createSql = buildSqliteCreateTableSql(deps.quoteIdentifier, tempTableName, currentInfo, nextPlan);
             const recreateIndexes = nextPlan.indexes.filter((index) => !nextPlan.keys.some((key) => key.name.toLowerCase() === index.name.toLowerCase()));
             const renamedColumnNames = new Map(nextColumns.filter((column) => column.originalName).map((column) => [column.originalName!, column.name]));
+            // A rebuild would otherwise restart the counter at the highest surviving id.
+            const previousAutoIncrementSequence = getSqliteAutoIncrementColumn(nextPlan) ? readSqliteAutoIncrementSequence(database, tableName) : undefined;
 
             database.exec('PRAGMA foreign_keys = OFF;');
 
             try {
                 database.exec('BEGIN IMMEDIATE;');
+
+                // SQLite rewrites the foreign keys, views and triggers that point at a table when
+                // that table is renamed, so rename first: the rebuild below then swaps the columns
+                // of a table whose name never disappears.
+                if (finalTableName !== tableName) {
+                    database.exec('PRAGMA legacy_alter_table = OFF;');
+                    database.exec(`ALTER TABLE ${deps.quoteIdentifier(tableName)} RENAME TO ${deps.quoteIdentifier(finalTableName)};`);
+                }
+
                 database.exec(createSql);
 
                 if (transferableColumns.length > 0) {
                     database.exec(
                         `INSERT INTO ${deps.quoteIdentifier(tempTableName)} (${transferableColumns.map((column) => deps.quoteIdentifier(column.target)).join(', ')}) ` +
-                            `SELECT ${transferableColumns.map((column) => deps.quoteIdentifier(column.source)).join(', ')} FROM ${deps.quoteIdentifier(tableName)};`
+                            `SELECT ${transferableColumns.map((column) => deps.quoteIdentifier(column.source)).join(', ')} FROM ${deps.quoteIdentifier(finalTableName)};`
                     );
                 }
 
-                database.exec(`DROP TABLE ${deps.quoteIdentifier(tableName)};`);
-                database.exec(`ALTER TABLE ${deps.quoteIdentifier(tempTableName)} RENAME TO ${deps.quoteIdentifier(nextPlan.table.name)};`);
+                // Between the DROP and the rename the table is missing, which makes a view over it
+                // unparsable; legacy mode renames without re-parsing the schema.
+                database.exec('PRAGMA legacy_alter_table = ON;');
+
+                try {
+                    database.exec(`DROP TABLE ${deps.quoteIdentifier(finalTableName)};`);
+                    database.exec(`ALTER TABLE ${deps.quoteIdentifier(tempTableName)} RENAME TO ${deps.quoteIdentifier(finalTableName)};`);
+                } finally {
+                    database.exec('PRAGMA legacy_alter_table = OFF;');
+                }
 
                 recreateIndexes.forEach((index) => {
                     const mappedColumns = index.columns.map((column) => renamedColumnNames.get(column.columnName) ?? column.columnName);
@@ -202,6 +255,8 @@ export function useSqliteSchemaHelper(deps: SqliteSchemaHelperDeps) {
                         .join(', ')});`;
                     database.exec(createIndexSql);
                 });
+
+                restoreSqliteAutoIncrementSequence(database, finalTableName, previousAutoIncrementSequence);
 
                 database.exec('COMMIT;');
             } catch (error) {

@@ -220,17 +220,38 @@ export function buildSqliteColumnDefinition(quoteIdentifier: (identifier: string
     return parts.join(' ');
 }
 
+/** The primary-key columns the plan asks for, in ordinal order. */
+export function getSqlitePrimaryKeyColumns(nextPlan: ModifySchemaPlan) {
+    const explicitPrimaryKey = nextPlan.keys.find((key) => key.isPrimary);
+
+    if (explicitPrimaryKey) {
+        return explicitPrimaryKey.columns.map((column, index) => ({ name: column.columnName, primaryKeyOrdinal: index + 1 }));
+    }
+
+    return nextPlan.columns
+        .filter((column) => column.isPrimaryKey)
+        .sort((left, right) => (left.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER) - (right.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER))
+        .map((column) => ({ name: column.name, primaryKeyOrdinal: column.primaryKeyOrdinal }));
+}
+
+/** The single column the generated table declares AUTOINCREMENT on, if there is one. */
+export function getSqliteAutoIncrementColumn(nextPlan: ModifySchemaPlan) {
+    const primaryKeyColumns = getSqlitePrimaryKeyColumns(nextPlan);
+
+    if (primaryKeyColumns.length !== 1) {
+        return undefined;
+    }
+
+    const primaryKeyColumn = nextPlan.columns.find((column) => column.name === primaryKeyColumns[0]!.name);
+    return primaryKeyColumn?.isAutoIncrement ? primaryKeyColumn : undefined;
+}
+
 export function buildSqliteCreateTableSql(quoteIdentifier: (identifier: string) => string, tableName: string, _currentInfo: TableInfo, nextPlan: ModifySchemaPlan) {
     const nextColumns = nextPlan.columns;
     const renamedColumnNames = new Map(nextColumns.filter((column) => column.originalName).map((column) => [column.originalName!, column.name]));
     const nextColumnNames = new Set(nextColumns.map((column) => column.name));
-    const explicitPrimaryKey = nextPlan.keys.find((key) => key.isPrimary);
-    const primaryKeyColumns = explicitPrimaryKey
-        ? explicitPrimaryKey.columns.map((column, index) => ({ name: column.columnName, primaryKeyOrdinal: index + 1 }))
-        : nextColumns
-              .filter((column) => column.isPrimaryKey)
-              .sort((left, right) => (left.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER) - (right.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER));
-    const inlinePrimaryKeyColumnName = primaryKeyColumns.length === 1 ? primaryKeyColumns[0]?.name : undefined;
+    const primaryKeyColumns = getSqlitePrimaryKeyColumns(nextPlan);
+    const inlinePrimaryKeyColumnName = primaryKeyColumns.length === 1 ? primaryKeyColumns[0]!.name : undefined;
     const parts = nextColumns.map((column) => buildSqliteColumnDefinition(quoteIdentifier, column, column.name === inlinePrimaryKeyColumnName));
 
     if (primaryKeyColumns.length > 1) {
