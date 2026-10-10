@@ -1,5 +1,7 @@
 import pkgObj from '../../package.json' with { type: 'json' };
-import { readApiErrorMessage } from '../shared/utils/errorMessage';
+// electron-builder loads this file through Node's ESM loader (electron.config.js ->
+// electronConfig.ts -> helpers.ts), which needs the extension; a bundler would not.
+import { readApiErrorMessage } from '../shared/utils/errorMessage.ts';
 
 const pkg = JSON.parse(JSON.stringify(pkgObj));
 
