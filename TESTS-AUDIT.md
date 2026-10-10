@@ -1,7 +1,7 @@
 # Test audit
 
-**Status:** 938 unit tests (74 files) · 94 browser tests (25 files) · 2 Electron shell tests
-(dev build + packaged `.app`) · coverage over every source file **43.7 % statements / 36.0 % branches** ·
+**Status:** 956 unit tests (76 files) · 100 browser tests (26 files) · 2 Electron shell tests
+(dev build + packaged `.app`) · coverage over every source file **44.3 % statements / 36.6 % branches** ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails.
 
 The long survey that drove the earlier rounds is recoverable from git:
@@ -86,6 +86,25 @@ Each item is work a green run already proves; do not redo it.
   `postgresTableDdl.ts`: key and index signatures, primary-key and dropped-column derivation, the MySQL
   ALTER / ADD / CHANGE / option statements, and every statement PostgreSQL generates, including the
   collation and identity changes it refuses).
+- **SQLite 64-bit integers** (`useSqliteDriver.spec.ts`, `sqlite-query-columns.spec.ts`): the driver
+  reads with `safeIntegers`, so a value above 2^53 keeps every digit instead of arriving rounded and
+  being written back rounded. Integers leave the driver as exact decimal text (JSON cannot carry a
+  BigInt) and a pragma's schema metadata is downcast to a number, because TypeORM reads it as one.
+- **SQLite column renames** (`useSqliteDriver.spec.ts`, `sqlite-modify-table.spec.ts`): the rename goes
+  through `ALTER TABLE … RENAME COLUMN` before the rebuild, which is what makes SQLite rewrite the
+  child foreign keys and the views that name the column. A rename whose target name another column
+  still holds is refused with the reason instead of silently re-pointing a reference.
+- **The kind of a remote statement** (`remote-driver-tools.spec.ts`, `sql-editor-run.spec.ts`): the
+  leading comments are stripped before the first keyword is read, so `-- report` followed by `SELECT`
+  returns rows on MySQL, PostgreSQL and SQL Server instead of reporting a mutation.
+- **MySQL write paths** (`mysqlSchemaHelper.spec.ts`, `modify-table.spec.ts`, `keyless-table.spec.ts`,
+  `row-mutations.spec.ts`): the catalog's own encoding no longer reaches the DDL — an index column's
+  `A`/`D` becomes `ASC`/`DESC` (changing an existing index used to emit `ADD INDEX (col A)`, a parse
+  error after the DROP INDEX had already committed) and a string default is quoted with MySQL's own
+  backslash escaping (`DEFAULT guest` was rejected and `DEFAULT ''` collapsed to `DEFAULT NULL`).
+  A table without a primary key refuses the edit instead of issuing `UPDATE … WHERE <first column>`,
+  and the hand-built insert and delete statements escape their literals for the dialect that reads
+  them, so `C:\temp` and a trailing backslash survive.
 - **Failure modes**: a save against a dead connection keeps the pending change and says why; credentials
   the server rejects name the connection; an unreachable backend shows its "Request failed" panel
   instead of an empty shell and recovers on reload; a `mysqldump` path that is gone is reported in the
@@ -109,33 +128,6 @@ Each item is work a green run already proves; do not redo it.
 
 ## Open
 
-- **e2e-16 · MySQL write-path defects (medium)** — four reproduced defects, each needing a spec that
-  fails first, against a MySQL fixture that has no primary key or an existing index:
-    - editing a table **without a primary key** issues `UPDATE … WHERE <first column> = …`
-      (`useDbDataGrid.ts` falls back to `allColumns[0]`; the delete path refuses without a key), so every
-      row sharing that value is overwritten;
-    - changing an **existing index** emits an `ADD INDEX` with `A` as the sort order, which MySQL rejects
-      with `ER_PARSE_ERROR` — after the `DROP INDEX` has already committed;
-    - a column with a **string default** cannot be altered: the catalog returns the bare literal and it is
-      emitted unquoted (`DEFAULT guest`, rejected), while `DEFAULT ''` collapses to `DEFAULT NULL`;
-    - **inserts and deletes are hand-built text** escaped for single quotes only, so MySQL reads a
-      backslash as an escape (`C:\temp` stores a tab) and a trailing backslash can break the statement.
-- **unit-14 · SQLite 64-bit integer fidelity (small)** — neither `useSqliteDriver.ts` nor
-  `bunTypeOrmSqliteDriver.ts` enables `safeIntegers`, so `9007199254740993` reads back as
-  `9007199254740992` and a saved edit writes the rounded value. Enable it and map BigInt to a string at
-  the driver edge, then assert an exact round trip through `getTableData` and a save. No fixture uses a
-  value above 2^53 today.
-- **unit-13 · SQLite column renames and referenced foreign keys (small)** — `applyModifyTable` now lets
-  SQLite rewrite the references when the _table_ is renamed, but renaming a _column_ still rebuilds the
-  table without a native `ALTER TABLE … RENAME COLUMN`, so a child table's `REFERENCES parent(old_column)`
-  is left pointing at a column that no longer exists. Apply the column renames through SQLite before the
-  rebuild (3.25+ rewrites the references with them), or refuse the rename with a clear message when a
-  child references that column. Needs nothing but a real SQLite file.
-- **unit-15 · A leading comment makes a read look like a mutation (small)** — `useRemoteDriverTools.runQuery`
-  decides by regex on the raw text (`/^(select|show|describe|pragma|with|explain)\b/i`), so `-- report`
-  followed by `SELECT …` returns `kind: 'mutation'` on the remote drivers and the editor shows rows
-  affected instead of rows. Strip leading comments before classifying, or classify from the returned
-  fields, and cover it with a MySQL spec.
 - **e2e-17 · macOS shell behaviour (medium)** — `src/electron/main.ts` is 0 % covered: the menu
   (including Cmd+, and the `native-command` it sends), `pickDatabaseFile`, `pickSavePath`,
   `revealPathInFileManager`, `openFileInEditor`, renderer diagnostics, and `activate` /
@@ -144,11 +136,14 @@ Each item is work a green run already proves; do not redo it.
   response it compares against.
 - **e2e-18 · Restart persistence and a test-owned app DB (medium)** — the suite's "restart" is
   `page.reload()` with the backend still alive, so persistence and WAL recovery are untested, and
-  Playwright runs the developer's real `~/Library/Application Support/danevan` DB because
-  `playwright.config.ts` sets no `APP_DATA_DIR`. The app DB also has no `PRAGMA user_version` or
-  migration record — one hand-written `ALTER` is the whole upgrade path. Point the config at a workspace
-  data dir, boot from a fresh and from a legacy app DB, apply a half-finished upgrade, and assert that
-  state survives a real relaunch.
+  Playwright runs the developer's real `~/Library/Application Support/danevan` DB. The app DB also has
+  no `PRAGMA user_version` or migration record — one hand-written `ALTER` is the whole upgrade path.
+  A workspace `APP_DATA_DIR` was tried and reverted: the keychain account name is
+  `danevan-server-password-<id>`, so a fresh app DB hands its test servers the low ids the real
+  installation uses — one inherited a stored password (`access denied … using password: YES`) and a
+  cleanup deletes the entry it finds. Namespace the keychain account by data dir first, then point the
+  config at a workspace dir, boot from a fresh and from a legacy app DB, apply a half-finished upgrade,
+  and assert that state survives a real relaunch.
 - **e2e-19 · A second launch (small)** — the API port is hard-coded and `serverApp.listen` has no
   `error` handler, and there is no single-instance lock, so a second launch never reaches `createWindow`
   (the `EADDRINUSE` goes nowhere). Cover the second launch, then give it a lock or a clear message.
