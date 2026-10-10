@@ -36,6 +36,9 @@ dist-ssr
 test-results/
 playwright-report/
 
+# The app DB a browser or shell spec boots against (see playwright.config.ts)
+.e2e-data/
+
 # Vitest coverage
 coverage/
 
