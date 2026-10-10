@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { rmSync } from 'node:fs';
-import { API, post } from './helpers';
+import { API, MYSQL, createMySqlServerAndConnection, post, requireMySqlDatabase } from './helpers';
 
 /**
  * What the SQL editor shows must be what Run sends. The editor is a controlled
@@ -119,6 +119,40 @@ test.describe('SQL editor run', () => {
         } finally {
             await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
             rmSync(source.dbPath, { force: true });
+        }
+    });
+
+    test('shows the rows of a read that a leading comment hides from the classifier', async ({ page, request }) => {
+        // A remote driver, because there the result shape comes from the kind the backend reports:
+        // a read behind a comment used to be sent as a mutation, so the editor said
+        // "Mutation completed" and never showed the row.
+        await requireMySqlDatabase(MYSQL.database, 'sql-editor-run.spec.ts');
+
+        const source = await createMySqlServerAndConnection(request, MYSQL.database, 'sql-comment');
+        const scriptName = `e2e-sql-comment-${Date.now()}`;
+        const withScript = await post(request, 'createScript', {
+            connectionId: source.connectionId,
+            name: scriptName,
+            sqlText: '-- overnight report\nselect 7 as commented_probe;',
+        });
+        const scriptId = withScript.scripts.find((entry: { name: string }) => entry.name === scriptName).id;
+
+        try {
+            await openApp(page);
+            await openScriptTab(page, source.connectionId, scriptId, 'commented_probe;');
+            await page.getByRole('button', { name: 'Run', exact: true }).click();
+
+            // A rows result draws the grid; a mutation result draws none of it.
+            const viewport = page.getByTestId('data-grid-viewport').first();
+            await expect(viewport).toBeVisible({ timeout: 15_000 });
+            await expect(page.getByText(/Mutation completed/)).toHaveCount(0);
+
+            // The grid itself is a canvas, so the DOM shows the value through the cell editor.
+            await viewport.focus();
+            await page.keyboard.press('Enter');
+            await expect(page.locator('textarea[data-editor-key="0:0"]')).toHaveValue('7');
+        } finally {
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
         }
     });
 });

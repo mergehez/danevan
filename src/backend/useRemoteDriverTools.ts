@@ -78,6 +78,31 @@ export type RemoteDriverHelper = {
     buildModifyTableStatements: (client: RemoteDriverClient, tableName: string, currentInfo: TableInfo, nextPlan: ModifySchemaPlan) => string[] | Promise<string[]>;
 };
 
+/**
+ * Drops the comments and whitespace in front of a statement. The kind of a query is decided from
+ * its first keyword, so `-- report\nSELECT …` used to look like a mutation: the remote drivers
+ * then returned the affected-row shape and the editor showed no result rows.
+ */
+export function stripLeadingSqlComments(sql: string) {
+    let statement = sql.replace(/^\uFEFF/, '').trimStart();
+
+    for (;;) {
+        if (statement.startsWith('--') || statement.startsWith('#')) {
+            const lineEnd = statement.indexOf('\n');
+            statement = lineEnd < 0 ? '' : statement.slice(lineEnd + 1).trimStart();
+            continue;
+        }
+
+        if (statement.startsWith('/*')) {
+            const commentEnd = statement.indexOf('*/', 2);
+            statement = commentEnd < 0 ? '' : statement.slice(commentEnd + 2).trimStart();
+            continue;
+        }
+
+        return statement;
+    }
+}
+
 type RemoteForeignKeyController = {
     disable: (client: RemoteDriverClient) => Promise<void>;
     enable: (client: RemoteDriverClient) => Promise<void>;
@@ -214,7 +239,7 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
         async runQuery(connectionId: number, sql: string, params?: SqlValue[]): Promise<QueryExecutionResult> {
             return deps.withRemoteClient(connectionId, async (client) => {
                 const bindings = params ?? [];
-                const isRowReturningQuery = /^(select|show|describe|pragma|with|explain)\b/i.test(sql);
+                const isRowReturningQuery = /^(select|show|describe|pragma|with|explain)\b/i.test(stripLeadingSqlComments(sql));
                 const statement = { sql, params: bindings } satisfies RemoteStatement;
 
                 if (isRowReturningQuery) {

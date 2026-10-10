@@ -100,6 +100,40 @@ describe('useRemoteDriverTools.runQuery', () => {
 
         expect(result).toMatchObject({ kind: 'rows', columns: ['id', 'message'], rows: [{ id: 1, message: 'hello' }] });
     });
+
+    // The remote drivers only learn the result shape from the kind the statement is given, so a
+    // read behind a comment used to come back as a mutation and the editor showed no rows.
+    it('reads rows for a statement that a comment hides from the classifier', async () => {
+        const queryRows = vi.fn(async () => [{ total: 3 }]);
+        const execute = vi.fn(async () => ({ affectedRows: 0 }));
+        const { tools } = createTools({ queryRows, execute } as Partial<RemoteDriverClient>);
+
+        const result = await tools.runQuery(1, '-- monthly report\nSELECT COUNT(*) AS total FROM orders');
+
+        expect(execute).not.toHaveBeenCalled();
+        expect(queryRows).toHaveBeenCalledWith({ sql: '-- monthly report\nSELECT COUNT(*) AS total FROM orders', params: [] });
+        expect(result).toMatchObject({ kind: 'rows', columns: ['total'], rows: [{ total: 3 }] });
+    });
+
+    it('reads rows behind a block or hash comment too', async () => {
+        const queryRows = vi.fn(async () => [{ id: 1 }]);
+        const { tools } = createTools({ queryRows } as Partial<RemoteDriverClient>);
+
+        expect(await tools.runQuery(1, '/* overnight report */\nselect id from orders')).toMatchObject({ kind: 'rows' });
+        expect(await tools.runQuery(1, '# overnight report\nselect id from orders')).toMatchObject({ kind: 'rows' });
+    });
+
+    it('still reports a write behind a comment as a mutation', async () => {
+        const queryRows = vi.fn(async () => []);
+        const execute = vi.fn(async () => ({ affectedRows: 2 }));
+        const { tools } = createTools({ queryRows, execute } as Partial<RemoteDriverClient>);
+
+        const result = await tools.runQuery(1, '/* cleanup */\nDELETE FROM orders');
+
+        expect(queryRows).not.toHaveBeenCalled();
+        expect(execute).toHaveBeenCalledOnce();
+        expect(result).toMatchObject({ kind: 'mutation' });
+    });
 });
 
 // Counting every row of a huge table is a full scan (minutes on InnoDB), so those
