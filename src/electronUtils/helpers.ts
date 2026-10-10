@@ -1,4 +1,5 @@
 import pkgObj from '../../package.json' with { type: 'json' };
+import { readApiErrorMessage } from '../shared/utils/errorMessage';
 
 const pkg = JSON.parse(JSON.stringify(pkgObj));
 
@@ -25,8 +26,7 @@ export async function callApiPost(method: string, params?: unknown): Promise<unk
         body: params !== undefined ? JSON.stringify(params) : undefined,
     });
     if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Backend error (${response.status}): ${text}`);
+        throw new Error(readApiErrorMessage(response.status, await response.text()));
     }
 
     // Endpoints that return nothing answer with an empty body, which `response.json()`

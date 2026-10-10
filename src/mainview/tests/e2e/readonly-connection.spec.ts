@@ -61,8 +61,11 @@ test.describe('Read-only connection', () => {
             await page.getByTestId('save-bar-save').click();
 
             const error = page.getByTestId('save-bar-error');
-            await expect(error).toContainText(source.connectionName);
-            await expect(error).toContainText('is read-only, so the write was refused');
+            // The target prefix names the connection, then the refusal itself — not the JSON
+            // envelope (and escaped quotes) the API answered with.
+            await expect(error).toHaveText(
+                `${source.connectionName}: The connection "${source.connectionName}" is read-only, so the write was refused. Allow writes from its sidebar menu to change that.`
+            );
             // The change is kept, so the user can allow writes and save it.
             await expect(page.getByText('1 pending change')).toBeVisible();
             expect(await storedNames(request, source.connectionId)).toEqual(['Ada', 'Grace']);

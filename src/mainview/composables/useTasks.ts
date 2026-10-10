@@ -1,6 +1,7 @@
 import { reactive, ref } from 'vue';
 import type { AppRequestApi } from '../../electron/bridge.ts';
 import { apiMethods } from '../../shared/utils/apiMethods';
+import { toDisplayErrorMessage } from '../../shared/utils/errorMessage';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { appClientRpc } from '../appClient.ts';
 import { _dbCoreState } from './dbCoreState';
@@ -59,7 +60,7 @@ function formatRequestTarget(name: string, host?: string, port?: number, locatio
 }
 
 function withRequestTarget(error: unknown, ps: unknown): Error {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toDisplayErrorMessage(error);
     const target = describeRequestTarget(ps);
     const failure = new Error(target ? `${target}: ${message}` : message, { cause: error });
 

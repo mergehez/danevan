@@ -48,6 +48,8 @@ test.describe('Failure modes', () => {
             await expect(error).toBeVisible();
             await expect(error).toContainText(source.connectionName);
             await expect(error).toContainText('ECONNREFUSED');
+            // The failure's own message, not the JSON envelope that carried it.
+            await expect(error).not.toContainText('Backend error');
 
             // The staged change survives the failure, so the user can fix the connection and retry.
             await expect(page.getByText('1 pending change')).toBeVisible();
