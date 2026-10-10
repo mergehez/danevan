@@ -1,6 +1,5 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
-import { homedir, platform } from 'os';
 import { join } from 'path';
 import { appConfig } from './helpers';
 
@@ -224,18 +223,6 @@ export function useDatabase() {
     };
 }
 
-export function resolveAppDataDir(): string {
-    const envDir = process.env.APP_DATA_DIR;
-    if (envDir) return envDir;
-
-    if (platform() === 'win32') {
-        const appData = process.env.APPDATA;
-        if (appData) return join(appData, appConfig.projectName);
-    }
-
-    if (platform() === 'darwin') {
-        return join(homedir(), 'Library', 'Application Support', appConfig.projectName);
-    }
-
-    return join(homedir(), '.local', 'share', appConfig.projectName);
-}
+// The data dir is resolved in its own module: the keychain needs it too, and it must not pull the
+// SQLite client in with it.
+export { resolveAppDataDir, resolveDefaultAppDataDir } from './appDataDir';
