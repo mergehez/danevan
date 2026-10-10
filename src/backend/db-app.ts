@@ -14,6 +14,7 @@ import type {
     UpdateServerParams,
 } from '../shared/types';
 import { cleanupLegacySettings } from './appDbMaintenance.ts';
+import { configureAppDbSchema } from './appDbSchema.ts';
 
 type SQLInputValue = string | number | bigint | Uint8Array | Buffer | null;
 type SQLOutputValue = string | number | bigint | Uint8Array | Buffer | null;
@@ -310,67 +311,13 @@ export function useAppDb() {
             userDataDir ??= resolveAppDataDir();
             configuredUserDataDir = userDataDir;
             db = createDbClient(userDataDir);
-            db.exec(`
-                PRAGMA journal_mode = WAL;
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                );
-                CREATE TABLE IF NOT EXISTS servers (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    kind TEXT NOT NULL,
-                    driver TEXT NOT NULL,
-                    file_path TEXT,
-                    host TEXT,
-                    port INTEGER,
-                    schema_count INTEGER,
-                    username TEXT,
-                    sequence INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
-                CREATE TABLE IF NOT EXISTS connections (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    server_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    host TEXT,
-                    port INTEGER,
-                    database_name TEXT,
-                    readonly INTEGER NOT NULL DEFAULT 0,
-                    hidden INTEGER NOT NULL DEFAULT 0,
-                    sequence INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    last_used_at TEXT,
-                    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS scripts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    connection_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    group_name TEXT,
-                    sql_text TEXT NOT NULL DEFAULT '',
-                    sequence INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    last_run_at TEXT,
-                    FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS idx_connections_server_id ON connections(server_id);
-                CREATE INDEX IF NOT EXISTS idx_scripts_connection_id ON scripts(connection_id);
-            `);
+            // Creates a fresh app DB at the current shape or upgrades an older one, recording
+            // the version it reached in `PRAGMA user_version`.
+            configureAppDbSchema(db);
 
             normalizeServerSequences();
             normalizeConnectionSequences();
             normalizeScriptSequences();
-
-            // Databases written before "Hide database" have no `hidden` column.
-            const connectionColumns = db.prepare('PRAGMA table_info(connections)').all<{ name: string }>();
-
-            if (!connectionColumns.some((column) => column.name === 'hidden')) {
-                db.exec('ALTER TABLE connections ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;');
-            }
 
             cleanupLegacySettings(db);
         },
