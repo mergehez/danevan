@@ -14,7 +14,9 @@ export default defineConfig({
     // would only hide the flake it should report.
     retries: 0,
     workers: 1,
-    reporter: 'html',
+    // The flow specs share the browser suite's `require*` preconditions, so the same rule applies:
+    // a skipped precondition fails the run instead of reporting a shell that was never driven.
+    reporter: [['html'], ['./src/mainview/tests/e2e/failOnSkipReporter.ts']],
     timeout: 10_000,
     use: {
         trace: 'on-first-retry',
