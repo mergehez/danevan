@@ -1,8 +1,8 @@
 # Test audit — what to test next
 
-**Status:** 926 unit tests (73 files) · 91 browser tests (24 files) · 2 Electron shell tests
+**Status:** 938 unit tests (74 files) · 94 browser tests (25 files) · 2 Electron shell tests
 (dev build + packaged `.app`) ·
-coverage over every source file **43.3 % statements / 35.9 % branches** · aggregate and per-area
+coverage over every source file **43.7 % statements / 36.0 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
 
@@ -65,7 +65,11 @@ vs multi selection, header formatter menu, toolbar copy item, and the `useDbData
 `build/mac-arm64/Danevan.app`, so the asar layout, the bundled `backend.cjs` and the externalised
 `better-sqlite3` are proven to work, not just the dev build)** · **SQLite table DDL
 (`sqliteTableDdl.ts`: statement splitting with quoted and nested commas, column definition lookup,
-AUTOINCREMENT/COLLATE detection, and the `CREATE TABLE` generated for a modify plan)** · **a save against a dead connection keeps the pending change and says why in the save bar ·
+AUTOINCREMENT/COLLATE detection, and the `CREATE TABLE` generated for a modify plan)** · **the SQLite
+modify-table rebuild (`useSqliteDriver.spec.ts` and `sqlite-modify-table.spec.ts`: a table rename goes
+through SQLite's own `RENAME` so child foreign keys and views follow it, the AUTOINCREMENT counter is
+preserved instead of restarting at the highest surviving id, and a table a view selects from can
+still be rebuilt)** · **a save against a dead connection keeps the pending change and says why in the save bar ·
 credentials the server rejects name the connection · an unreachable backend shows its "Request
 failed" panel instead of an empty shell and recovers on reload · a `mysqldump` path that is gone is
 reported in the export modal · an unwritable app data directory reports the path it could not use** ·
@@ -113,6 +117,15 @@ memory-sql drops, foreign-key and primary-key changes, the rename) still only ru
 
 ## Unit tasks
 
+### unit-13 · SQLite column renames and referenced foreign keys (small)
+
+`applyModifyTable` now lets SQLite rewrite the references when the _table_ is renamed, but renaming a
+_column_ still rebuilds the table without a native `ALTER TABLE … RENAME COLUMN`, so a child table's
+`REFERENCES parent(old_column)` is left pointing at a column that no longer exists — the same silent
+breakage, one level down. Apply the column renames through SQLite before the rebuild (3.25+ rewrites
+the references with them), or refuse the rename with a clear message when a child references that
+column. Needs nothing but a real SQLite file.
+
 ### unit-10 · Windows runner verification (small)
 
 `findClientExecutable` now injects the process/fs boundary, so its Windows lookup (`where.exe`, the
@@ -131,6 +144,10 @@ POSIX-only lookup that made the app unable to find `mysql`/`mysqldump` on Window
   `E2E_SKIP_MISSING_DB=1` can no longer produce a green run that proves less.
 - Coverage floors are one point below the measured numbers and per-area (`src/backend`, `src/datagrid`,
   `src/shared`, `src/directives`), so a gap cannot hide in the aggregate.
+- `fk-peek.spec.ts` › "lists the referencing rows and shows what they point at" is flaky: it failed one
+  of three isolated runs because the peek editor never appeared inside the 5 s locator wait, and passed
+  the others. `retries: 0` means a flake fails the run, so the wait should key off the popover's own
+  state instead of a fixed expectation timeout.
 - `bun run test:e2e:electron` builds the shell (`build:shell`) and launches it;
   `bun run test:e2e:packaged` additionally runs `electron-builder` and launches the packaged `.app`.
   Separate configs are needed because `appConfig` hard-codes the API port every one of them binds.
