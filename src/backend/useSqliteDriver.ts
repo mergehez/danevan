@@ -528,6 +528,64 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
         withSqliteDatabase,
     });
 
+    /** A view: no table metadata, so its columns come from `table_xinfo`. */
+    async function readSqliteViewInfo(queryRunner: QueryRunner, tableName: string): Promise<TableInfo> {
+        const views = (await queryRunner.query(`SELECT name FROM sqlite_master WHERE type = 'view' AND name = ?`, [tableName])) as Array<{ name: string }>;
+
+        if (views.length === 0) {
+            throw new Error(`Table '${tableName}' was not found.`);
+        }
+
+        const columns = (
+            (await queryRunner.query(`PRAGMA table_xinfo(${deps.quoteIdentifier(tableName)})`)) as Array<{
+                cid: number | bigint;
+                name: string;
+                type: string;
+                notnull: number | bigint;
+                dflt_value: string | null;
+                pk: number | bigint;
+                hidden: number | bigint;
+            }>
+        ).map((column) => ({
+            cid: toSqliteNumber(column.cid),
+            name: column.name,
+            type: column.type,
+            notnull: toSqliteNumber(column.notnull),
+            dflt_value: column.dflt_value,
+            pk: toSqliteNumber(column.pk),
+            hidden: toSqliteNumber(column.hidden),
+        }));
+
+        return {
+            name: tableName,
+            columns: columns
+                .filter((column) => column.hidden !== 1)
+                .map(
+                    (column) =>
+                        ({
+                            cid: column.cid,
+                            name: column.name,
+                            type: column.type,
+                            notNull: column.notnull === 1,
+                            defaultValue: column.dflt_value,
+                            isPrimaryKey: column.pk > 0,
+                            primaryKeyOrdinal: column.pk > 0 ? column.pk : null,
+                            isAutoIncrement: false,
+                            comment: null,
+                            collation: null,
+                            onUpdate: null,
+                        }) satisfies TableColumnInfo
+                ),
+            indexes: [],
+            foreignKeys: [],
+            rowCount: await queryRowCount(queryRunner, tableName),
+            comment: null,
+            engine: null,
+            collation: null,
+            options: null,
+        } satisfies TableInfo;
+    }
+
     return {
         testConnection,
         async getTablesFresh(connectionId: number): Promise<TableSummary[]> {
@@ -579,60 +637,55 @@ export function useSqliteDriverTools(deps: SqliteDriverToolsDeps): DriverTools {
                     } satisfies TableInfo;
                 }
 
-                const views = (await queryRunner.query(`SELECT name FROM sqlite_master WHERE type = 'view' AND name = ?`, [tableName])) as Array<{ name: string }>;
+                return readSqliteViewInfo(queryRunner, tableName);
+            });
+        },
+        /**
+         * Every requested table (or every table when the list is omitted) from one catalog load:
+         * `getTables()` reads all tables' columns, indexes and foreign keys in a bounded number of
+         * queries, and one `sqlite_master` read supplies the CREATE statements the column enrichment
+         * needs. Row counts stay per table, exactly as the single-table path already pays them on
+         * SQLite, which has no catalog estimate to fall back on.
+         */
+        async getTableInfosFresh(connectionId: number, tableNames?: string[]): Promise<TableInfo[]> {
+            return withSqliteTypeOrm(connectionId, async ({ queryRunner }) => {
+                // Same internal-table filter as the table list, so a sweep with no names matches it.
+                const tables = (await queryRunner.getTables()).filter((table) => !table.name.startsWith('sqlite_'));
+                const tableByName = new Map(tables.map((table) => [table.name, table]));
+                const names = tableNames ?? tables.map((table) => table.name);
+                const createEntries = names.length
+                    ? ((await queryRunner.query(`SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name IN (${names.map(() => '?').join(', ')})`, names)) as Array<{
+                          name: string;
+                          sql: string | null;
+                      }>)
+                    : [];
+                const createSqlByName = new Map(createEntries.map((entry) => [entry.name, entry.sql]));
+                const infos: TableInfo[] = [];
 
-                if (views.length === 0) {
-                    throw new Error(`Table '${tableName}' was not found.`);
+                for (const name of names) {
+                    const table = tableByName.get(name);
+
+                    if (!table) {
+                        infos.push(await readSqliteViewInfo(queryRunner, name));
+                        continue;
+                    }
+
+                    const metadata = mapTypeOrmTableMetadata(table, normalizeOptionalText);
+
+                    infos.push({
+                        name: table.name,
+                        columns: enrichSqliteColumns(mapTypeOrmColumns(table, normalizeOptionalText), createSqlByName.get(table.name) ?? undefined),
+                        indexes: mapTypeOrmIndexesWithoutMetadata(table.indices, table.uniques, normalizeOptionalText),
+                        foreignKeys: mapTypeOrmForeignKeys(table.foreignKeys),
+                        rowCount: await queryRowCount(queryRunner, table.name),
+                        comment: metadata.comment,
+                        engine: metadata.engine,
+                        collation: null,
+                        options: null,
+                    } satisfies TableInfo);
                 }
 
-                const columns = (
-                    (await queryRunner.query(`PRAGMA table_xinfo(${deps.quoteIdentifier(tableName)})`)) as Array<{
-                        cid: number | bigint;
-                        name: string;
-                        type: string;
-                        notnull: number | bigint;
-                        dflt_value: string | null;
-                        pk: number | bigint;
-                        hidden: number | bigint;
-                    }>
-                ).map((column) => ({
-                    cid: toSqliteNumber(column.cid),
-                    name: column.name,
-                    type: column.type,
-                    notnull: toSqliteNumber(column.notnull),
-                    dflt_value: column.dflt_value,
-                    pk: toSqliteNumber(column.pk),
-                    hidden: toSqliteNumber(column.hidden),
-                }));
-
-                return {
-                    name: tableName,
-                    columns: columns
-                        .filter((column) => column.hidden !== 1)
-                        .map(
-                            (column) =>
-                                ({
-                                    cid: column.cid,
-                                    name: column.name,
-                                    type: column.type,
-                                    notNull: column.notnull === 1,
-                                    defaultValue: column.dflt_value,
-                                    isPrimaryKey: column.pk > 0,
-                                    primaryKeyOrdinal: column.pk > 0 ? column.pk : null,
-                                    isAutoIncrement: false,
-                                    comment: null,
-                                    collation: null,
-                                    onUpdate: null,
-                                }) satisfies TableColumnInfo
-                        ),
-                    indexes: [],
-                    foreignKeys: [],
-                    rowCount: await queryRowCount(queryRunner, tableName),
-                    comment: null,
-                    engine: null,
-                    collation: null,
-                    options: null,
-                } satisfies TableInfo;
+                return infos;
             });
         },
         async getTableDdl(connectionId: number, tableName: string): Promise<string> {

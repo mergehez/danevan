@@ -71,6 +71,9 @@ export type RemoteDriverHelper = {
     getTableMetadata?: (client: RemoteDriverClient, tableName: string) => Promise<Partial<ModifySchemaTable>>;
     getTableDdl?: (client: RemoteDriverClient, tableName: string) => Promise<string>;
     getTableNames: (client: RemoteDriverClient) => Promise<TableSummary[]>;
+    /** Every requested table's info (or every table when the list is omitted) from a bounded
+     *  number of catalog queries. Drivers that cannot batch it leave this undefined. */
+    getTableInfos?: (client: RemoteDriverClient, tableNames?: string[]) => Promise<TableInfo[]>;
     getServerSchemas: (client: RemoteDriverClient) => Promise<ServerSchemaRecord[]>;
     buildCreateDatabaseStatement: (databaseName: string, collation?: string) => string;
     buildReadTableStatement: (tableName: string, limit: number, offset: number, orderBy?: SortOrder) => RemoteStatement;
@@ -194,29 +197,44 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
         return deps.withRemoteClient(connectionId, async (client) => readTableData(client, tableName, limit, offset, orderBy, returnQuery));
     }
 
+    async function readTableInfo(client: RemoteDriverClient, tableName: string): Promise<TableInfo> {
+        const [columns, indexes, foreignKeys, count, tableMetadata] = await Promise.all([
+            deps.helper.getTableColumns(client, tableName),
+            deps.helper.getIndexes(client, tableName),
+            deps.helper.getForeignKeys(client, tableName),
+            readRowCount(client, tableName),
+            deps.helper.getTableMetadata?.(client, tableName) ?? Promise.resolve({}),
+        ]);
+
+        return {
+            name: tableName,
+            columns,
+            indexes,
+            foreignKeys,
+            rowCount: count.rowCount,
+            ...tableMetadata,
+        } satisfies TableInfo;
+    }
+
     return {
         testConnection: deps.testConnection,
         async getTablesFresh(connectionId: number): Promise<TableSummary[]> {
             return deps.withRemoteClient(connectionId, async (client) => deps.helper.getTableNames(client));
         },
         async getTableInfoFresh(connectionId: number, tableName: string): Promise<TableInfo> {
-            return deps.withRemoteClient(connectionId, async (client) => {
-                const [columns, indexes, foreignKeys, count, tableMetadata] = await Promise.all([
-                    deps.helper.getTableColumns(client, tableName),
-                    deps.helper.getIndexes(client, tableName),
-                    deps.helper.getForeignKeys(client, tableName),
-                    readRowCount(client, tableName),
-                    deps.helper.getTableMetadata?.(client, tableName) ?? Promise.resolve({}),
-                ]);
+            return deps.withRemoteClient(connectionId, async (client) => readTableInfo(client, tableName));
+        },
+        async getTableInfosFresh(connectionId: number, tableNames?: string[]): Promise<TableInfo[]> {
+            const getTableInfos = deps.helper.getTableInfos;
 
-                return {
-                    name: tableName,
-                    columns,
-                    indexes,
-                    foreignKeys,
-                    rowCount: count.rowCount,
-                    ...tableMetadata,
-                } satisfies TableInfo;
+            if (getTableInfos) {
+                return deps.withRemoteClient(connectionId, async (client) => getTableInfos(client, tableNames));
+            }
+
+            return deps.withRemoteClient(connectionId, async (client) => {
+                const names = tableNames ?? (await deps.helper.getTableNames(client)).map((table) => table.name);
+
+                return Promise.all(names.map((name) => readTableInfo(client, name)));
             });
         },
         async getTableDdl(connectionId: number, tableName: string): Promise<string> {

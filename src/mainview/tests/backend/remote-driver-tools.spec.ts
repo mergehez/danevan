@@ -186,6 +186,33 @@ describe('useRemoteDriverTools row counts', () => {
     });
 });
 
+// A schema sweep asks for many tables at once, so the driver answers the whole batch in one
+// helper call instead of the per-table column/index/foreign-key queries.
+describe('useRemoteDriverTools.getTableInfosFresh', () => {
+    it('reads the requested tables in one batched helper call and keeps their order', async () => {
+        const requested = ['orders', 'customers', 'invoices', 'products'];
+        const getTableColumns = vi.fn(async () => [{ name: 'id' } as never]);
+        const getTableInfos = vi.fn(async (_client: RemoteDriverClient, tableNames?: string[]) =>
+            (tableNames ?? []).map((tableName) => ({
+                name: tableName,
+                columns: [{ name: 'id' } as never],
+                indexes: [],
+                foreignKeys: [],
+                rowCount: 7,
+            }))
+        );
+        const { tools } = createRowCountTools({ getTableColumns, getTableInfos });
+
+        const infos = await tools.getTableInfosFresh!(1, requested);
+
+        expect(getTableInfos).toHaveBeenCalledOnce();
+        expect(getTableInfos.mock.calls[0]?.[1]).toEqual(requested);
+        expect(getTableColumns).not.toHaveBeenCalled();
+        expect(infos.map((info) => info.name)).toEqual(requested);
+        expect(infos.map((info) => info.rowCount)).toEqual([7, 7, 7, 7]);
+    });
+});
+
 // A read-only connection is a policy, not a permission: the statement must not reach the server.
 describe('statements that write', () => {
     it('reads the statements that only read', () => {

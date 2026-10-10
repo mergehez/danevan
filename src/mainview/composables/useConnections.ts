@@ -172,7 +172,11 @@ export function _useConnections() {
                 return;
             }
 
-            await Promise.all(tableState.tables.map((table) => state.ensureTableDetails(connectionId, table.name, force)));
+            await state.ensureTableDetailsBatch(
+                connectionId,
+                tableState.tables.map((table) => table.name),
+                force
+            );
         },
         async ensureTableDetails(connectionId: number, tableName: string, force = false) {
             const tableState = state.getTableDetailsState(connectionId, tableName);
@@ -206,6 +210,63 @@ export function _useConnections() {
                 tableState.loaded = previousLoaded && Boolean(previousInfo);
             } finally {
                 tableState.loading = false;
+            }
+        },
+        /**
+         * Loads several tables' details in one request. The comparison dialog, the SQL autocomplete
+         * and the schema hydration used to ask for one table per call — 163 backend requests on the
+         * developer's largest schema — while the backend answers them from one cached sweep.
+         */
+        async ensureTableDetailsBatch(connectionId: number, tableNames: string[], force = false) {
+            const cachedInfoByName = force ? undefined : state.getCachedConnectionSchema(connectionId)?.tableInfoByName;
+            const pending = tableNames.filter((tableName) => {
+                const tableState = state.getTableDetailsState(connectionId, tableName);
+
+                return !tableState.loading && (force || !tableState.loaded);
+            });
+
+            for (const tableName of pending) {
+                const cachedTableInfo = cachedInfoByName?.[tableName];
+
+                if (cachedTableInfo) {
+                    state.applyTableInfo(connectionId, tableName, cachedTableInfo);
+                }
+            }
+
+            const missing = pending.filter((tableName) => !cachedInfoByName?.[tableName]);
+
+            if (missing.length === 0) {
+                return;
+            }
+
+            const previousByName = new Map(
+                missing.map((tableName) => {
+                    const tableState = state.getTableDetailsState(connectionId, tableName);
+
+                    return [tableName, { info: tableState.info, loaded: tableState.loaded }];
+                })
+            );
+
+            for (const tableName of missing) {
+                state.getTableDetailsState(connectionId, tableName).loading = true;
+            }
+
+            try {
+                const tableInfos = await tasks.getTableInfos.run({ connectionId, tableNames: missing, refresh: force });
+
+                for (const tableInfo of tableInfos) {
+                    state.applyTableInfo(connectionId, tableInfo.name, tableInfo);
+                }
+            } catch {
+                for (const [tableName, previous] of previousByName) {
+                    const tableState = state.getTableDetailsState(connectionId, tableName);
+                    tableState.info = previous.info;
+                    tableState.loaded = previous.loaded && Boolean(previous.info);
+                }
+            } finally {
+                for (const tableName of missing) {
+                    state.getTableDetailsState(connectionId, tableName).loading = false;
+                }
             }
         },
         async selectConnection(connectionId: number | undefined) {

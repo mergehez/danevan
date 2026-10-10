@@ -26,6 +26,7 @@ export const apiMethods = [
     'getTableData',
     'getTableDdl',
     'getTableInfo',
+    'getTableInfos',
     'getTables',
     'hideConnection',
     'invalidateAllMetadataCaches',

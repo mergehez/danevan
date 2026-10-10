@@ -240,8 +240,8 @@ describe('app API contract', () => {
     it('exposes exactly the backend handlers declared by apiMethods', () => {
         const backendMethods = apiMethods.filter((method) => !MAIN_PROCESS_ONLY_METHODS.includes(method));
 
-        expect(apiMethods).toHaveLength(58);
-        expect(backendMethods).toHaveLength(54);
+        expect(apiMethods).toHaveLength(59);
+        expect(backendMethods).toHaveLength(55);
         expect(Object.keys(app).sort()).toEqual([...backendMethods].sort());
 
         for (const method of backendMethods) {
@@ -860,5 +860,32 @@ describe('settings round trips', () => {
         expect(app.deleteGridCustomFormatter({ formatterId })).toEqual([]);
         expect(app.getGridCustomFormatters()).toEqual([]);
         expect(queryRows<{ key: string }>("SELECT key FROM settings WHERE key LIKE 'gridColumnFormatters:%'")).toEqual([]);
+    });
+});
+
+describe('batched metadata reads', () => {
+    it('answers several tables in one call, with the columns the grid reads', async () => {
+        const { connectionId } = await createFileSource('Batched metadata');
+        await app.runQuery({ connectionId, sql: 'CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT);' });
+
+        const infos = await app.getTableInfos({ connectionId, tableNames: ['widgets', 'people'] });
+
+        expect(infos.map((info) => ({ name: info.name, columns: info.columns.map((column) => column.name) }))).toEqual([
+            { name: 'widgets', columns: ['id', 'label'] },
+            { name: 'people', columns: ['id', 'name'] },
+        ]);
+    });
+
+    it('does not serve a cached table after a statement changed its schema', async () => {
+        const { connectionId } = await createFileSource('Metadata invalidation');
+
+        const before = await app.getTableInfos({ connectionId, tableNames: ['widgets'] });
+        expect(before[0]?.columns.map((column) => column.name)).toEqual(['id', 'label']);
+
+        // DDL reaches the database as a raw statement — the editor and "Create new table" both use it.
+        await app.runQuery({ connectionId, sql: 'ALTER TABLE widgets ADD COLUMN note TEXT;' });
+
+        const after = await app.getTableInfos({ connectionId, tableNames: ['widgets'] });
+        expect(after[0]?.columns.map((column) => column.name)).toEqual(['id', 'label', 'note']);
     });
 });

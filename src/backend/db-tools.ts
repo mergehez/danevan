@@ -24,6 +24,7 @@ import { normalizeSqlInputWhitespace } from '../shared/utils/sqlTextNormalizatio
 import { readServerPassword as readServerPasswordFromKeychain } from './auth.ts';
 import { useAppDb } from './db-app.ts';
 import { connectionPoolKey, remoteDataSourcePool, serverPoolKey } from './remoteDataSourcePool.ts';
+import { statementWrites } from './useRemoteDriverTools.ts';
 import { useMsAccessDriverTools } from './useMsAccessDriver.ts';
 import { useMsAccessWindowsDriverTools } from './useMsAccessWindowsDriver.ts';
 import { useMySqlDriverTools } from './useMySqlDriver.ts';
@@ -62,6 +63,10 @@ export type DriverTools = {
     testConnection: (params: TestConnectionParams) => Promise<TestConnectionResult> | TestConnectionResult;
     getTablesFresh: (connectionId: number) => Promise<TableSummary[]>;
     getTableInfoFresh: (connectionId: number, tableName: string) => Promise<TableInfo>;
+    /** Every requested table's info (or every table when the list is omitted) from a bounded
+     *  number of catalog queries. Drivers that cannot batch it leave this undefined and the
+     *  caller falls back to one `getTableInfoFresh` per table. */
+    getTableInfosFresh?: (connectionId: number, tableNames?: string[]) => Promise<TableInfo[]>;
     getTableDdl: (connectionId: number, tableName: string) => Promise<string>;
     listServerSchemas: (serverId: number, connectionId?: number) => Promise<ServerSchemaRecord[]>;
     createDatabase?: (serverId: number, databaseName: string, collation?: string) => Promise<void>;
@@ -472,8 +477,53 @@ function normalizeApplyTableChanges(params: ApplyTableChangesParams) {
     };
 }
 
+/**
+ * Session metadata cache: one entry per connection and table name. A schema sweep (comparison,
+ * autocomplete, a foreign-key peek) reads every table at once, and a table's info costs several
+ * catalog queries to build, so the sweep pays them once per table per session instead of once per
+ * panel open. Nothing survives a schema change: every write path — modify, drop, a writing
+ * `runQuery` (which is how a `CREATE TABLE` arrives), apply, refresh, disconnect — invalidates the
+ * connection or the table it touched.
+ */
+const tableInfoCacheByConnection = new Map<number, Map<string, TableInfo>>();
+
+function getTableInfoCache(connectionId: number) {
+    let cache = tableInfoCacheByConnection.get(connectionId);
+
+    if (!cache) {
+        cache = new Map();
+        tableInfoCacheByConnection.set(connectionId, cache);
+    }
+
+    return cache;
+}
+
+function cacheTableInfo(connectionId: number, info: TableInfo) {
+    getTableInfoCache(connectionId).set(normalizeTableName(info.name), info);
+}
+
+function invalidateConnectionMetadataCache(connectionId: number) {
+    tableInfoCacheByConnection.delete(connectionId);
+}
+
+function invalidateTableMetadataCache(connectionId: number, tableName: string) {
+    tableInfoCacheByConnection.get(connectionId)?.delete(normalizeTableName(tableName));
+}
+
 function invalidateAllMetadataCaches() {
-    return;
+    tableInfoCacheByConnection.clear();
+}
+
+/** Fallback for drivers without a batched read: one fresh info per table, in the requested order. */
+async function fetchTableInfosOneByOne(tools: DriverTools, connectionId: number, tableNames?: string[]): Promise<TableInfo[]> {
+    const names = tableNames ?? (await tools.getTablesFresh(connectionId)).map((table) => table.name);
+    const infos: TableInfo[] = [];
+
+    for (const name of names) {
+        infos.push(await tools.getTableInfoFresh(connectionId, name));
+    }
+
+    return infos;
 }
 
 function remoteMutationId(result: Record<string, unknown>) {
@@ -737,7 +787,56 @@ export const dbTools = {
     },
     async getTableInfoFresh(connectionId: number, tableName: string): Promise<TableInfo> {
         const normalizedTableName = normalizeTableName(tableName);
-        return getConnectionDriverTools(connectionId).getTableInfoFresh(connectionId, normalizedTableName);
+        const info = await getConnectionDriverTools(connectionId).getTableInfoFresh(connectionId, normalizedTableName);
+        cacheTableInfo(connectionId, info);
+        return info;
+    },
+    /** One call for every table a sweep needs. Answers from the session cache and reads only the
+     *  tables it does not hold yet, in one driver call. `refresh` drops what the caller asked for
+     *  first, for a sweep that must see the live schema. */
+    async getTableInfos(connectionId: number, tableNames?: string[], refresh = false): Promise<TableInfo[]> {
+        const tools = getConnectionDriverTools(connectionId);
+        const read = (names?: string[]) => (tools.getTableInfosFresh ? tools.getTableInfosFresh(connectionId, names) : fetchTableInfosOneByOne(tools, connectionId, names));
+
+        if (refresh) {
+            if (tableNames) {
+                for (const name of tableNames) {
+                    invalidateTableMetadataCache(connectionId, name);
+                }
+            } else {
+                invalidateConnectionMetadataCache(connectionId);
+            }
+        }
+
+        if (!tableNames) {
+            const infos = await read();
+
+            for (const info of infos) {
+                cacheTableInfo(connectionId, info);
+            }
+
+            return infos;
+        }
+
+        const names = tableNames.map(normalizeTableName);
+        const cache = getTableInfoCache(connectionId);
+        const missing = names.filter((name) => !cache.has(name));
+
+        if (missing.length) {
+            for (const info of await read(missing)) {
+                cacheTableInfo(connectionId, info);
+            }
+        }
+
+        return names.map((name) => {
+            const info = cache.get(name);
+
+            if (!info) {
+                throw new Error(`Table '${name}' was not found.`);
+            }
+
+            return info;
+        });
     },
     async getTableDdl(connectionId: number, tableName: string): Promise<string> {
         const normalizedTableName = normalizeTableName(tableName);
@@ -785,6 +884,7 @@ export const dbTools = {
         await driverTools.createDatabase(serverId, databaseName, collation);
     },
     async refreshConnectionSchema(connectionId: number): Promise<ConnectionSchemaCache> {
+        invalidateConnectionMetadataCache(connectionId);
         const tables = await this.getTablesFresh(connectionId);
         return {
             cachedAt: new Date().toISOString(),
@@ -793,6 +893,7 @@ export const dbTools = {
         };
     },
     async refreshTableInfo(connectionId: number, tableName: string): Promise<TableInfo> {
+        invalidateTableMetadataCache(connectionId, tableName);
         return this.getTableInfoFresh(connectionId, tableName);
     },
     async dropTable(connectionId: number, tableName: string): Promise<ConnectionSchemaCache> {
@@ -807,6 +908,7 @@ export const dbTools = {
         invalidateAllMetadataCaches();
     },
     async disconnectConnection(connectionId: number): Promise<void> {
+        invalidateConnectionMetadataCache(connectionId);
         // Drop the pooled connection first: the driver's own cleanup (SQLite, MS Access)
         // must not run against a data source that is about to be destroyed.
         await remoteDataSourcePool.dispose(connectionPoolKey(connectionId));
@@ -816,6 +918,7 @@ export const dbTools = {
         await remoteDataSourcePool.dispose(serverPoolKey(serverId));
 
         for (const connection of appDb.listConnections(serverId, { includeHidden: true })) {
+            invalidateConnectionMetadataCache(connection.id);
             await remoteDataSourcePool.dispose(connectionPoolKey(connection.id));
         }
     },
@@ -831,7 +934,17 @@ export const dbTools = {
             throw new Error('SQL is required.');
         }
 
-        return getConnectionDriverTools(connectionId).runQuery(connectionId, normalizedSql, params);
+        return getConnectionDriverTools(connectionId)
+            .runQuery(connectionId, normalizedSql, params)
+            .then((result) => {
+                // DDL arrives through the editor as a raw statement, so a writing query is the only
+                // signal that this connection's cached metadata (a `CREATE`/`ALTER`/`DROP`) is stale.
+                if (statementWrites(normalizedSql)) {
+                    invalidateConnectionMetadataCache(connectionId);
+                }
+
+                return result;
+            });
     },
     async validateSql(connectionId: number, sql: string): Promise<SqlDiagnosticMarker[]> {
         const normalizedSql = normalizeSqlInputWhitespace(sql).trim();
@@ -865,6 +978,9 @@ export const dbTools = {
 
         await getConnectionDriverTools(params.connectionId).modifyTable(params.connectionId, normalizedTableName, currentInfo, nextPlan);
 
+        // A modify can rename a table or change what other tables reference, so the whole
+        // connection's metadata is dropped rather than only the table that was edited.
+        invalidateConnectionMetadataCache(params.connectionId);
         return this.getTableInfoFresh(params.connectionId, nextPlan.table.name);
     },
     async updateColumn(params: UpdateColumnParams): Promise<TableData> {
@@ -876,6 +992,10 @@ export const dbTools = {
     },
     async applyTableChanges(params: ApplyTableChangesParams): Promise<ApplyTableChangesResult> {
         const normalized = normalizeApplyTableChanges(params);
-        return getConnectionDriverTools(normalized.connectionId).applyTableChanges(normalized);
+        const result = await getConnectionDriverTools(normalized.connectionId).applyTableChanges(normalized);
+
+        // The schema is unchanged, but the cached row count no longer matches the table.
+        invalidateTableMetadataCache(normalized.connectionId, normalized.tableName);
+        return result;
     },
 };

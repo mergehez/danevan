@@ -139,12 +139,17 @@ function groupForeignKeysById(foreignKeys: TableInfo['foreignKeys']) {
 
 async function getPeekUsageRelations(connectionId: number, targetTable: string, targetColumn: string) {
     const tables = await dbTools.getTables(connectionId);
-    const tableInfos = await Promise.all(
-        tables.map(async (table) => ({
-            name: table.name,
-            info: await dbTools.getTableInfo(connectionId, table.name),
-        }))
-    );
+    // One batched metadata read: this used to be one `getTableInfo` per table, which on the
+    // developer's 163-table schema meant 163 round trips and ~650 `information_schema` queries.
+    const tableInfos = (
+        await dbTools.getTableInfos(
+            connectionId,
+            tables.map((table) => table.name)
+        )
+    ).map((info) => ({
+        name: info.name,
+        info,
+    }));
     const usages: PeekFkUsageRelation[] = [];
 
     for (const tableInfo of tableInfos) {
@@ -1222,6 +1227,13 @@ export const app = {
         appDb.touchConnectionLastUsed(ps.connectionId);
         return withTimedAppOperation(`getTableInfo:${ps.connectionId}:${ps.tableName}`, { connectionId: ps.connectionId, tableName: ps.tableName }, () =>
             dbTools.getTableInfo(ps.connectionId, ps.tableName)
+        );
+    },
+    getTableInfos: async (ps: { connectionId: number; tableNames?: string[]; refresh?: boolean }): Promise<TableInfo[]> => {
+        ensureConnectionExists(ps.connectionId);
+        appDb.touchConnectionLastUsed(ps.connectionId);
+        return withTimedAppOperation(`getTableInfos:${ps.connectionId}`, { connectionId: ps.connectionId, tableCount: ps.tableNames?.length }, () =>
+            dbTools.getTableInfos(ps.connectionId, ps.tableNames, ps.refresh === true)
         );
     },
     getTableDdl: async (ps: { connectionId: number; tableName: string }): Promise<string> => {

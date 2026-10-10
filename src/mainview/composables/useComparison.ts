@@ -85,7 +85,7 @@ export function _useComparison() {
     }
 
     async function loadTableInfos(connectionId: number, tableNames: string[], force: boolean) {
-        await Promise.all(tableNames.map((tableName) => connections.ensureTableDetails(connectionId, tableName, force)));
+        await connections.ensureTableDetailsBatch(connectionId, tableNames, force);
 
         return tableNames.map((tableName) => connections.getTableDetailsState(connectionId, tableName).info).filter((info): info is TableInfo => Boolean(info));
     }

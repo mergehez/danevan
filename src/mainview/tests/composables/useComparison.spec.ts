@@ -63,6 +63,16 @@ vi.mock('../../composables/useConnections', async () => {
                     detailsState[`${connectionId}:${tableName}`] = { loaded: true, loading: false, info };
                 }
             },
+            async ensureTableDetailsBatch(connectionId: number, tableNames: string[], force = false) {
+                for (const tableName of tableNames) {
+                    holders.calls.push({ kind: 'info', connectionId, tableName, force });
+                    const info = holders.tableInfos[`${connectionId}:${tableName}`];
+
+                    if (info) {
+                        detailsState[`${connectionId}:${tableName}`] = { loaded: true, loading: false, info };
+                    }
+                }
+            },
         }),
     };
 });

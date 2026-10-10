@@ -318,13 +318,23 @@ async function getMySqlForeignKeyRows(client: RemoteDriverClient, tableName: str
     });
 }
 
+type MySqlTableInfoRow = {
+    tableRows: number | bigint | string | null;
+    comment: string | null;
+    engine: string | null;
+    collation: string | null;
+    options: string | null;
+};
+
+/** A batch row carries the table it belongs to; the per-table row types never needed it. */
+type MySqlBatchRow = { batchTable: string | null };
+type MySqlBatchColumnRow = MySqlColumnRow & MySqlBatchRow;
+type MySqlBatchIndexRow = MySqlIndexRow & MySqlBatchRow;
+type MySqlBatchForeignKeyRow = MySqlForeignKeyRow & MySqlBatchRow;
+type MySqlBatchTableRow = MySqlTableInfoRow & MySqlBatchRow;
+
 async function getMySqlTableInfoRow(client: RemoteDriverClient, tableName: string) {
-    const rows = await client.queryRows<{
-        comment: string | null;
-        engine: string | null;
-        collation: string | null;
-        options: string | null;
-    }>({
+    const rows = await client.queryRows<MySqlTableInfoRow>({
         sql: `
             SELECT
                 table_comment AS comment,
@@ -339,6 +349,31 @@ async function getMySqlTableInfoRow(client: RemoteDriverClient, tableName: strin
     });
 
     return rows[0];
+}
+
+/** One `?` per requested name; a whole-schema sweep omits the filter entirely. */
+function buildMySqlTableFilter(column: string, tableNames?: string[]) {
+    if (!tableNames) {
+        return { sql: '', params: [] as SqlValue[] };
+    }
+
+    return {
+        sql: `\n              AND ${column} IN (${tableNames.map(() => '?').join(', ')})`,
+        params: tableNames as SqlValue[],
+    };
+}
+
+function groupMySqlBatchRows<TRow extends MySqlBatchRow>(rows: TRow[]) {
+    const groups = new Map<string, TRow[]>();
+
+    for (const row of rows) {
+        const tableName = String(row.batchTable ?? '');
+        const group = groups.get(tableName) ?? [];
+        group.push(row);
+        groups.set(tableName, group);
+    }
+
+    return groups;
 }
 
 export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
@@ -505,6 +540,124 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         });
     }
 
+    /**
+     * One query per catalog instead of ~5 per table: the whole sweep is four queries,
+     * bounded no matter how many tables the schema holds. Row counts stay the catalog
+     * estimate, so a sweep never pays for a COUNT(*) either.
+     */
+    async function getTableInfos(client: RemoteDriverClient, tableNames?: string[]): Promise<TableInfo[]> {
+        if (tableNames && tableNames.length === 0) {
+            return [];
+        }
+
+        const tableFilter = buildMySqlTableFilter('table_name', tableNames);
+        const foreignKeyFilter = buildMySqlTableFilter('kcu.table_name', tableNames);
+
+        const [columnRows, indexRows, foreignKeyRows, tableRows] = await Promise.all([
+            client.queryRows<MySqlBatchColumnRow>({
+                sql: `
+                    SELECT
+                        table_name AS batchTable,
+                        ordinal_position AS ordinalPosition,
+                        column_name AS name,
+                        column_type AS columnType,
+                        is_nullable AS isNullable,
+                        column_default AS columnDefault,
+                        column_key AS columnKey,
+                        extra AS extra,
+                        column_comment AS comment,
+                        collation_name AS collation
+                    FROM information_schema.columns
+                    WHERE table_schema = DATABASE()${tableFilter.sql}
+                    ORDER BY table_name ASC, ordinal_position ASC
+                `,
+                params: tableFilter.params,
+            }),
+            client.queryRows<MySqlBatchIndexRow>({
+                sql: `
+                    SELECT
+                        table_name AS batchTable,
+                        index_name AS name,
+                        column_name AS columnName,
+                        index_comment AS comment,
+                        index_type AS type,
+                        non_unique AS nonUnique,
+                        seq_in_index AS seqInIndex,
+                        collation AS columnOrder
+                    FROM information_schema.statistics
+                    WHERE table_schema = DATABASE()${tableFilter.sql}
+                      AND index_name <> 'PRIMARY'
+                    ORDER BY table_name ASC, index_name ASC, seq_in_index ASC
+                `,
+                params: tableFilter.params,
+            }),
+            client.queryRows<MySqlBatchForeignKeyRow>({
+                sql: `
+                    SELECT
+                        kcu.table_name AS batchTable,
+                        kcu.constraint_name AS name,
+                        kcu.ordinal_position AS sequence,
+                        kcu.referenced_table_name AS tableName,
+                        kcu.column_name AS fromColumn,
+                        kcu.referenced_column_name AS toColumn,
+                        rc.update_rule AS onUpdate,
+                        rc.delete_rule AS onDelete,
+                        rc.match_option AS matchOption
+                    FROM information_schema.key_column_usage AS kcu
+                    INNER JOIN information_schema.referential_constraints AS rc
+                        ON rc.constraint_schema = kcu.constraint_schema
+                       AND rc.table_name = kcu.table_name
+                       AND rc.constraint_name = kcu.constraint_name
+                    WHERE kcu.table_schema = DATABASE()${foreignKeyFilter.sql}
+                      AND kcu.referenced_table_name IS NOT NULL
+                    ORDER BY kcu.table_name ASC, kcu.constraint_name ASC, kcu.ordinal_position ASC
+                `,
+                params: foreignKeyFilter.params,
+            }),
+            client.queryRows<MySqlBatchTableRow>({
+                sql: `
+                    SELECT
+                        table_name AS batchTable,
+                        table_rows AS tableRows,
+                        table_comment AS comment,
+                        engine AS engine,
+                        table_collation AS collation,
+                        create_options AS options
+                    FROM information_schema.tables
+                    WHERE table_schema = DATABASE()${tableFilter.sql}
+                    ORDER BY table_name ASC
+                `,
+                params: tableFilter.params,
+            }),
+        ]);
+
+        const columnGroups = groupMySqlBatchRows(columnRows);
+        const indexGroups = groupMySqlBatchRows(indexRows);
+        const foreignKeyGroups = groupMySqlBatchRows(foreignKeyRows);
+        const tableRowByName = new Map(tableRows.map((row) => [String(row.batchTable ?? ''), row]));
+        const names = tableNames ?? [...tableRowByName.keys()];
+
+        return names.map((name) => {
+            const tableRow = tableRowByName.get(name);
+
+            if (!tableRow) {
+                throw new Error(`Table '${name}' was not found.`);
+            }
+
+            return {
+                name,
+                columns: mapMySqlColumns(columnGroups.get(name) ?? []),
+                indexes: mapMySqlIndexes(indexGroups.get(name) ?? []),
+                foreignKeys: mapMySqlForeignKeys(foreignKeyGroups.get(name) ?? []),
+                rowCount: normalizeCountValue(tableRow.tableRows),
+                comment: deps.normalizeOptionalText(tableRow.comment),
+                engine: deps.normalizeOptionalText(tableRow.engine),
+                collation: deps.normalizeOptionalText(tableRow.collation),
+                options: deps.normalizeOptionalText(tableRow.options),
+            } satisfies TableInfo;
+        });
+    }
+
     async function getServerSchemas(client: RemoteDriverClient): Promise<ServerSchemaRecord[]> {
         const rows = await client.queryRows<Record<string, unknown>>({ sql: 'SHOW DATABASES' });
         return rows
@@ -662,6 +815,7 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
         getIndexes: getIndexes,
         getServerSchemas: getServerSchemas,
         getTableColumns: getTableColumns,
+        getTableInfos: getTableInfos,
         getTableNames: getTableNames,
         queryRowCount: queryRowCount,
         estimateRowCount: estimateRowCount,

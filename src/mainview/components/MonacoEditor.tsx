@@ -119,7 +119,10 @@ export const MonacoEditor = component(
                 await connections.ensureConnectionTables(connectionId);
                 const tables = connections.getConnectionTablesState(connectionId).tables;
 
-                await Promise.all(tables.map((table) => connections.ensureTableDetails(connectionId, table.name)));
+                await connections.ensureTableDetailsBatch(
+                    connectionId,
+                    tables.map((table) => table.name)
+                );
 
                 const tableInfos = tables.map((table) => connections.getTableDetailsState(connectionId, table.name).info).filter((info): info is TableInfo => Boolean(info));
 
