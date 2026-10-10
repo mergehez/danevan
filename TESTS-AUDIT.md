@@ -1,7 +1,7 @@
 # Test audit
 
-**Status:** 956 unit tests (76 files) · 100 browser tests (26 files) · 2 Electron shell tests
-(dev build + packaged `.app`) · coverage over every source file **44.3 % statements / 36.6 % branches** ·
+**Status:** 976 unit tests (76 files) · 103 browser tests (27 files) · 10 Electron shell tests
+(dev build ×9 + packaged `.app`) · coverage over every source file **44.6 % statements / 36.8 % branches** ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails.
 
 The long survey that drove the earlier rounds is recoverable from git:
@@ -121,44 +121,49 @@ Each item is work a green run already proves; do not redo it.
   bridge, IPC round trip, `App.tsx` window title) and **the packaged application**
   (`test:e2e:packaged` builds the electron-builder bundle and launches `build/mac-arm64/Danevan.app`, so
   the asar layout, the bundled `backend.cjs` and the externalised `better-sqlite3` are proven).
+- **The app database's own upgrade path** (`appDbSchema.spec.ts`, `restart.spec.ts`): the DB records
+  `PRAGMA user_version` and runs its steps in order inside their own transactions, a step is safe
+  against a file whose previous upgrade was left half finished, and a file a newer build wrote is
+  refused with both versions named. The shell specs kill the process and start it again against the
+  same DB: the sources, scripts and selection of the last session are there when it comes back.
+- **A second launch and the native shell surface** (`second-launch.spec.ts`, `shell-native.spec.ts`):
+  a second launch takes the instance lock, brings the open window forward and exits 0 (it used to sit
+  there with the EADDRINUSE nowhere), and a busy API port names itself. The app menu's Cmd+, item
+  reaches the renderer as a native command, `pickDatabaseFile` / `pickSavePath` / the reveal and open
+  helpers answer over stubbed dialogs, a renderer diagnostic reaches the main process on the channel
+  both ends now share, and closing the last window keeps the process alive until `activate` draws a
+  new one (that path used to re-register every IPC handler and leave a blank window).
+- **The macOS keychain argv** (`auth.spec.ts`): the process boundary is injected, so the spec asserts
+  the real `add-generic-password` / `find-generic-password` / `delete-generic-password` arguments —
+  the service and account names, the `-U` update flag, exit code 44 — and reads a stored secret back
+  through a fake keychain. Account names are namespaced per data dir, so a second installation or a
+  test run cannot read, or delete, the first one's passwords.
+- **A read-only connection** (`appApi.spec.ts`, `readonly-connection.spec.ts`): the add-connection
+  form sets the flag, the sidebar row carries a lock, the row menu offers 'Make read-only' /
+  'Allow writes', and every write path refuses with the connection named while reads keep running.
+- **The foreign-key peek's own state** (`fk-peek.spec.ts`): the rows popover says it is loading or why
+  it is empty instead of drawing an empty grid, and the spec polls that state and re-walks the arrows
+  until the cell editor really opens (1 failure in 4 runs before, none in 11 after).
 - **Test infrastructure**: a skipped precondition fails the run (`failOnSkipReporter.ts`); coverage
   floors are one point below the measured numbers and per-area (`src/backend`, `src/datagrid`,
   `src/shared`, `src/directives`); `test:e2e:electron` and `test:e2e:packaged` build and launch the shell
-  and the packaged `.app` with separate configs, because `appConfig` hard-codes the API port.
+  and the packaged `.app` with separate configs, because `appConfig` hard-codes the API port. The
+  browser suite and every shell spec boot a test-owned app DB under `.e2e-data` (only its DB files are
+  wiped per run, so the provisioned runtimes survive) — never the developer's real one.
 
 ## Open
 
-- **e2e-17 · macOS shell behaviour (medium)** — `src/electron/main.ts` is 0 % covered: the menu
-  (including Cmd+, and the `native-command` it sends), `pickDatabaseFile`, `pickSavePath`,
-  `revealPathInFileManager`, `openFileInEditor`, renderer diagnostics, and `activate` /
-  `window-all-closed`. The shell specs assert only a window, the preload bridge keys and one
-  `getBootstrap` round trip, and the window-title check derives its expectation from the same bootstrap
-  response it compares against.
-- **e2e-18 · Restart persistence and a test-owned app DB (medium)** — the suite's "restart" is
-  `page.reload()` with the backend still alive, so persistence and WAL recovery are untested, and
-  Playwright runs the developer's real `~/Library/Application Support/danevan` DB. The app DB also has
-  no `PRAGMA user_version` or migration record — one hand-written `ALTER` is the whole upgrade path.
-  A workspace `APP_DATA_DIR` was tried and reverted: the keychain account name is
-  `danevan-server-password-<id>`, so a fresh app DB hands its test servers the low ids the real
-  installation uses — one inherited a stored password (`access denied … using password: YES`) and a
-  cleanup deletes the entry it finds. Namespace the keychain account by data dir first, then point the
-  config at a workspace dir, boot from a fresh and from a legacy app DB, apply a half-finished upgrade,
-  and assert that state survives a real relaunch.
-- **e2e-19 · A second launch (small)** — the API port is hard-coded and `serverApp.listen` has no
-  `error` handler, and there is no single-instance lock, so a second launch never reaches `createWindow`
-  (the `EADDRINUSE` goes nowhere). Cover the second launch, then give it a lock or a clear message.
-- **unit-16 · macOS Keychain argument list (small)** — `auth.spec.ts` mocks `executeTextCommand` and
-  `appApi.spec.ts` mocks `auth`, so the real `security add-generic-password` / `find-generic-password` /
-  `delete-generic-password` arguments (the `-U` update flag, exit-code 44) are never executed and a wrong
-  service or account name stays green. Assert the argv through an injected process boundary and read one
-  stored secret back.
-- **Decide what a `readonly` connection means (small)** — the flag is stored and round-tripped (and the
-  API contract asserts it) but no form sets it and no write path checks it. Either enforce it and say so
-  in the UI, or drop the column.
-- **Fix the flaky `fk-peek` spec (small)** — "lists the referencing rows and shows what they point at"
-  failed one of three isolated runs because the peek editor never appeared inside the 5 s locator wait.
-  `retries: 0` means a flake fails the run, so the wait must key off the popover's own state instead of a
-  fixed expectation timeout.
+The audited list is empty: every unblocked item of the last round is closed. What this round turned
+up and did not fix:
+
+- **A failed save shows the backend's JSON envelope (small)** — the save bar prints
+  `Backend error (500): {"error":"…"}` with the message inside escaped JSON
+  (`readonly-connection.spec.ts` and `failure-modes.spec.ts` assert around it). The user can read the
+  message, but it should be the message alone.
+- **The formatter specs assume a provisioned SQLFluff runtime (small)** — `formatSql` creates
+  `sqlfluff-runtime` under the app data dir on first use (a venv plus an install), so the first spec
+  to format SQL on a fresh data dir fails while it installs, and the parser-problem count is wrong
+  until it exists. They should require it like the MySQL specs require their database.
 
 ## Open (blocked)
 
