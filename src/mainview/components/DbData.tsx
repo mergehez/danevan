@@ -306,6 +306,31 @@ export const DbData = component(
             return peekGridStates.get(view.id)!;
         }
 
+        /**
+         * The peek grid draws nothing of its own until its answer arrives, so the popover is an
+         * empty box meanwhile and a peek that failed looks exactly like one that is slow.
+         */
+        function renderPeekRowsView(view: FkPeekRowsView) {
+            if (view.loading) {
+                return (
+                    <div class="px-3 py-3 text-xs opacity-70" data-testid="peek-rows-loading">
+                        Loading relation…
+                    </div>
+                );
+            }
+
+            // An empty match keeps its columns, and the grid's own empty text says there was no row.
+            if (view.errorMessage && !view.columns.length) {
+                return (
+                    <div class="px-3 py-3 text-xs text-amber-200" data-testid="peek-rows-error">
+                        {view.errorMessage}
+                    </div>
+                );
+            }
+
+            return <DataGrid state={ensurePeekGridState(view)} hasToolbar={false} class="h-full" slots={{ title: () => <span class="transform-none">{view.title}</span> }} />;
+        }
+
         function cleanupRemovedPeekGridStates(activeIds: string[]) {
             const activeIdSet = new Set(activeIds);
 
@@ -520,14 +545,7 @@ export const DbData = component(
                             default: () => (
                                 <>
                                     {isFkPeekRowsView(view) ? (
-                                        <div class="h-full min-h-0">
-                                            <DataGrid
-                                                state={ensurePeekGridState(view)}
-                                                hasToolbar={false}
-                                                class="h-full"
-                                                slots={{ title: () => <span class="transform-none">{view.title}</span> }}
-                                            />
-                                        </div>
+                                        <div class="h-full min-h-0">{renderPeekRowsView(view)}</div>
                                     ) : isFkUsageListView(view) ? (
                                         <div class="flex h-full min-h-0 flex-col overflow-auto px-3 py-3">
                                             {view.loading ? (

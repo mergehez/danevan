@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { createFileSource, openSidebarTable, reloadSidebarRow } from './helpers';
 
 /**
@@ -52,28 +52,63 @@ function topPeek(page: Page) {
     return page.locator('[data-peek-popover-id]').last();
 }
 
+/** Waits for a peek popover to have its rows drawn, reporting the popover's own state meanwhile. */
+async function waitForPeekRows(popover: Locator) {
+    await expect
+        .poll(
+            async () => {
+                if (await popover.getByTestId('peek-rows-loading').count()) {
+                    return 'loading';
+                }
+
+                if (await popover.getByTestId('peek-rows-error').count()) {
+                    return (await popover.getByTestId('peek-rows-error').innerText()).trim();
+                }
+
+                return (await popover.getByTestId('data-grid-viewport').count()) ? 'rows' : 'no popover grid';
+            },
+            { message: 'the peek popover should draw the rows it answered with' }
+        )
+        .toBe('rows');
+}
+
 /**
  * Reads one cell of the newest peek popover through its in-cell editor.
  * The peek grid is transposed (rows are the target table's columns, columns are
  * 'Column' plus one per matched row) and a fresh popover starts on `0:0`, so
  * walking right then down reaches `row:column`.
+ *
+ * The walk is repeated until the editor really opens: a key the grid is not ready for yet is
+ * dropped, and an attempt that was ignored leaves the active cell where it started, so the next one
+ * begins from the same place. Waiting a fixed time on the editor is what used to time out.
  */
 async function openPeekEditor(page: Page, rowIndex: number, columnIndex: number) {
     const popover = topPeek(page);
-    await popover.getByTestId('data-grid-viewport').focus();
-
-    for (let index = 0; index < columnIndex; index += 1) {
-        await page.keyboard.press('ArrowRight');
-    }
-
-    for (let index = 0; index < rowIndex; index += 1) {
-        await page.keyboard.press('ArrowDown');
-    }
-
-    await page.keyboard.press('Enter');
-
     const editor = popover.locator(`textarea[data-editor-key="${rowIndex}:${columnIndex}"]`);
-    await expect(editor).toBeVisible();
+
+    await waitForPeekRows(popover);
+
+    await expect
+        .poll(
+            async () => {
+                await popover.getByTestId('data-grid-viewport').focus();
+
+                for (let index = 0; index < columnIndex; index += 1) {
+                    await page.keyboard.press('ArrowRight');
+                }
+
+                for (let index = 0; index < rowIndex; index += 1) {
+                    await page.keyboard.press('ArrowDown');
+                }
+
+                await page.keyboard.press('Enter');
+
+                return await editor.count();
+            },
+            { message: `the peek editor of cell ${rowIndex}:${columnIndex} should open` }
+        )
+        .toBe(1);
+
     return editor;
 }
 

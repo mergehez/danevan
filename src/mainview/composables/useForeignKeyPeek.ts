@@ -349,7 +349,9 @@ export function useForeignKeyPeekViews(opts: {
         view.columnStats = result.kind === 'rows' ? result.columnStats : {};
         view.rows = result.kind === 'rows' ? result.rows : [];
         view.loading = false;
-        view.errorMessage = result.kind === 'rows' && result.rows.length === 0 ? emptyMessage : undefined;
+        // A peek runs a SELECT, so anything else is an unexpected answer: reporting it beats an
+        // empty popover that looks like a peek which is still loading.
+        view.errorMessage = result.kind !== 'rows' ? 'The peek query did not return rows.' : result.rows.length === 0 ? emptyMessage : undefined;
         logPeekDebug('applyRowsViewResult applied', {
             id,
             resultKind: result.kind,
