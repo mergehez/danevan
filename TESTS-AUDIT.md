@@ -1,8 +1,8 @@
 # Test audit — what to test next
 
-**Status:** 870 unit tests (70 files) · 91 browser tests (24 files) · 2 Electron shell tests
+**Status:** 926 unit tests (73 files) · 91 browser tests (24 files) · 2 Electron shell tests
 (dev build + packaged `.app`) ·
-coverage over every source file **41.7 % statements / 33.7 % branches** · aggregate and per-area
+coverage over every source file **43.3 % statements / 35.9 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
 
@@ -71,7 +71,10 @@ failed" panel instead of an empty shell and recovers on reload · a `mysqldump` 
 reported in the export modal · an unwritable app data directory reports the path it could not use** ·
 **dialect SQL (`dialectSql.ts`: quoting per dialect, referential actions, TypeORM foreign keys,
 PostgreSQL statement preparation) and the Windows MySQL client lookup (`where.exe`, `Program Files`
-candidates, `bin\<command>.exe` scan)** · **the MS Access bridge protocol (`msAccessProtocol.ts`:
+candidates, `bin\<command>.exe` scan)** · **the remote modify-table DDL (`remoteTableDdl.ts`,
+`mysqlTableDdl.ts`, `postgresTableDdl.ts`: key and index signatures, primary-key and dropped-column
+derivation, the MySQL ALTER / ADD / CHANGE / option statements, and every statement PostgreSQL
+generates, including the collation and identity changes it refuses)** · **the MS Access bridge protocol (`msAccessProtocol.ts`:
 value tagging and decoding, bracket quoting, the line-delimited worker frames, Java version parsing,
 the inbound-foreign-key guard) and runtime discovery (`msAccessRuntimeManifest.ts`: bundled versus
 downloaded runtime, JRE folders, `DANEVAN_MSACCESS_*` overrides) · the Access modify-table contract
@@ -99,6 +102,9 @@ and table-list specs, so no test edits a row, saves a pending change or applies 
 either. Add a spec that edits, inserts and deletes a row, saves, and re-reads the value through
 `post(request, 'getTableData', …)` for both dialects, behind a `require*` precondition that fails
 loudly — the dialect where wrong SQL silently corrupts data is the one with no write coverage.
+Applying a saved modify-table plan is the other server-bound path: the pure DDL builders and the
+PostgreSQL helper wrapper are unit-tested, but the driver orchestration around them (TypeORM
+memory-sql drops, foreign-key and primary-key changes, the rename) still only runs against a server.
 
 - _depends on_: a reachable PostgreSQL and SQL Server — the Docker and Podman CLIs are installed here
   but no daemon is running, so the images, credentials and seeded test databases are missing too.
@@ -106,15 +112,6 @@ loudly — the dialect where wrong SQL silently corrupts data is the one with no
 ---
 
 ## Unit tasks
-
-### unit-8 · Remote driver DDL internals (medium)
-
-`dialectSql.ts` now covers what was extractable without a server (identifier quoting, referential
-actions, TypeORM foreign keys, PostgreSQL statement preparation); the rest of `useMySqlDriver.ts`
-(6 %) and `usePostgresDriver.ts` (12 %) is schema and DDL builder code that runs against a live
-server. Next slice: extract the pure DDL builders (index and ALTER statement generation) the way
-`sqliteTableDdl.ts` was, and cover the server-bound remainder through the write-path specs instead of
-unit tests. Extraction needs nothing; the remainder inherits e2e-13's dependency.
 
 ### unit-10 · Windows runner verification (small)
 
