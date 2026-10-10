@@ -16,6 +16,16 @@ import type {
     UpdateColumnParams,
 } from '../shared/types.ts';
 import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
+import {
+    buildResultFileScript,
+    getDefaultPsPaths,
+    getPowerShellInvocation,
+    isTransientPowerShellStderr,
+    parsePowerShellResult,
+    probeAccessProvider,
+    PS_TRANSIENT_ERROR,
+    runPowerShellCandidates,
+} from './msAccessPsProbe.ts';
 import type { MsAccessConnectionRecord, MsAccessServerRecord } from './useMsAccessDriver.ts';
 import type { ModifySchemaPlan } from './useSqliteDriver.ts';
 
@@ -65,20 +75,6 @@ let cachedProvider: string | null = null;
 let cachedPsPath: string | null = null;
 let providerPromise: Promise<void> | null = null;
 
-function getDefaultPsPaths(windir: string | undefined): string[] {
-    const paths: string[] = [];
-    const native = windir ? `${windir}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` : null;
-    const x64 = windir ? `${windir}\\SysArm32\\WindowsPowerShell\\v1.0\\powershell.exe` : null;
-    const x86 = windir ? `${windir}\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe` : null;
-    const x64Cmd = windir ? `${windir}\\SysArm32\\cmd.exe` : null; // x64 cmd → launches x64 powershell
-    if (native && existsSync(native)) paths.push(native);
-    if (x64 && existsSync(x64)) paths.push(x64);
-    if (x86 && existsSync(x86)) paths.push(x86);
-    if (x64Cmd && existsSync(x64Cmd)) paths.push(`CMD_WRAPPER:${x64Cmd}`); // special prefix
-    paths.push('powershell.exe');
-    return paths;
-}
-
 /** Spawns a PowerShell script. Tries all known paths + PATH fallback. */
 function spawnPowerShell(script: string, psPaths: string[]): Promise<any[]> {
     const tmpDir = `${tmpdir()}\\danevan-ps-${Date.now()}`;
@@ -86,21 +82,12 @@ function spawnPowerShell(script: string, psPaths: string[]): Promise<any[]> {
     const resultPath = `${tmpDir}\\result.json`;
 
     // Replace stdout WriteLine with file output — avoids all stdout/stderr reliability issues
-    const fileScript = script
-        .replaceAll('[System.Console]::WriteLine($json)', `$json | Out-File -Encoding UTF8 '${resultPath.replace(/'/g, "''")}'`)
-        .replaceAll('[System.Console]::WriteLine($errObjJson)', `$errObjJson | Out-File -Encoding UTF8 '${resultPath.replace(/'/g, "''")}'`)
-        .replaceAll('[System.Console]::WriteLine($outputJson)', `$outputJson | Out-File -Encoding UTF8 '${resultPath.replace(/'/g, "''")}'`)
-        .replaceAll(
-            '[System.Console]::WriteLine($output | ConvertTo-Json -Depth 5)',
-            `($output | ConvertTo-Json -Depth 5) | Out-File -Encoding UTF8 '${resultPath.replace(/'/g, "''")}'`
-        );
+    const fileScript = buildResultFileScript(script, resultPath);
 
     try {
         mkdirSync(tmpDir, { recursive: true });
         writeFileSync(scriptPath, fileScript, 'utf8');
     } catch {}
-
-    const errors: Error[] = [];
 
     function cleanup() {
         for (const p of [scriptPath, resultPath, tmpDir]) {
@@ -115,12 +102,8 @@ function spawnPowerShell(script: string, psPaths: string[]): Promise<any[]> {
 
     function tryOne(psPath: string): Promise<any[]> {
         return new Promise((resolve, reject) => {
-            const isCmdWrapper = psPath.startsWith('CMD_WRAPPER:');
-            const exePath = isCmdWrapper ? psPath.slice('CMD_WRAPPER:'.length) : psPath;
-            const args = isCmdWrapper
-                ? ['/c', 'powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath]
-                : ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath];
-            const ps = spawn(exePath, args);
+            const { executable, args } = getPowerShellInvocation(psPath, scriptPath);
+            const ps = spawn(executable, args);
             let stderr = '';
             ps.stderr.on('data', (d) => (stderr += d.toString()));
             ps.on('close', (code) => {
@@ -131,40 +114,19 @@ function spawnPowerShell(script: string, psPaths: string[]): Promise<any[]> {
                 } catch {}
                 cleanup();
                 if (!content) {
-                    if (stderr.includes('progress') || stderr.includes('CLIXML')) return reject(new Error('__TRANSIENT__'));
+                    if (isTransientPowerShellStderr(stderr)) return reject(new Error(PS_TRANSIENT_ERROR));
                     return reject(new Error(`PowerShell exited with code ${code}: ${stderr || '(no output)'}`));
                 }
                 try {
-                    const result = JSON.parse(content.trim());
-                    if (result.success) resolve(result.data || []);
-                    else reject(new Error(result.error));
-                } catch (e) {
-                    reject(new Error(`Failed to parse result. Content: ${content.slice(0, 200)}`));
+                    resolve(parsePowerShellResult(content));
+                } catch (error) {
+                    reject(error);
                 }
             });
         });
     }
 
-    async function tryAll(): Promise<any[]> {
-        for (const psPath of psPaths) {
-            try {
-                return await tryOne(psPath);
-            } catch (err: any) {
-                if (err.message === '__TRANSIENT__') {
-                    try {
-                        return await tryOne(psPath);
-                    } catch (e2: any) {
-                        errors.push(e2);
-                    }
-                } else {
-                    errors.push(err);
-                }
-            }
-        }
-        throw new Error(`All PowerShell paths failed. Last error: ${errors[errors.length - 1]?.message}`);
-    }
-
-    return tryAll();
+    return runPowerShellCandidates(psPaths, tryOne);
 }
 
 /**
@@ -204,31 +166,19 @@ $outputJson = $output | ConvertTo-Json -Depth 5
 
     logPsScript(probeScript, 'probe');
 
-    const psPaths = getDefaultPsPaths(process.env.windir);
+    const psPaths = getDefaultPsPaths(process.env.windir, existsSync);
 
-    async function tryAllPaths(): Promise<any> {
-        for (const psPath of psPaths) {
-            try {
-                const data = await spawnPowerShell(probeScript, [psPath]);
-                const result = Array.isArray(data) ? data[0] : data;
-                if (result?.provider) {
-                    cachedPsPath = psPath;
-                    console.log(`[ps-probe] ${psPath} → ${result.provider}`);
-                    return result;
-                }
-            } catch (err) {
-                console.log(`[ps-probe] ${psPath} failed:`, String(err));
-            }
-        }
-        return null;
-    }
-
-    providerPromise = tryAllPaths()
-        .then((data) => {
-            if (!data) throw new Error('No working Access OLEDB provider found.');
-            console.log('[ps-probe] Result:', JSON.stringify(data));
-            cachedProvider = typeof data === 'object' && !Array.isArray(data) ? data.provider || null : null;
-            if (!cachedProvider) throw new Error('No working Access OLEDB provider found.');
+    providerPromise = probeAccessProvider(
+        psPaths,
+        (psPath) => spawnPowerShell(probeScript, [psPath]),
+        (message) => console.log(message)
+    )
+        .then((probe) => {
+            if (!probe) throw new Error('No working Access OLEDB provider found.');
+            cachedPsPath = probe.psPath;
+            cachedProvider = probe.provider;
+            console.log(`[ps-probe] ${probe.psPath} → ${probe.provider}`);
+            console.log('[ps-probe] Result:', JSON.stringify(probe.result));
         })
         .finally(() => {
             providerPromise = null;
@@ -284,7 +234,7 @@ ${psOutputFooter}
     logPsScript(fullScript, 'query');
 
     // Use cached PowerShell path from probe, or try all paths
-    const psPaths = cachedPsPath ? [cachedPsPath] : getDefaultPsPaths(process.env.windir);
+    const psPaths = cachedPsPath ? [cachedPsPath] : getDefaultPsPaths(process.env.windir, existsSync);
     return spawnPowerShell(fullScript, psPaths);
 }
 
