@@ -1,8 +1,8 @@
 # Test audit — what to test next
 
-**Status:** 808 unit tests (68 files) · 91 browser tests (24 files) · 2 Electron shell tests
+**Status:** 827 unit tests (69 files) · 91 browser tests (24 files) · 2 Electron shell tests
 (dev build + packaged `.app`) ·
-coverage over every source file **40.3 % statements / 32.6 % branches** · aggregate and per-area
+coverage over every source file **41.4 % statements / 33.2 % branches** · aggregate and per-area
 floors enforced in `vitest.config.js` · a run that skips a precondition fails · **still a long tail
 of 0 % files**.
 
@@ -76,7 +76,11 @@ value tagging and decoding, bracket quoting, the line-delimited worker frames, J
 the inbound-foreign-key guard) and runtime discovery (`msAccessRuntimeManifest.ts`: bundled versus
 downloaded runtime, JRE folders, `DANEVAN_MSACCESS_*` overrides) · the Access modify-table contract
 (`getMsAccessExplicitPlanErrors` and `buildMsAccessModifyTableStatements`: what UCanAccess cannot
-alter, the append-only statements and the rebuild through a temporary table)**.
+alter, the append-only statements and the rebuild through a temporary table) · **the Java bridge
+itself (`msAccessBridge.spec.ts` spawns the JVM against `assets/test-access-db.mdb`: a real
+CREATE TABLE/INSERT/read round trip, the metadata it reports back, and every column type the editor
+offers** · **the Access column-type mapping: the eight spellings UCanAccess refuses are mapped to the
+ones it accepts and no longer offered in the dropdown**.
 
 ---
 
@@ -107,17 +111,24 @@ server. Next slice: extract the pure DDL builders (index and ALTER statement gen
 `sqliteTableDdl.ts` was, and cover the server-bound remainder through the write-path specs instead of
 unit tests. Extraction needs nothing; the remainder inherits e2e-13's dependency.
 
-### unit-9 · MS Access bridge integration (medium)
+### unit-11 · Access `CURRENCY` metadata is not stable (small)
 
-The protocol, the runtime discovery and the modify-table DDL contract are covered; what is still
-driven only by hand is the Java bridge itself — compiling `MsAccessBridge.java`, the worker handshake
-and a real query against `assets/test-access-db.mdb`. The pieces are on this machine (Java 17, the
-`msaccess-runtime` jars under the app data directory, the fixture), so a spec can spawn the bridge
-with the injected process boundary and assert a table list plus one row read. The `ps-probe` lookup in
-`useMsAccessWindowsDriver.ts` still needs a Windows run.
+The bridge spec found it: a column created as `CURRENCY` is reported back as `DECIMAL(8,4)` or
+`DECIMAL(100,4)` depending on which metadata path answers first, so the type a user sees can change
+between two reads of the same table. `getMsAccessExplicitPlanErrors` compares column signatures, so a
+flip can also make an untouched table look altered and refuse the save. Pin which path answers (or
+normalise the precision) and assert one value.
 
-- _depends on_: a Windows runner for the `ps-probe` PowerShell path (the macOS bridge integration
-  needs nothing missing).
+- _depends on_: nothing; the finding comes from `msAccessBridge.spec.ts`, which already reproduces
+  both values.
+
+### unit-12 · `ps-probe` PowerShell lookup on Windows (small)
+
+`useMsAccessWindowsDriver.ts` picks its PowerShell provider by probing the machine; the probe, its
+output parsing and the resulting choice are only driven on Windows. Inject the process boundary and
+cover the parse/choose logic on any platform, with the real spawn left to a Windows run.
+
+- _depends on_: a Windows runner for the real spawn.
 
 ### unit-10 · Windows runner verification (small)
 
