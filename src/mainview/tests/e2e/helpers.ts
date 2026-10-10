@@ -5,6 +5,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import mysql from 'mysql2/promise';
+import { DATA_GRID_ROW_HEIGHT } from '../../../datagrid/dataGrid';
 
 export const API = `http://127.0.0.1:${process.env.E2E_API_PORT || '3264'}/api`;
 
@@ -274,6 +275,58 @@ export async function openSidebarTable(page: Page, connectionId: number, tableNa
     await tableRow.dispatchEvent('dblclick');
 
     await expect(page.getByTestId('data-grid-viewport').first()).toBeVisible();
+}
+
+/** Boots the app and opens one table of a file source. */
+export async function openFileTable(page: Page, source: { serverId: number; connectionId: number }, tableName: string) {
+    await page.goto('/');
+    await reloadSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
+    await openSidebarTable(page, source.connectionId, tableName);
+}
+
+/**
+ * The screen position of a grid cell and of the viewport's top edge. The grid draws to a canvas, so
+ * the cell's own top-left comes from the in-cell editor the grid positions over it (the editor may
+ * be wider and taller than its cell, so the offsets stay inside the one row and its first pixels).
+ */
+export async function gridCellPoint(page: Page, columnIndex: number, rowIndex = 0) {
+    const viewport = page.getByTestId('data-grid-viewport').first();
+    await viewport.focus();
+
+    for (let index = 0; index < columnIndex; index += 1) {
+        await page.keyboard.press('ArrowRight');
+    }
+
+    for (let index = 0; index < rowIndex; index += 1) {
+        await page.keyboard.press('ArrowDown');
+    }
+
+    await page.keyboard.press('Enter');
+
+    const editor = page.locator(`textarea[data-editor-key="${rowIndex}:${columnIndex}"]`);
+    await expect(editor).toBeVisible();
+    const box = (await editor.boundingBox())!;
+    await editor.press('Escape');
+
+    return { x: box.x + 4, y: box.y + DATA_GRID_ROW_HEIGHT / 2, viewportTop: (await viewport.boundingBox())!.y };
+}
+
+/** One entry of the context menu that is open. */
+export function menuItem(page: Page, label: string | RegExp) {
+    return page.locator('.v-menu-panel .v-menu-item', { hasText: label }).first();
+}
+
+export async function readClipboard(page: Page) {
+    return page.evaluate(() => navigator.clipboard.readText());
+}
+
+/** An empty clipboard makes a copy that silently does nothing fail instead of reading stale text. */
+export async function clearClipboard(page: Page) {
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+}
+
+export async function expectClipboardText(page: Page, expected: string) {
+    await expect.poll(() => readClipboard(page)).toBe(expected);
 }
 
 /** Expands a MySQL server down to one of its tables and opens it. */

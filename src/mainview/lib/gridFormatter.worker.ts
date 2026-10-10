@@ -16,6 +16,14 @@ type FormatResponse =
           error: string;
       };
 
+type ReadyMessage = { ready: true };
+
+/**
+ * The page holds its requests until this arrives: a message sent to a worker whose script has not
+ * run yet is dropped, which left the first render of every formatter showing the raw value.
+ */
+self.postMessage({ ready: true } satisfies ReadyMessage);
+
 const formatterCache = new Map<string, (value: string) => unknown>();
 
 function compileFormatter(template: string) {

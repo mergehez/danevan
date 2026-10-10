@@ -1,7 +1,7 @@
 // The grid formatter worker compiles a user template into `format(value)` and posts the
 // result back. jsdom's `window` stands in for the worker's `self`, so the real handler and
 // the real template compiler run against the messages asserted here.
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type FormatResponse = {
     requestId: number;
@@ -10,7 +10,10 @@ type FormatResponse = {
     error?: string;
 };
 
+type WorkerMessage = FormatResponse | { ready: true };
+
 let posted: FormatResponse[] = [];
+let readyMessages = 0;
 
 function format(template: string, value: string) {
     self.onmessage!({ data: { requestId: 42, template, value } } as unknown as MessageEvent);
@@ -18,12 +21,24 @@ function format(template: string, value: string) {
 
 describe('grid formatter worker', () => {
     beforeEach(async () => {
+        vi.resetModules();
         posted = [];
-        (self as unknown as { postMessage: (message: FormatResponse) => void }).postMessage = (message) => {
+        readyMessages = 0;
+        (self as unknown as { postMessage: (message: WorkerMessage) => void }).postMessage = (message) => {
+            if ('ready' in message) {
+                readyMessages += 1;
+                return;
+            }
+
             posted.push(message);
         };
 
         await import('./gridFormatter.worker');
+    });
+
+    it('announces that it is listening before any request arrives', () => {
+        expect(readyMessages).toBe(1);
+        expect(posted).toEqual([]);
     });
 
     it('runs the template and posts the formatted text', () => {

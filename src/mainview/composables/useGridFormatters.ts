@@ -23,6 +23,21 @@ type FormatterRequestRecord = {
     timeoutId: ReturnType<typeof setTimeout>;
 };
 
+/** A request that waits for the worker to announce that its script has run. */
+type QueuedFormatterRequest = {
+    requestId: number;
+    cacheKey: string;
+    fallbackValue: string;
+    template: string;
+};
+
+type FormatterWorkerMessage = {
+    ready?: boolean;
+    requestId?: number;
+    ok?: boolean;
+    text?: string;
+};
+
 export function _useGridFormatters() {
     const defaultTemplate = 'function format(value) {\n    return value;\n}';
     const formatterResultCache = new Map<string, string>();
@@ -32,11 +47,14 @@ export function _useGridFormatters() {
     const formatterRequestTimeoutMs = 50;
     const formatterResultMaxLength = 8_192;
     let formatterWorker: Worker | undefined;
+    let formatterWorkerReady = false;
+    let queuedFormatterRequests: QueuedFormatterRequest[] = [];
     let nextRequestId = 0;
 
     function clearFormatterCaches() {
         formatterResultCache.clear();
         pendingFormatterKeys.clear();
+        queuedFormatterRequests = [];
         pendingFormatterRequests.forEach((request) => clearTimeout(request.timeoutId));
         pendingFormatterRequests.clear();
         formatterErrorKeys.clear();
@@ -58,6 +76,8 @@ export function _useGridFormatters() {
     function disposeFormatterWorker(state: { renderVersion: number }) {
         formatterWorker?.terminate();
         formatterWorker = undefined;
+        formatterWorkerReady = false;
+        queuedFormatterRequests = [];
         pendingFormatterRequests.forEach((request) => {
             clearTimeout(request.timeoutId);
             formatterResultCache.set(request.cacheKey, request.fallbackValue);
@@ -67,42 +87,78 @@ export function _useGridFormatters() {
         bumpRenderVersion(state);
     }
 
+    /** Starts the safety clock and sends one request to the worker that is listening. */
+    function sendFormatterRequest(state: { renderVersion: number }, request: QueuedFormatterRequest) {
+        const worker = formatterWorker;
+
+        if (!worker) {
+            return;
+        }
+
+        const timeoutId = setTimeout(() => {
+            const pending = pendingFormatterRequests.get(request.requestId);
+
+            if (!pending) {
+                return;
+            }
+
+            formatterErrorKeys.add(pending.cacheKey);
+            formatterResultCache.set(pending.cacheKey, pending.fallbackValue);
+            disposeFormatterWorker(state);
+        }, formatterRequestTimeoutMs);
+
+        pendingFormatterRequests.set(request.requestId, {
+            cacheKey: request.cacheKey,
+            fallbackValue: request.fallbackValue,
+            timeoutId,
+        });
+        worker.postMessage({ requestId: request.requestId, template: request.template, value: request.fallbackValue });
+    }
+
+    function flushQueuedFormatterRequests(state: { renderVersion: number }) {
+        const queued = queuedFormatterRequests;
+        queuedFormatterRequests = [];
+
+        for (const request of queued) {
+            sendFormatterRequest(state, request);
+        }
+    }
+
     function ensureFormatterWorker(state: { renderVersion: number }) {
         if (formatterWorker) {
             return formatterWorker;
         }
 
+        formatterWorkerReady = false;
         formatterWorker = new FormatterWorker();
-        formatterWorker.addEventListener(
-            'message',
-            (
-                event: MessageEvent<{
-                    requestId: number;
-                    ok: boolean;
-                    text?: string;
-                    error?: string;
-                }>
-            ) => {
-                const request = pendingFormatterRequests.get(event.data.requestId);
-
-                if (!request) {
-                    return;
-                }
-
-                clearTimeout(request.timeoutId);
-                pendingFormatterRequests.delete(event.data.requestId);
-                pendingFormatterKeys.delete(request.cacheKey);
-
-                if (event.data.ok && typeof event.data.text === 'string') {
-                    formatterResultCache.set(request.cacheKey, clampFormatterOutput(event.data.text, request.fallbackValue));
-                } else {
-                    formatterErrorKeys.add(request.cacheKey);
-                    formatterResultCache.set(request.cacheKey, request.fallbackValue);
-                }
-
-                bumpRenderVersion(state);
+        formatterWorker.addEventListener('message', (event: MessageEvent<FormatterWorkerMessage>) => {
+            // The worker announces itself once its script has run; a request sent before that is
+            // dropped by the browser instead of queued, so the held requests are sent here.
+            if (event.data?.ready) {
+                formatterWorkerReady = true;
+                flushQueuedFormatterRequests(state);
+                return;
             }
-        );
+
+            const request = pendingFormatterRequests.get(event.data.requestId ?? -1);
+
+            if (!request) {
+                return;
+            }
+
+            clearTimeout(request.timeoutId);
+            pendingFormatterRequests.delete(event.data.requestId ?? -1);
+            pendingFormatterKeys.delete(request.cacheKey);
+
+            if (event.data.ok && typeof event.data.text === 'string') {
+                formatterResultCache.set(request.cacheKey, clampFormatterOutput(event.data.text, request.fallbackValue));
+            } else {
+                formatterErrorKeys.add(request.cacheKey);
+                formatterResultCache.set(request.cacheKey, request.fallbackValue);
+            }
+
+            bumpRenderVersion(state);
+        });
 
         return formatterWorker;
     }
@@ -322,23 +378,23 @@ export function _useGridFormatters() {
                 return fallbackValue;
             }
 
-            const worker = ensureFormatterWorker(this);
-            const requestId = ++nextRequestId;
-            const timeoutId = setTimeout(() => {
-                const request = pendingFormatterRequests.get(requestId);
-
-                if (!request) {
-                    return;
-                }
-
-                formatterErrorKeys.add(request.cacheKey);
-                formatterResultCache.set(request.cacheKey, request.fallbackValue);
-                disposeFormatterWorker(this);
-            }, formatterRequestTimeoutMs);
+            const request: QueuedFormatterRequest = {
+                requestId: ++nextRequestId,
+                cacheKey,
+                fallbackValue,
+                template: formatter.template,
+            };
 
             pendingFormatterKeys.add(cacheKey);
-            pendingFormatterRequests.set(requestId, { cacheKey, fallbackValue, timeoutId });
-            worker.postMessage({ requestId, template: formatter.template, value: fallbackValue });
+
+            if (formatterWorkerReady) {
+                sendFormatterRequest(this, request);
+            } else {
+                // The worker cannot answer before its script ran, and a request sent into that window
+                // is lost; it is sent (and timed) once the worker announces that it is listening.
+                ensureFormatterWorker(this);
+                queuedFormatterRequests.push(request);
+            }
 
             return fallbackValue;
         },
