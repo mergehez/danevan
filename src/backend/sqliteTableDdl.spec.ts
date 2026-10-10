@@ -8,6 +8,8 @@ import {
     buildSqliteCreateTableSql,
     enrichSqliteColumns,
     extractSqliteColumnDefinition,
+    getSqliteAutoIncrementColumn,
+    getSqlitePrimaryKeyColumns,
     normalizeOptionalText,
     parseSqliteColumnMetadata,
     splitSqliteList,
@@ -211,6 +213,63 @@ describe('buildSqliteColumnDefinition', () => {
     });
 });
 
+describe('getSqlitePrimaryKeyColumns', () => {
+    it('numbers an explicit primary key in its declared order', () => {
+        const columns = getSqlitePrimaryKeyColumns(plan({ keys: [{ name: 'PRIMARY', isPrimary: true, columns: [{ columnName: 'b' }, { columnName: 'a' }] }] }));
+
+        expect(columns).toEqual([
+            { name: 'b', primaryKeyOrdinal: 1 },
+            { name: 'a', primaryKeyOrdinal: 2 },
+        ]);
+    });
+
+    it('falls back to the flagged columns in ordinal order', () => {
+        const columns = getSqlitePrimaryKeyColumns(
+            plan({ columns: [column({ name: 'late', isPrimaryKey: true, primaryKeyOrdinal: null }), column({ name: 'id', isPrimaryKey: true, primaryKeyOrdinal: 1 })] })
+        );
+
+        expect(columns).toEqual([
+            { name: 'id', primaryKeyOrdinal: 1 },
+            { name: 'late', primaryKeyOrdinal: null },
+        ]);
+    });
+
+    it('returns nothing for a table without a primary key', () => {
+        expect(getSqlitePrimaryKeyColumns(plan({ columns: [column({ name: 'id' })] }))).toEqual([]);
+    });
+});
+
+describe('getSqliteAutoIncrementColumn', () => {
+    it('finds the single autoincrement primary key', () => {
+        const id = column({ name: 'id', type: 'INTEGER', isPrimaryKey: true, primaryKeyOrdinal: 1, isAutoIncrement: true });
+
+        expect(getSqliteAutoIncrementColumn(plan({ columns: [id, column({ name: 'name' })] }))).toBe(id);
+    });
+
+    it('returns nothing when the single primary key does not autoincrement', () => {
+        expect(getSqliteAutoIncrementColumn(plan({ columns: [column({ name: 'id', isPrimaryKey: true, primaryKeyOrdinal: 1 })] }))).toBeUndefined();
+    });
+
+    it('returns nothing for a composite key, which cannot carry AUTOINCREMENT inline', () => {
+        const columns = [column({ name: 'a', isPrimaryKey: true, primaryKeyOrdinal: 1, isAutoIncrement: true }), column({ name: 'b', isPrimaryKey: true, primaryKeyOrdinal: 2 })];
+
+        expect(getSqliteAutoIncrementColumn(plan({ columns }))).toBeUndefined();
+    });
+
+    it('ignores an autoincrement column that is not the primary key', () => {
+        const columns = [column({ name: 'id', isPrimaryKey: true, primaryKeyOrdinal: 1 }), column({ name: 'seq', isAutoIncrement: true })];
+
+        expect(getSqliteAutoIncrementColumn(plan({ columns }))).toBeUndefined();
+    });
+
+    it('follows an explicit primary key over the flagged columns', () => {
+        const code = column({ name: 'code', isAutoIncrement: true });
+        const columns = [column({ name: 'id', isPrimaryKey: true, primaryKeyOrdinal: 1 }), code];
+
+        expect(getSqliteAutoIncrementColumn(plan({ keys: [{ name: 'PRIMARY', isPrimary: true, columns: [{ columnName: 'code' }] }], columns }))).toBe(code);
+    });
+});
+
 describe('buildSqliteCreateTableSql', () => {
     it('inlines a single primary key and keeps the column order', () => {
         const sql = buildSqliteCreateTableSql(
@@ -223,6 +282,19 @@ describe('buildSqliteCreateTableSql', () => {
         );
 
         expect(sql).toBe('CREATE TABLE "orders" (\n    "id" INT PRIMARY KEY,\n    "total" INT\n);');
+    });
+
+    it('keeps AUTOINCREMENT on the inline primary key', () => {
+        const sql = buildSqliteCreateTableSql(
+            quote,
+            'orders',
+            tableInfo,
+            plan({
+                columns: [column({ name: 'id', type: 'INT', isPrimaryKey: true, primaryKeyOrdinal: 1, isAutoIncrement: true }), column({ name: 'total', type: 'INT' })],
+            })
+        );
+
+        expect(sql).toBe('CREATE TABLE "orders" (\n    "id" INTEGER PRIMARY KEY AUTOINCREMENT,\n    "total" INT\n);');
     });
 
     it('emits a composite primary key and unique constraints as table clauses', () => {
