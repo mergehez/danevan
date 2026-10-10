@@ -2,25 +2,35 @@ import { executeTextCommand } from './bunSubprocess.ts';
 import type { DriverTools, NormalizedApplyTableChanges, SortOrder } from './db-tools.ts';
 import { MS_ACCESS_BRIDGE_SOURCE } from './msAccessBridgeSource.ts';
 import {
+    decodeQueryRows,
+    drainWorkerResponseBuffer,
+    encodeBase64Utf8,
+    encodeSqlValue,
+    encodeWorkerRequest,
+    getMsAccessInboundForeignKeyError,
+    getMsAccessWorkerKey,
+    normalizeMsAccessReferencingForeignKeys,
+    parseJavaMajorVersion,
+    quoteMsAccessIdentifier,
+    rejectActiveWorkerRequest,
+    type MsAccessWorkerRequest,
+} from './msAccessProtocol.ts';
+import {
+    findBundledRuntime,
+    getMsAccessRuntimeDir,
     getMsAccessRuntimeJarName,
     getMsAccessRuntimeJarUrl,
-    getMsAccessRuntimePlatformJreFolderName,
     MS_ACCESS_RUNTIME_BRIDGE_FILE_NAME,
-    MS_ACCESS_RUNTIME_FOLDER_NAME,
-    MS_ACCESS_RUNTIME_GENERIC_JRE_FOLDER_NAME,
-    MS_ACCESS_RUNTIME_JRE_FOLDER_NAME,
     MS_ACCESS_RUNTIME_LIB_FOLDER_NAME,
-    MS_ACCESS_RUNTIME_SUPPORTED_JRE_PLATFORMS,
     msAccessRuntimeArtifacts,
 } from './msAccessRuntimeManifest.ts';
 import type { ModifySchemaColumn, ModifySchemaKey, ModifySchemaPlan } from './useSqliteDriver.ts';
 import { spawn, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
-import { basename, dirname, join, resolve } from 'path';
+import { basename, dirname, join } from 'path';
 import type {
     ApplyTableChangesResult,
-    MsAccessRuntimeStatus,
     QueryExecutionResult,
     ServerSchemaRecord,
     SqlValue,
@@ -63,36 +73,11 @@ type MsAccessRuntime = {
     runtimeDir: string;
 };
 
-type BundledMsAccessRuntime = {
-    rootDir: string;
-    libDir: string;
-    javaCommand?: string;
-};
-
-type MsAccessWorkerResponse<T> = {
-    ok?: unknown;
-    result?: T;
-    error?: unknown;
-};
-
-type PendingMsAccessWorkerRequest = {
-    op: string;
-    resolve: (value: unknown) => void;
-    reject: (error: Error) => void;
-};
-
-type MsAccessReferencingForeignKey = {
-    name?: string;
-    table?: string;
-    from?: string;
-    to?: string;
-};
-
 type MsAccessWorker = {
     key: string;
     child: ChildProcess;
     responseBuffer: string;
-    activeRequest?: PendingMsAccessWorkerRequest;
+    activeRequest?: MsAccessWorkerRequest;
     requestChain: Promise<void>;
     closed: boolean;
     exitedPromise: Promise<void>;
@@ -110,64 +95,9 @@ const runtimeInitPromises = new Map<string, Promise<MsAccessRuntime>>();
 const workerInitPromises = new Map<string, Promise<MsAccessWorker>>();
 const MS_ACCESS_BRIDGE_CLASS_NAME = 'MsAccessBridge';
 
-function encodeBase64Utf8(value: string) {
-    return Buffer.from(value, 'utf8').toString('base64');
-}
-
-function encodeSqlValue(value: SqlValue) {
-    if (value == null) {
-        return 'null:';
-    }
-
-    if (typeof value === 'bigint') {
-        return `bigint:${value.toString()}`;
-    }
-
-    if (typeof value === 'number') {
-        return `number:${Number.isFinite(value) ? value.toString() : '0'}`;
-    }
-
-    if (value instanceof Uint8Array || Buffer.isBuffer(value)) {
-        return `bytes:${Buffer.from(value).toString('base64')}`;
-    }
-
-    return `string:${encodeBase64Utf8(String(value))}`;
-}
-
-function decodeQueryRows(rows: unknown): Array<Record<string, SqlValue>> {
-    if (!Array.isArray(rows)) {
-        return [];
-    }
-
-    return rows.map((row) => {
-        if (!row || typeof row !== 'object') {
-            return {} as Record<string, SqlValue>;
-        }
-
-        return Object.fromEntries(
-            Object.entries(row).map(([key, value]) => {
-                if (typeof value === 'boolean') {
-                    return [key, value ? 1 : 0];
-                }
-
-                return [key, value as SqlValue];
-            })
-        ) as Record<string, SqlValue>;
-    });
-}
-
 function normalizeOptionalText(value: string | null | undefined) {
     const normalizedValue = value?.trim();
     return normalizedValue ? normalizedValue : null;
-}
-
-function quoteMsAccessIdentifier(identifier: string) {
-    return identifier
-        .split('.')
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .map((part) => `[${part.replaceAll(']', ']]')}]`)
-        .join('.');
 }
 
 function buildPrimaryKeyFromColumns(columns: ModifySchemaColumn[]) {
@@ -748,201 +678,7 @@ export function buildMsAccessModifyTableStatements(tableName: string, currentInf
     return statements;
 }
 
-function normalizeMsAccessReferencingForeignKeys(value: unknown) {
-    if (!Array.isArray(value)) {
-        return [] as MsAccessReferencingForeignKey[];
-    }
-
-    return value
-        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
-        .map((entry) => ({
-            name: typeof entry.name === 'string' ? entry.name : undefined,
-            table: typeof entry.table === 'string' ? entry.table : undefined,
-            from: typeof entry.from === 'string' ? entry.from : undefined,
-            to: typeof entry.to === 'string' ? entry.to : undefined,
-        }))
-        .filter((entry) => !!entry.table);
-}
-
-function getMsAccessInboundForeignKeyError(tableName: string, foreignKeys: MsAccessReferencingForeignKey[]) {
-    if (foreignKeys.length === 0) {
-        return undefined;
-    }
-
-    const details = foreignKeys
-        .map((foreignKey) => {
-            const name = foreignKey.name?.trim() || '(unnamed constraint)';
-            const table = foreignKey.table?.trim() || '(unknown table)';
-            const from = foreignKey.from?.trim();
-            const to = foreignKey.to?.trim();
-            const columnDetails = from && to ? ` (${table}.${from} -> ${tableName}.${to})` : '';
-            return `${name} on ${table}${columnDetails}`;
-        })
-        .join(', ');
-
-    return `MS Access cannot rebuild table ${tableName} while it is referenced by foreign keys from other tables: ${details}. Remove those referencing constraints first, then retry the rebuild.`;
-}
-
-function getMsAccessWorkerKey(databasePath: string) {
-    return resolve(databasePath);
-}
-
-function encodeWorkerRequest(args: string[]) {
-    return args.map((value) => encodeBase64Utf8(value)).join('\t');
-}
-
-function getWorkerErrorMessage(error: unknown, fallback: string) {
-    if (typeof error === 'string' && error.trim()) {
-        return error;
-    }
-
-    if (error instanceof Error && error.message.trim()) {
-        return error.message;
-    }
-
-    return fallback;
-}
-
-function rejectActiveWorkerRequest(worker: MsAccessWorker, error: unknown) {
-    if (!worker.activeRequest) {
-        return;
-    }
-
-    const activeRequest = worker.activeRequest;
-    worker.activeRequest = undefined;
-    activeRequest.reject(new Error(getWorkerErrorMessage(error, `MS Access worker request failed during ${activeRequest.op}.`)));
-}
-
-function handleWorkerResponseLine(worker: MsAccessWorker, line: string) {
-    if (!line) {
-        return;
-    }
-
-    const activeRequest = worker.activeRequest;
-
-    if (!activeRequest) {
-        return;
-    }
-
-    try {
-        const response = JSON.parse(line) as MsAccessWorkerResponse<unknown>;
-        worker.activeRequest = undefined;
-
-        if (response.ok !== true) {
-            activeRequest.reject(new Error(getWorkerErrorMessage(response.error, `MS Access worker request failed during ${activeRequest.op}.`)));
-            return;
-        }
-
-        activeRequest.resolve(response.result);
-    } catch (error) {
-        worker.activeRequest = undefined;
-        activeRequest.reject(new Error(getWorkerErrorMessage(error, `MS Access worker returned invalid JSON during ${activeRequest.op}.`)));
-    }
-}
-
-function drainWorkerResponseBuffer(worker: MsAccessWorker, flush = false) {
-    let newlineIndex = worker.responseBuffer.indexOf('\n');
-
-    while (newlineIndex >= 0) {
-        const line = worker.responseBuffer.slice(0, newlineIndex).trim();
-        worker.responseBuffer = worker.responseBuffer.slice(newlineIndex + 1);
-        handleWorkerResponseLine(worker, line);
-        newlineIndex = worker.responseBuffer.indexOf('\n');
-    }
-
-    if (flush) {
-        const remaining = worker.responseBuffer.trim();
-        worker.responseBuffer = '';
-
-        if (remaining) {
-            handleWorkerResponseLine(worker, remaining);
-        }
-    }
-}
-
 // stdout is now processed via stream 'data' event in createMsAccessWorker.
-
-function getMsAccessRuntimeDir(appDataDir: string) {
-    return join(appDataDir, MS_ACCESS_RUNTIME_FOLDER_NAME);
-}
-
-function getBundledJavaCandidates(runtimeRootDir: string) {
-    const javaBinaryName = process.platform === 'win32' ? 'java.exe' : 'java';
-    const candidates = [
-        process.env.DANEVAN_MSACCESS_JAVA_HOME?.trim() ? join(process.env.DANEVAN_MSACCESS_JAVA_HOME.trim(), 'bin', javaBinaryName) : undefined,
-        join(runtimeRootDir, getMsAccessRuntimePlatformJreFolderName(process.platform), 'bin', javaBinaryName),
-        join(runtimeRootDir, MS_ACCESS_RUNTIME_GENERIC_JRE_FOLDER_NAME, 'bin', javaBinaryName),
-        join(runtimeRootDir, MS_ACCESS_RUNTIME_JRE_FOLDER_NAME, 'bin', javaBinaryName),
-    ];
-
-    return [...new Set(candidates.filter((candidate): candidate is string => Boolean(candidate)))];
-}
-
-function getBundledJrePlatforms(runtimeRootDir: string) {
-    return [...MS_ACCESS_RUNTIME_SUPPORTED_JRE_PLATFORMS].filter((platform) => existsSync(join(runtimeRootDir, getMsAccessRuntimePlatformJreFolderName(platform))));
-}
-
-function getBundledRuntimeCandidateDirs() {
-    const execDir = dirname(process.execPath);
-    const candidates = [
-        process.env.DANEVAN_MSACCESS_RUNTIME_DIR?.trim(),
-        resolve(process.cwd(), 'assets', MS_ACCESS_RUNTIME_FOLDER_NAME),
-        process.platform === 'darwin'
-            ? resolve(execDir, '..', 'Resources', 'app', MS_ACCESS_RUNTIME_FOLDER_NAME)
-            : resolve(execDir, 'resources', 'app', MS_ACCESS_RUNTIME_FOLDER_NAME),
-        resolve(execDir, '..', 'resources', 'app', MS_ACCESS_RUNTIME_FOLDER_NAME),
-    ];
-
-    return [...new Set(candidates.filter((candidate): candidate is string => Boolean(candidate)))];
-}
-
-function findBundledRuntime(): BundledMsAccessRuntime | undefined {
-    for (const runtimeRootDir of getBundledRuntimeCandidateDirs()) {
-        const libDir = join(runtimeRootDir, MS_ACCESS_RUNTIME_LIB_FOLDER_NAME);
-        const hasAllJars = msAccessRuntimeArtifacts.every((artifact) => existsSync(join(libDir, getMsAccessRuntimeJarName(artifact))));
-
-        if (!hasAllJars) {
-            continue;
-        }
-
-        const javaCommand = getBundledJavaCandidates(runtimeRootDir).find((candidate) => existsSync(candidate));
-
-        return {
-            rootDir: runtimeRootDir,
-            libDir,
-            javaCommand,
-        } satisfies BundledMsAccessRuntime;
-    }
-
-    return undefined;
-}
-
-function hasDownloadedRuntime(appDataDir: string) {
-    const libDir = join(getMsAccessRuntimeDir(appDataDir), MS_ACCESS_RUNTIME_LIB_FOLDER_NAME);
-    return msAccessRuntimeArtifacts.every((artifact) => existsSync(join(libDir, getMsAccessRuntimeJarName(artifact))));
-}
-
-export function inspectMsAccessRuntime(appDataDir: string): MsAccessRuntimeStatus {
-    const bundledRuntime = findBundledRuntime();
-    const downloadedRuntime = hasDownloadedRuntime(appDataDir);
-    const runtimePath = bundledRuntime?.rootDir ?? (downloadedRuntime ? getMsAccessRuntimeDir(appDataDir) : undefined);
-
-    return {
-        runtimeSource: bundledRuntime ? 'bundled' : downloadedRuntime ? 'downloaded' : 'missing',
-        runtimePath,
-        currentPlatform: process.platform,
-        hasGenericBundledJre: bundledRuntime
-            ? existsSync(join(bundledRuntime.rootDir, MS_ACCESS_RUNTIME_GENERIC_JRE_FOLDER_NAME)) || existsSync(join(bundledRuntime.rootDir, MS_ACCESS_RUNTIME_JRE_FOLDER_NAME))
-            : false,
-        bundledJrePlatforms: bundledRuntime ? getBundledJrePlatforms(bundledRuntime.rootDir) : [],
-        currentPlatformHasBundledJre: bundledRuntime
-            ? existsSync(join(bundledRuntime.rootDir, getMsAccessRuntimePlatformJreFolderName(process.platform))) ||
-              existsSync(join(bundledRuntime.rootDir, MS_ACCESS_RUNTIME_GENERIC_JRE_FOLDER_NAME)) ||
-              existsSync(join(bundledRuntime.rootDir, MS_ACCESS_RUNTIME_JRE_FOLDER_NAME))
-            : false,
-        runtimeDownloadsDisabled: /^(1|true|yes|on)$/i.test(process.env.DANEVAN_MSACCESS_DISABLE_RUNTIME_DOWNLOADS || ''),
-    } satisfies MsAccessRuntimeStatus;
-}
 
 function getMsAccessDatabasePath(deps: MsAccessDriverToolsDeps, connectionId: number) {
     const connection = deps.getConnection(connectionId);
@@ -987,16 +723,6 @@ async function downloadFile(url: string, destinationPath: string) {
 
     const bytes = new Uint8Array(await response.arrayBuffer());
     await writeFile(destinationPath, bytes);
-}
-
-function parseJavaMajorVersion(versionOutput: string) {
-    const match = versionOutput.match(/version\s+"(\d+)(?:\.(\d+))?/i) ?? versionOutput.match(/openjdk\s+(\d+)(?:\.(\d+))?/i);
-
-    if (!match) {
-        return undefined;
-    }
-
-    return Number(match[1]);
 }
 
 async function ensureJavaCommand(preferredCandidates: Array<string | undefined> = []) {

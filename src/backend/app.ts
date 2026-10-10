@@ -55,7 +55,7 @@ import { useAppDb } from './db-app.ts';
 import { dbTools, type SortOrder } from './db-tools.ts';
 import { findMysqlClientPath, getSqlScriptRunStatus, startSqlScriptRun, stopSqlScriptRun } from './sqlScriptRunner.ts';
 import { formatSql as formatSqlResult, getSqlDiagnostics as getSqlDiagnosticsResult } from './sqlDiagnostics.ts';
-import { inspectMsAccessRuntime } from './useMsAccessDriver.ts';
+import { inspectMsAccessRuntime } from './msAccessRuntimeManifest.ts';
 
 const appDb = useAppDb();
 
