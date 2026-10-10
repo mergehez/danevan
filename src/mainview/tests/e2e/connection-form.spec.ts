@@ -9,7 +9,7 @@ const ADD_SOURCE_BUTTON = 'aside button:has(i[class*="database-plus-outline"])';
 
 type Bootstrap = {
     servers: Array<{ id: number; name: string }>;
-    connections: Array<{ id: number; server_id: number; name: string }>;
+    connections: Array<{ id: number; server_id: number; name: string; readonly: number }>;
 };
 
 /** The form is the only way to create a source; the ids it produced come back from the bootstrap. */
@@ -32,7 +32,7 @@ function serverRow(page: Page, serverId: number) {
 }
 
 test.describe('Create a connection through the form', () => {
-    test('adds a SQLite file source and shows its tables', async ({ page, request }) => {
+    test('adds a read-only SQLite file source and shows its tables', async ({ page, request }) => {
         const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         const databasePath = join(tmpdir(), `e2e-connection-form-${suffix}.sqlite`);
         const file = new Database(databasePath);
@@ -57,6 +57,8 @@ test.describe('Create a connection through the form', () => {
             await dialog.locator('#form-connectionName').fill(connectionName);
             await dialog.locator('#form-sourceName').fill(sourceName);
             await dialog.locator('#form-databaseFilePath').fill(databasePath);
+            // The form is where a connection is marked read-only.
+            await dialog.getByTestId('form-connection-readonly').check();
             await dialog.getByRole('button', { name: 'Add', exact: true }).click();
 
             await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -64,9 +66,14 @@ test.describe('Create a connection through the form', () => {
             const ids = await createdIds(request, sourceName, connectionName);
             serverId = ids.serverId;
 
-            // The source row itself, then the tables the form's file path really opened.
+            // The flag the form set reached the app database.
+            const bootstrap = (await post(request, 'getBootstrap', undefined)) as Bootstrap;
+            expect(bootstrap.connections.find((connection) => connection.id === ids.connectionId)?.readonly).toBe(1);
+
+            // The source row itself says so, then the tables its file path really opened.
             const row = serverRow(page, serverId);
             await expect(row).toContainText(sourceName);
+            await expect(row.locator('[data-testid="readonly-lock"]')).toBeVisible();
 
             await reloadSidebarRow(row);
             await expect(page.locator(`[data-node-id="table:${ids.connectionId}:people"]`)).toContainText('people');

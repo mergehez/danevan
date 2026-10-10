@@ -32,6 +32,7 @@ export const DbConnectionForm = component(
             connectionUsername: 'root',
             connectionPassword: '',
             databaseName: '',
+            connectionReadonly: false,
         });
 
         const status = reactive({
@@ -262,7 +263,7 @@ export const DbConnectionForm = component(
                             ? forms.connectionPort
                             : undefined,
                     databaseName: isFileDriver.value ? undefined : forms.databaseName.trim() || undefined,
-                    readonly: undefined,
+                    readonly: forms.connectionReadonly,
                 });
             }
 
@@ -274,6 +275,7 @@ export const DbConnectionForm = component(
             forms.connectionUsername = '';
             forms.connectionPassword = '';
             forms.databaseName = '';
+            forms.connectionReadonly = false;
             resetStatus();
             servers.addForm.visible = false;
 
@@ -417,6 +419,20 @@ export const DbConnectionForm = component(
                             />
                         </>
                     )}
+                    <label for="form-connectionReadonly" class="text-sm">
+                        Read-only:
+                    </label>
+                    <label class="flex items-center gap-2 text-xs">
+                        <input
+                            checked={forms.connectionReadonly}
+                            onChange={(event: Event) => (forms.connectionReadonly = (event.target as HTMLInputElement).checked)}
+                            id="form-connectionReadonly"
+                            data-testid="form-connection-readonly"
+                            type="checkbox"
+                            class="h-4 w-4 rounded border-x4 bg-transparent"
+                        />
+                        <span class="opacity-80">Refuse every write to this database</span>
+                    </label>
                     {status.message ? (
                         <Alert severity={status.severity} small={true} class="col-span-full">
                             {status.message}

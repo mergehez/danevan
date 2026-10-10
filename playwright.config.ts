@@ -1,6 +1,8 @@
 import { defineConfig } from '@playwright/test';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+
+const APP_DB_FILES = ['danevan.sqlite', 'danevan.sqlite-wal', 'danevan.sqlite-shm'];
 
 const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '3263', 10);
 
@@ -9,7 +11,9 @@ const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '3263', 10);
  * `~/Library/Application Support/danevan`: the real one carries sources, scripts and a selected
  * connection from earlier sessions, which leaked into the assertions (a stale selection whose temp
  * SQLite file is gone made specs wait for a panel that never appeared), and writing to it is a side
- * effect on the machine. A run starts from an empty DB in the workspace.
+ * effect on the machine. A run starts from an empty DB in the workspace — the app DB only, because
+ * the same directory holds the provisioned SQLFluff and MS Access runtimes, which are downloads a
+ * spec run must not throw away (the SQL formatter specs need them).
  *
  * `APP_DATA_DIR` also namespaces the keychain account names (`auth.ts`), so the test servers cannot
  * read — or delete — the passwords the real installation stored under the same low ids.
@@ -20,7 +24,11 @@ function workspaceAppDataDir() {
     }
 
     const appDataDir = join(process.cwd(), '.e2e-data');
-    rmSync(appDataDir, { recursive: true, force: true });
+    mkdirSync(appDataDir, { recursive: true });
+
+    for (const fileName of APP_DB_FILES) {
+        rmSync(join(appDataDir, fileName), { force: true });
+    }
 
     return appDataDir;
 }

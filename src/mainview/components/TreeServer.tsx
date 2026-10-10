@@ -10,6 +10,7 @@ import { useComparison } from '../composables/useComparison';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useModifyTable } from '../composables/useModifyTable';
 import { useServers } from '../composables/useServers';
+import type { ConnectionRecord } from '../../shared/types';
 import type { ConnectionTreeItem, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
 import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
@@ -19,6 +20,7 @@ import { DbRunSqlScriptModal } from './DbRunSqlScriptModal.tsx';
 import { DbServerFormModal } from './DbServerFormModal.tsx';
 import { DbServerSchemasModal } from './DbServerSchemasModal.tsx';
 import { FileTreeButton } from './FileTreeButton.tsx';
+import { ReadOnlyLock } from './ReadOnlyLock.tsx';
 import { TreeTable } from './TreeTable.tsx';
 
 type Props = {};
@@ -223,7 +225,11 @@ export const TreeServer = component(
             ];
 
             if (fileConnection) {
-                items.push({
+                if (fileConnection.readonly) {
+                    items.push({ type: 'title', id: `server-readonly:${server.id}`, title: 'Read-only connection' });
+                }
+
+                items.push(connectionReadOnlyMenuItem(fileConnection), {
                     id: `server-create-table:${server.id}`,
                     label: 'Create new table...',
                     iconClass: 'icon-[mdi--table-plus]',
@@ -297,8 +303,39 @@ export const TreeServer = component(
             return items;
         }
 
+        /** A file source has no connection row, so the read-only flag it carries is shown on the source row. */
+        function isFileServerReadOnly(serverId: number) {
+            return connections.connections.some((connection) => connection.server_id === serverId && connection.readonly === 1);
+        }
+
+        /** The switch a connection row and a file source row both offer. */
+        function connectionReadOnlyMenuItem(connection: ConnectionRecord): ContextMenuEntry {
+            return {
+                id: `connection-readonly-toggle:${connection.id}`,
+                label: connection.readonly ? 'Allow writes' : 'Make read-only',
+                iconClass: connection.readonly ? 'icon-[mdi--lock-open-variant-outline]' : 'icon-[mdi--lock-outline]',
+                action: async () => {
+                    await connections.updateConnection(connection.id, {
+                        serverId: connection.server_id,
+                        name: connection.name,
+                        host: connection.host,
+                        port: connection.port,
+                        databaseName: connection.database_name,
+                        readonly: !connection.readonly,
+                    });
+                },
+            };
+        }
+
         function connectionMenuitems(connection: ConnectionTreeItem): ContextMenuEntry[] {
-            const items: ContextMenuEntry[] = [
+            const items: ContextMenuEntry[] = [];
+
+            if (connection.readonly) {
+                items.push({ type: 'title', id: `connection-readonly:${connection.id}`, title: 'Read-only connection' });
+            }
+
+            items.push(
+                connectionReadOnlyMenuItem(connection),
                 // {
                 //     id: `connection-select:${connection.id}`,
                 //     label: 'Select connection',
@@ -341,8 +378,8 @@ export const TreeServer = component(
                     action: async () => {
                         await connections.openRunSqlScript(connection.id);
                     },
-                },
-            ];
+                }
+            );
 
             if (servers.servers.find((server) => server.id === connection.server_id)?.driver === 'mysql') {
                 items.push({
@@ -431,6 +468,12 @@ export const TreeServer = component(
                         contextMenuItems={serverMenuItems}
                         children={() => getFileServerChildren(server.id)}
                         slots={{
+                            text: ({ text }) => (
+                                <>
+                                    {text}
+                                    {isFileServerReadOnly(server.id) ? <ReadOnlyLock /> : null}
+                                </>
+                            ),
                             child: ({ item: collection, parentId, allItems }) => (
                                 <TreeTable server={server} collection={collection} parentId={parentId} skipTitle={allItems.length === 1} />
                             ),

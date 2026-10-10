@@ -3,6 +3,7 @@ import type { ServerRecord } from '../../shared/types';
 import type { FileTreeChild } from '../../shared/utils/useFileTree';
 import { useServerTree } from '../composables/useServerTree';
 import { FileTreeButton } from './FileTreeButton.tsx';
+import { ReadOnlyLock } from './ReadOnlyLock.tsx';
 import { componentGeneric, ensureAllTsxProps } from '#shared/utils/tsxHelpers.tsx';
 
 type Props<TCollection extends FileTreeChild = FileTreeChild, TChild extends { id: string | number } = any> = {
@@ -15,6 +16,11 @@ type Props<TCollection extends FileTreeChild = FileTreeChild, TChild extends { i
 } & {
     slots?: { rightPrefix?: (scope: { collection: any }) => unknown; default?: (scope: { item: any; parentId: any }) => unknown };
 };
+
+/** A connection the app refuses to write to; the row says so with a lock. */
+function isReadOnlyCollection(collection: FileTreeChild) {
+    return (collection as { readonly?: number }).readonly === 1;
+}
 
 export const TreeCollection = componentGeneric(
     <TCollection extends FileTreeChild = FileTreeChild, TChild extends { id: string | number } = any>(props: Props<TCollection, TChild>) => {
@@ -34,7 +40,12 @@ export const TreeCollection = componentGeneric(
                 children={props.children}
                 skipTitle={props.skipTitle}
                 slots={{
-                    text: ({ text }) => <span class="opacity-50">{text}</span>,
+                    text: ({ text }) => (
+                        <span class="opacity-50">
+                            {text}
+                            {isReadOnlyCollection(props.collection) ? <ReadOnlyLock /> : null}
+                        </span>
+                    ),
                     rightPrefix: () => <>{props.slots?.rightPrefix?.({ collection: props.collection })}</>,
                     child: ({ item }) => <>{props.slots?.default?.({ item: item, parentId: props.parentId })}</>,
                 }}
