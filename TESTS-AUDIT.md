@@ -154,6 +154,45 @@ POSIX-only lookup that made the app unable to find `mysql`/`mysqldump` on Window
 
 ---
 
+## Verified defects with no failing test
+
+Found while checking whether a green run means "stable" for SQLite + MySQL on macOS. Each was
+reproduced or read out of the code path named; each needs a spec that fails first.
+
+- **MySQL: editing a table without a primary key overwrites every row sharing the first column's
+  value.** `useDbDataGrid.ts` falls back to `allColumns[0]` as the match column for an update, while
+  the delete path refuses to run without a key. Every MySQL fixture declares a primary key.
+- **MySQL: changing an existing index emits `ADD INDEX ix (\`col\` A);`.** `information_schema.statistics`reports`COLLATION`as`A`/`D`, the driver keeps it as the sort order and MySQL rejects the statement
+(`ER_PARSE_ERROR`) — after the `DROP INDEX`has already committed. Index fixtures only pass`order: null`.
+- **MySQL: a column with a string default cannot be altered.** `column_default` comes back as the bare
+  literal (`guest`) and is rendered unquoted (`DEFAULT guest`, rejected); `DEFAULT ''` becomes the empty
+  string and is then normalised to `DEFAULT NULL`. Fixtures only use `DEFAULT NULL` / `DEFAULT 0`.
+- **MySQL: inserts and deletes are hand-built text escaped for single quotes only**, so MySQL reads a
+  backslash as an escape (`C:\temp` stores a tab) and a trailing backslash can break the statement. The
+  same path is only verified on SQLite, where backslashes are literal.
+- **A statement that starts with a comment runs as a mutation on the remote drivers** — `-- report` plus
+  `SELECT …` matches no prefix in the read/mutation regex, so the editor reports rows affected instead of
+  rows. The unit spec only ever passes SQL that starts with `SELECT`.
+- **The connection `readonly` flag is stored and round-tripped but never enforced**: no form sets it and
+  no write path checks it.
+
+## Structural gaps for the SQLite + MySQL + macOS scope
+
+- `src/electron/main.ts` is 0 % covered: the menu, `pickDatabaseFile`/`pickSavePath`/`revealPathInFileManager`/
+  `openFileInEditor`, diagnostics and `activate`/`window-all-closed` are never invoked by a spec. The shell
+  specs assert a window, the preload bridge keys and one `getBootstrap` round trip.
+- Restart persistence is not tested: the suite's "restart" is `page.reload()` with the backend still alive,
+  and no spec closes and reopens the app DB or the source file across a process boundary.
+- The macOS Keychain is only asserted through mocks (`auth.spec.ts` mocks `executeTextCommand`,
+  `appApi.spec.ts` mocks `auth`), so a wrong `security` argument list stays green.
+- The app DB has one ad-hoc `ALTER` and no `PRAGMA user_version`/migration record, and Playwright runs the
+  real `~/Library/Application Support/danevan` DB (no `APP_DATA_DIR` in `playwright.config.ts`), so neither
+  a fresh nor a legacy app DB is booted by a test.
+- A second app launch collides with the hard-coded API port: no listen `error` handler and no
+  single-instance lock, so the second window never opens.
+
+---
+
 ## Everything else still at 0 %
 
 Components exercised only by the browser suite show 0 % _unit_ coverage and are fine — do not add unit
