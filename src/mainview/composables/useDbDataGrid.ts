@@ -3,6 +3,7 @@ import { useDataGrid, type DataGridCellValue, type GridDisplayType, type Pending
 import { getDataGridLayoutStorageKey } from '../../datagrid/dataGridLayoutStorage';
 import type { ApplyTableChangesParams, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
+import { toast } from '../../shared/utils/useToast';
 import { formatValue } from '../../shared/utils/valueFormatting';
 import {
     getDbGridCellMenuItems,
@@ -439,23 +440,23 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             rawValue: DataGridCellValue;
         }) => {
             const row = gridState.getRow(rowIndex);
-            const matchColumn = primaryKeyColumns.value[0] || gridState.allColumns[0];
+            const matchColumn = primaryKeyColumns.value[0];
             const previousValue = coerceSqlValue(rawValue);
 
-            if (!row || !matchColumn) {
-                return {
-                    rowIndex,
-                    columnName,
-                    previousValue,
-                    nextValue: coerceSqlValue(nextValue),
-                    originalValue: previousValue,
-                    matchColumn: '',
-                    matchValue: null,
-                } satisfies PendingCellChange;
+            // Without a primary key there is no WHERE clause that names the edited row: the first
+            // column used to stand in for one, so a save overwrote every row sharing its value.
+            // A pending insert needs no match column, so it stays editable.
+            if (!matchColumn && !isInsertedRowIndex(rowIndex)) {
+                toast.showToast('Editing needs a primary key: without one, a save would overwrite every row that looks the same.', 'warning');
+                return undefined;
+            }
+
+            if (!row) {
+                return undefined;
             }
 
             const originalValue = previousValue;
-            const matchValue = row[matchColumn] ?? null;
+            const matchValue = matchColumn ? (row[matchColumn] ?? null) : null;
 
             return {
                 rowIndex,
@@ -463,7 +464,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                 previousValue,
                 nextValue: coerceSqlValue(nextValue),
                 originalValue,
-                matchColumn,
+                matchColumn: matchColumn ?? '',
                 matchValue: coerceSqlValue(matchValue),
             } satisfies PendingCellChange;
         },

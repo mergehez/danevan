@@ -165,7 +165,9 @@ export type UseDataGridOptions = {
     setColumnDisplayType?: (columnName: string, displayType: BuiltinGridDisplayType) => void;
     formatEditingValue?: (value: DataGridCellValue) => string;
     parseEditingValue?: (draftValue: string, currentValue: DataGridCellValue) => DataGridCellValue;
-    createPendingChange?: (change: DataGridPendingChangeContext) => DataGridPendingChange;
+    /** Builds the pending change for a committed edit. Returning nothing refuses the edit, which
+     *  leaves the displayed cell, the undo stack and the source row untouched. */
+    createPendingChange?: (change: DataGridPendingChangeContext) => DataGridPendingChange | undefined;
     setSourceCellValue?: SetSourceCellValue;
     transposeState?: Ref<boolean>;
     transposeTooltip?: MaybeReactiveValue<string | undefined>;

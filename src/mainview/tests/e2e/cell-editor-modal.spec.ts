@@ -13,10 +13,10 @@ async function createDocsSource(request: APIRequestContext) {
     const dbPath = `/tmp/e2e-cell-editor-modal-${suffix}.sqlite`;
     const file = new Database(dbPath);
 
-    file.exec('CREATE TABLE docs (payload TEXT)');
-    file.exec(
-        `INSERT INTO docs (payload) VALUES ('{"a":1,"b":[2,3]}'), ('hello'), ('{not json}')`
-    );
+    // The payload column stays first (the spec edits the first cell); the key only has to exist,
+    // because a table without one cannot stage an edit.
+    file.exec('CREATE TABLE docs (payload TEXT, id INTEGER PRIMARY KEY)');
+    file.exec(`INSERT INTO docs (payload) VALUES ('{"a":1,"b":[2,3]}'), ('hello'), ('{not json}')`);
     file.close();
 
     const serverName = `e2e-cell-editor-modal-${suffix}`;

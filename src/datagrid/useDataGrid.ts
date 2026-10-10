@@ -617,13 +617,21 @@ export function useDataGrid(_options: UseDataGridOptions) {
                 const { [changeKey]: _, ...rest } = baseState.pendingChanges;
                 baseState.pendingChanges = rest;
             } else {
+                const pendingChange = options.createPendingChange({
+                    ...change,
+                    previousValue: rawValue,
+                    rawValue,
+                });
+
+                // A refused change must not reach the displayed row or the undo stack either: the
+                // builder that refuses it (a table without a primary key) says why.
+                if (!pendingChange) {
+                    return;
+                }
+
                 baseState.pendingChanges = {
                     ...baseState.pendingChanges,
-                    [changeKey]: options.createPendingChange({
-                        ...change,
-                        previousValue: rawValue,
-                        rawValue,
-                    }),
+                    [changeKey]: pendingChange,
                 };
             }
         }

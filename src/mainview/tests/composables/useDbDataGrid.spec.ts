@@ -35,6 +35,7 @@ vi.mock('../../../datagrid', async (importOriginal) => {
 });
 
 import { useDbDataGrid } from '../../composables/useDbDataGrid';
+import { toast } from '../../../shared/utils/useToast';
 
 const event = new MouseEvent('contextmenu');
 
@@ -293,5 +294,58 @@ describe('useDbDataGrid header context menu', () => {
             'display-type-custom-manage',
         ]);
         expect(idsOf(menuHooks().headerContextMenuCustomItems({ columnIndex: 0, columnName: 'id', event }))).toEqual(['display-type-custom-upper', 'display-type-custom-manage']);
+    });
+});
+
+// The WHERE clause a save builds for an edited row comes from this change: with no primary key the
+// old fallback named the first column, which matches every row that shares its value.
+describe('useDbDataGrid pending changes', () => {
+    type PendingChangeOptions = {
+        createPendingChange: (change: { rowIndex: number; columnName: string; nextValue: string; previousValue: string; rawValue: string }) => unknown;
+    };
+
+    function pendingChange(columnName: string, nextValue: string, rowIndex = 0) {
+        if (!holders.gridOptions) {
+            throw new Error('useDbDataGrid never handed its options to useDataGrid.');
+        }
+
+        return (holders.gridOptions as PendingChangeOptions).createPendingChange({
+            rowIndex,
+            columnName,
+            nextValue,
+            previousValue: 'first',
+            rawValue: 'first',
+        });
+    }
+
+    function keylessTableInfo(): TableInfo {
+        return { ...tableInfo, columns: tableInfo.columns.map((column) => ({ ...column, isPrimaryKey: false, primaryKeyOrdinal: null })) };
+    }
+
+    beforeEach(() => {
+        toast.dismissToast();
+    });
+
+    it('names the edited row by its primary key', () => {
+        createGrid();
+
+        expect(pendingChange('note', 'changed')).toMatchObject({ columnName: 'note', matchColumn: 'id', matchValue: 1, nextValue: 'changed' });
+    });
+
+    it('refuses the edit when the table has no primary key', () => {
+        createGrid({ tableInfo: keylessTableInfo });
+
+        expect(pendingChange('note', 'changed')).toBeUndefined();
+        expect(toast.message).toBe('Editing needs a primary key: without one, a save would overwrite every row that looks the same.');
+    });
+
+    it('still stages a value on a row that is not in the table yet', async () => {
+        const { grid } = createGrid({ tableInfo: keylessTableInfo });
+
+        // Row 2 is the pending insert: it has no stored row to match, so no key is needed.
+        await grid.addRow?.();
+
+        expect(pendingChange('note', 'changed', 2)).toMatchObject({ rowIndex: 2, columnName: 'note', nextValue: 'changed' });
+        expect(toast.message).toBeUndefined();
     });
 });
