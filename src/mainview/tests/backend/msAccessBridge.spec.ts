@@ -92,7 +92,10 @@ describe('the MS Access Java bridge', () => {
         const tableName = 'e2e_bridge_probe';
 
         // The Access spellings the column editor offers, straight through the bridge.
-        await dbTools.runQuery(connectionId, `CREATE TABLE [${tableName}] ([id] COUNTER PRIMARY KEY, [label] TEXT(255), [note] MEMO, [amount] CURRENCY, [made_at] DATETIME)`);
+        await dbTools.runQuery(
+            connectionId,
+            `CREATE TABLE [${tableName}] ([id] COUNTER PRIMARY KEY, [label] TEXT(255), [note] MEMO, [amount] CURRENCY, [exact] DECIMAL(10,2), [made_at] DATETIME)`
+        );
         await dbTools.runQuery(connectionId, `INSERT INTO [${tableName}] ([label], [note]) VALUES ('bridge probe', 'a memo')`);
 
         // The table list is the bridge's own metadata, not a catalog guess.
@@ -105,17 +108,22 @@ describe('the MS Access Java bridge', () => {
         const tableInfo = await dbTools.getTableInfoFresh(connectionId, tableName);
         const typesByName = Object.fromEntries(tableInfo.columns.map((column) => [column.name, column.type]));
 
-        // UCanAccess accepts the Access names in DDL and reports HSQLDB's own names back.
-        // CURRENCY answers as DECIMAL(8,4) or DECIMAL(100,4) depending on which metadata path
-        // replies, so only its shape is stable (recorded as a finding in TESTS-AUDIT.md).
+        // UCanAccess accepts the Access names in DDL and reports HSQLDB's own names back, except
+        // for currency: JDBC calls it DECIMAL with a precision that changes between reads, so the
+        // bridge reports the file's own type. A genuine DECIMAL is untouched.
         expect(typesByName).toEqual({
             id: 'AUTOINCREMENT',
             label: 'VARCHAR(255)',
             note: 'VARCHAR(16777216)',
-            amount: expect.stringMatching(/^DECIMAL\(\d+,4\)$/),
+            amount: 'CURRENCY',
+            exact: 'DECIMAL(10,2)',
             made_at: 'TIMESTAMP',
         });
         expect(tableInfo.columns.find((column) => column.name === 'id')).toMatchObject({ isPrimaryKey: true, isAutoIncrement: true });
+
+        // Two reads of the same table must agree, whichever metadata path answers.
+        const reread = await dbTools.getTableInfoFresh(connectionId, tableName);
+        expect(reread.columns.map((column) => [column.name, column.type])).toEqual(tableInfo.columns.map((column) => [column.name, column.type]));
 
         // And the values come back through the worker's result transport.
         const result = await dbTools.runQuery(connectionId, `SELECT TOP 5 [id], [label], [note] FROM [${tableName}]`);

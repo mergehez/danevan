@@ -201,7 +201,14 @@ public class MsAccessBridge {
     private static Map<String, Object> getTableInfo(Connection connection, String databasePath, String tableName) throws Exception {
         DatabaseMetaData metadata = connection.getMetaData();
         Map<String, Integer> primaryKeyOrdinals = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        Map<String, Boolean> autoIncrementByColumn = readAutoIncrementByColumn(databasePath, tableName);
+        Map<String, Boolean> autoIncrementByColumn = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, String> jackcessTypeByColumn = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        for (Map.Entry<String, JackcessColumnFacts> entry : readJackcessColumnFacts(databasePath, tableName).entrySet()) {
+            autoIncrementByColumn.put(entry.getKey(), Boolean.valueOf(entry.getValue().autoNumber));
+            jackcessTypeByColumn.put(entry.getKey(), entry.getValue().typeName);
+        }
+
         Map<String, String> liveTypeNameByColumn = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
         try (ResultSet primaryKeys = metadata.getPrimaryKeys(null, null, tableName)) {
@@ -241,7 +248,7 @@ public class MsAccessBridge {
                 Map<String, Object> column = new LinkedHashMap<>();
                 column.put("cid", Integer.valueOf(Math.max(0, resultSet.getInt("ORDINAL_POSITION") - 1)));
                 column.put("name", columnName);
-                column.put("type", isAutoIncrement ? "AUTOINCREMENT" : formattedType);
+                column.put("type", isAutoIncrement ? "AUTOINCREMENT" : resolveColumnType(jackcessTypeByColumn.get(columnName), formattedType));
                 column.put("notNull", Boolean.valueOf(resultSet.getInt("NULLABLE") == DatabaseMetaData.columnNoNulls));
                 column.put("defaultValue", resultSet.getString("COLUMN_DEF"));
                 column.put("isPrimaryKey", Boolean.valueOf(primaryKeyOrdinal > 0));
@@ -368,8 +375,30 @@ public class MsAccessBridge {
         return normalized.contains("INT") || normalized.contains("LONG") || normalized.contains("SHORT") || normalized.contains("COUNTER") || normalized.contains("AUTOINCREMENT");
     }
 
-    private static Map<String, Boolean> readAutoIncrementByColumn(String databasePath, String tableName) throws Exception {
-        Map<String, Boolean> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    /**
+     * Access stores CURRENCY as a scaled decimal, which JDBC reports as DECIMAL with a precision
+     * that differs between reads; Jackcess is the only reader that names the column's real type.
+     */
+    private static String resolveColumnType(String jackcessTypeName, String formattedType) {
+        if ("MONEY".equals(jackcessTypeName)) {
+            return "CURRENCY";
+        }
+
+        return formattedType;
+    }
+
+    private static final class JackcessColumnFacts {
+        private final boolean autoNumber;
+        private final String typeName;
+
+        private JackcessColumnFacts(boolean autoNumber, String typeName) {
+            this.autoNumber = autoNumber;
+            this.typeName = typeName;
+        }
+    }
+
+    private static Map<String, JackcessColumnFacts> readJackcessColumnFacts(String databasePath, String tableName) throws Exception {
+        Map<String, JackcessColumnFacts> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
         try (Database database = new DatabaseBuilder(Path.of(databasePath)).withReadOnly(true).open()) {
             Table table = database.getTable(tableName);
@@ -379,7 +408,7 @@ public class MsAccessBridge {
             }
 
             for (Column column : table.getColumns()) {
-                result.put(column.getName(), Boolean.valueOf(column.isAutoNumber()));
+                result.put(column.getName(), new JackcessColumnFacts(column.isAutoNumber(), column.getType().name()));
             }
         }
 
@@ -825,6 +854,12 @@ public class MsAccessBridge {
         }
 
         String normalizedType = typeName.toUpperCase(Locale.ROOT);
+
+        // UCanAccess answers with DECIMAL or NUMERIC for the same column between reads, so the
+        // synonym is folded to one name; the size and scale are reported either way.
+        if (normalizedType.startsWith("NUMERIC")) {
+            normalizedType = "DECIMAL" + normalizedType.substring("NUMERIC".length());
+        }
 
         if ((normalizedType.contains("CHAR") || normalizedType.contains("BINARY")) && columnSize > 0 && !normalizedType.contains("(")) {
             return normalizedType + "(" + columnSize + ")";
