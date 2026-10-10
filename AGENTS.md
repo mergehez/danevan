@@ -106,3 +106,13 @@ Suggested from the 2026-10-09 performance audit (tasks in `todos.md`):
 - **Show progress and failure where the result will appear.** If an action can take a second or more (table
   list hydration, a large load), the panel that will show the result renders its own loading/error state —
   the small global corner indicator reads as "nothing happened".
+
+Suggested from the 2026-10-10 `bun do mac` failure:
+
+- **A relative import in the release chain keeps its `.ts` extension.** `electron-builder` loads
+  `electron.config.js` through Node's ESM loader (`electronConfig.ts` → `helpers.ts` → …), and that
+  loader resolves extensions itself: `./x` is not `./x.ts`. An extensionless import there passes
+  every unit test, every browser test and `vite build` (all of which resolve it), then fails
+  `bun do mac` before it packages anything — which is how the API error message helper broke the
+  release. `src/electronUtils/releaseConfig.spec.ts` loads the config in a real Node process, so the
+  next one fails in the unit suite instead.
