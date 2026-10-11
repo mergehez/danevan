@@ -1,14 +1,14 @@
 # todos — findings, fix list and test audit
 
-**Status:** 16 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5) · 15 open
-(T15–T29, the 2026-10-11 "does green mean stable?" audit for SQLite + MySQL on macOS) · 3 blocked (T2b,
-e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12, T14's tree work)
-· suite: **997 unit tests (82 files) · 112 browser tests (33 files) · 13 Electron shell tests** (dev build
-×12 + the packaged `.app`) · coverage over every source file **45.2 % statements / 37.2 % branches**, and
+**Status:** 20 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
+2026-10-11 audit: T16, T24, T26, T30) · 12 open (T15, T17–T23, T25, T27–T29) · 3 blocked (T2b, e2e-13,
+unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12, T14's tree work) · suite:
+**1009 unit tests (82 files) · 114 browser tests (33 files) · 13 Electron shell tests** (dev build ×12 +
+the packaged `.app`) · coverage over every source file **45.6 % statements / 37.4 % branches**, and
 unit-only: the browser suite is not instrumented (T19) · aggregate and per-area floors enforced in
 `vitest.config.js` · a run that skips a precondition fails · the audit also measured the gate itself: the
-unit run exits 1 at random on a leaked timer (T16), the full browser run is red on order dependence (T17,
-T18), and neither Electron suite can fail the gate (T15).
+full browser run is red on order dependence (T17, T18), and neither Electron suite can fail the gate
+(T15).
 
 This file is the single source for the project's tasks and for what the tests already prove. It merges
 the 2026-10-09 performance/fix list and the test audit, which used to live in two files; both long
@@ -265,6 +265,41 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   `src/mainview/tests/e2e/modify-table-popup.spec.ts`, which now asserts the field reverts to
   `varchar(200)` and the preview reads "No change yet" before Redo re-applies the change.
 
+### 2026-10-11 stability-audit fixes
+
+- **T16 — the unit gate failed at random on an uncleaned `ListBox` timer.** `onFocus` scheduled a 100 ms
+  `setTimeout` that read `document.activeElement`, `showDropdown` a second one at 0 ms, and nothing
+  cleared either; a component unmounted before they fired touched a torn-down `document` and vitest
+  exited 1 although all 997 tests passed (reproduced 1 run in 3). Both timers are now kept in the
+  component and cleared on unmount and before re-scheduling
+  (`src/shared/components/ListBox.tsx`). Guarded by "leaves no timer behind when it unmounts before the
+  focus timer fires" (`src/mainview/tests/components/ListBox.spec.ts`, which counts the pending fake
+  timers and fails without the fix) and by "selects the field text shortly after it is focused", which
+  keeps the timer's job pinned. Three consecutive `bun run test:coverage` runs exit 0.
+- **T24 — the read-only policy was only proven on SQLite.** A read-only server connection now has its own
+  browser spec: the connection is switched from the sidebar menu, the save is refused with the target and
+  the connection named exactly as the save bar prints them, the pending change is kept and the row in
+  MySQL is unchanged; the second spec flips the flag back and proves the same save then reaches MySQL as
+  a real `UPDATE … WHERE id = 1`. `src/mainview/tests/e2e/readonly-connection.spec.ts` (the file source
+  cases stay). Writing it found T30.
+- **T26 — SQLite driver surfaces no spec executed.** `testConnection` (success, a blank path and an absent
+  file), `getTablesFresh` with the per-table row count and views, `validateSql` (a statement it can
+  prepare and one it cannot), `getTableDdl` (a table with its index footer, a view, an unknown name), the
+  batched save (every change, a non-atomic regression, and the foreign-key violation message with the row
+  id) and the three rebuild refusals (partial index, trigger, populated table losing every column) are
+  asserted against real temp files in `src/backend/useSqliteDriver.spec.ts`. The explicit `ROLLBACK` is
+  not observable through the tools — `withSqliteTypeOrm` builds and destroys a `DataSource` per call, so
+  the transaction dies with the connection — but the spec does fail when the save is made non-atomic,
+  which is the contract that matters. Each new case was checked against a mutation of its branch.
+- **T30 — a read-only server connection showed no lock in the sidebar.** `TreeCollection` renders
+  `ReadOnlyLock` when `collection.readonly === 1`, but `buildCollectionItem`
+  (`src/mainview/components/TreeServer.tsx:105-140`) never set that field and `TableCollectionTreeItem`
+  has no such property, so `isReadOnlyCollection` could never be true; only a file source carried the lock
+  (on its own row, `TreeServer.tsx:474`). A server connection's state was visible only in its context
+  menu. The connection row now renders the lock from `connection.readonly`, the way the file source row
+  does. Guarded by the lock assertions in `readonly-connection.spec.ts`, which fail with the branch
+  removed.
+
 ### What a green suite already proves
 
 Each item is work a green run already proves; do not redo it.
@@ -362,8 +397,19 @@ Each item is work a green run already proves; do not redo it.
   through a fake keychain. Account names are namespaced per data dir, so a second installation or a
   test run cannot read, or delete, the first one's passwords.
 - **A read-only connection** (`appApi.spec.ts`, `readonly-connection.spec.ts`): the add-connection
-  form sets the flag, the sidebar row carries a lock, the row menu offers 'Make read-only' /
-  'Allow writes', and every write path refuses with the connection named while reads keep running.
+  form sets the flag, a file source carries a lock on its own row and a server connection on its
+  connection row, the row menu offers 'Make read-only' / 'Allow writes', and every write path refuses
+  with the connection named while reads keep running. On MySQL the refusal is asserted with the target
+  the save bar prints (`name (host:port/database)`), the row in the database is unchanged, and allowing
+  writes again lands the same save as a real `UPDATE … WHERE id = 1` (T24, T30).
+- **The SQLite driver's own surfaces** (`useSqliteDriver.spec.ts`, T26): connecting to a file (and the
+  blank-path and absent-file failures), listing tables and views with their row counts, validating a
+  statement the database can and cannot prepare, the DDL copy including a table's index footer, the
+  batched save (all changes in one transaction, a failed change leaving the file untouched, the
+  foreign-key violation message naming the row) and the three rebuild refusals.
+- **A `ListBox` that goes away mid-focus leaves no timer** (`ListBox.spec.ts`, T16): the pending fake
+  timers are counted, so the 100 ms selection timer and the 0 ms scroll timer cannot outlive their
+  component and throw after jsdom is torn down.
 - **The foreign-key peek's own state** (`fk-peek.spec.ts`): the rows popover says it is loading or why
   it is empty instead of drawing an empty grid, and the spec polls that state and re-walks the arrows
   until the cell editor really opens (1 failure in 4 runs before, none in 11 after).
@@ -427,12 +473,14 @@ Each item is work a green run already proves; do not redo it.
 ## Open
 
 The 2026-10-11 stability audit (SQLite + MySQL on macOS) asked whether "tests green" means "app stable"
-and answered no, adding T15–T29. Its four themes, in the order they weaken the signal: the gate does not
-run the suites that prove the shipped macOS app (T15); the signal is not deterministic — a leaked timer
-reddens the unit run (T16), and order dependence or a response race reddens the browser run (T17, T18);
-the browser suite contributes no coverage and `src/mainview` has no floor (T19, T20); and the two
-dialects have named holes (T21–T28, plus the app database's own client at T29). T2b and the two earlier
-test-audit items stay in `## Open (blocked)`.
+and answered no, adding T15–T29. Four themes, in the order they weaken the signal: the gate does not run
+the suites that prove the shipped macOS app (T15); the signal is not deterministic — order dependence or a
+response race reddens the browser run (T17, T18); the browser suite contributes no coverage and
+`src/mainview` has no floor (T19, T20); and the two dialects have named holes (T21–T23, T25, T27, T28,
+plus the app database's own client at T29). The first four of those are already fixed and in `## Done`:
+the leaked `ListBox` timer (T16), the read-only MySQL coverage and the sidebar lock it exposed (T24, T30),
+and the SQLite driver surfaces (T26). T2b and the two earlier test-audit items stay in
+`## Open (blocked)`.
 
 - **T15 · `release:validate` does not run the shipped shell or the packaged app (medium)** — the gate is
   `bun run test:coverage && bun run test:e2e && bun run build` (`package.json:39`), so
@@ -448,15 +496,6 @@ test-audit items stay in `## Open (blocked)`.
       there is green).
     - _verify_: rename a key in the preload bridge — `bun run release:validate` must fail now and pass
       with the current gate.
-- **T16 · the unit gate fails at random on an uncleaned `ListBox` timer (small)** — `onFocus` schedules a
-  100 ms `setTimeout` that reads `document.activeElement` (`src/shared/components/ListBox.tsx:321-329`)
-  and nothing clears it, so a component unmounted (or a jsdom environment torn down) before the timer
-  fires throws `ReferenceError: document is not defined` after the tests, and vitest exits 1 although
-  every test passed. Reproduced 1 of 3 full `bun run test:coverage` runs: `82 passed (82)`, `997 passed
-  (997)`, `Errors 1 error`, exit 1. `showDropdown` has a second uncleaned timer at `:336`.
-    - _fix_: keep the timer id, clear it on unmount and before re-scheduling, and guard the callback.
-    - _verify_: a spec that mounts `ListBox`, focuses the input and unmounts before 100 ms, asserting no
-      unhandled error; five consecutive `bun run test:coverage` runs must exit 0.
 - **T17 · the export modal overwrites what the user typed (medium)** — the watcher on `[open,
   connectionId]` awaits `getMysqldumpExportDefaults` and then assigns `form.executable`,
   `form.outputPath`, `form.databases` and `form.tables` unconditionally
@@ -528,13 +567,6 @@ test-audit items stay in `## Open (blocked)`.
     - _fix_: a seeded table over those types, read through the grid, edited and saved, with the read-back
       asserted exactly (including the grid's `NULL` rendering versus `''`).
     - _verify_: a mutation that rounds a DECIMAL or shifts a DATETIME fails the spec.
-- **T24 · read-only is only proven on SQLite (small)** — `readonly-connection.spec.ts` builds every source
-  with `createFileSource`, so the shared `assertWritable` path (tested only through an injected fake in
-  `remote-driver-tools.spec.ts`) is never driven against MySQL, where the row-mutation, modify and script
-  paths are what a read-only connection must refuse.
-    - _fix_: the same spec shape on a MySQL connection: the lock in the sidebar, the row menu's 'Allow
-      writes', a refused save that names the connection, and reads that keep working.
-    - _verify_: removing the `assertWritable` call from the MySQL write path fails the spec.
 - **T25 · the MySQL half of the suite runs only on the developer's own fixtures (medium)** — `MYSQL`
   (`helpers.ts:12-20`) defaults to `127.0.0.1:3306` root with an empty password, and the specs need a
   pre-existing `tirsik3_test` with rows (`open-table.spec.ts:34-37`), a table estimated above 100 000 rows
@@ -545,16 +577,6 @@ test-audit items stay in `## Open (blocked)`.
       the estimate table with a recursive-CTE insert), or ship a seeding script plus a `require*` that
       names it; keep the `E2E_MYSQL_*` overrides for a real server.
     - _verify_: on a MySQL that holds none of these databases, the suite provisions them and is green.
-- **T26 · SQLite driver methods no spec executes (medium)** — with real temp files: `testConnection`
-  (`useSqliteDriver.ts:499-523`, only mocked at `db-tools.spec.ts:52` or rejected by an input guard at
-  `appApi.spec.ts:352`), `getTablesFresh` including the per-table `rowCount` (`:591-616`),
-  `applyTableChanges` and its `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` (`:806-850`) plus
-  `collectSqliteForeignKeyViolationMessages` (`:461-493`, only mocked at `db-tools.spec.ts:66`),
-  `validateSql` (`:777-781`), `getTableDdl` (`:691-728`, which the e2e only checks with
-  `toContain('keep_me')`) and the refusals at `:228-231`, `:234-240` and `:254-256`.
-    - _fix_: a unit spec against a real temp file for each — the batched save's rollback and its FK
-      violation message first, because a failed save is where data is at risk.
-    - _verify_: each new spec fails against a mutation of the branch it covers.
 - **T27 · a generated column is rebuilt as a plain one (medium)** — the column info carries `hidden` and
   `columnKind` (`useSqliteDriver.ts:36-37`), but `buildSqliteColumnDefinition`
   (`sqliteTableDdl.ts:197-221`) ignores both and `readSqliteViewInfo` drops every `hidden === 1` column
