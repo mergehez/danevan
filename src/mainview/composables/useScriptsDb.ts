@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
 import type { CreateScriptParams, UpdateScriptParams } from '../../shared/types';
 import { confirmAction } from '../lib/utils';
-import { _dbCoreState, applySelectionBootstrap } from './dbCoreState';
+import { _dbCoreState } from './dbCoreState';
 import { tasks } from './useTasks';
 
 export function _useScriptsDb() {
@@ -27,7 +27,7 @@ export function _useScriptsDb() {
                 );
         },
         async selectScript(scriptId: number | undefined) {
-            await applySelectionBootstrap(() => tasks.selectScript.run({ scriptId }));
+            _dbCoreState.applyBootstrap(await tasks.selectScript.run({ scriptId }));
         },
         async createScript(script: CreateScriptParams) {
             const nextBootstrap = await tasks.createScript.run(script);

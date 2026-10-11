@@ -124,6 +124,9 @@ export type ScriptRecord = {
 };
 
 export type AppBootstrapApi = {
+    /** Monotonic per server process. The renderer applies only a newer snapshot, so a slow answer
+     *  that was built before a later action cannot revert the state that action produced. */
+    version: number;
     servers: ServerRecord[];
     connections: ConnectionRecord[];
     scripts: ScriptRecord[];

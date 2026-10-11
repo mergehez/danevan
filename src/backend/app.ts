@@ -480,6 +480,9 @@ function isInternalServerBootstrapConnection(connection: Pick<ConnectionRow, 'se
     return !connection.database_name?.trim();
 }
 
+/** Monotonic snapshot version; the renderer drops any bootstrap older than the one it applied. */
+let bootstrapVersion = 0;
+
 async function buildBootstrap(): Promise<AppBootstrapApi> {
     const servers = appDb.listServers();
     const serversById = new Map(servers.map((server) => [server.id, server] as const));
@@ -512,6 +515,7 @@ async function buildBootstrap(): Promise<AppBootstrapApi> {
     }
 
     return {
+        version: ++bootstrapVersion,
         servers,
         connections,
         scripts,
