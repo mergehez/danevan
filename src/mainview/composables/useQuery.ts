@@ -53,9 +53,13 @@ export function _useQuery() {
     // custom query is restored when they return to a table. Written explicitly by
     // the paths that change it instead of by a watcher on the refs.
     const customQueryCache: Record<string, { text: string; isCustomQueryMode: boolean; sourceSql?: string }> = {};
+    /** Incremented per table load; only the newest load may apply its result. */
+    let loadSequence = 0;
 
     function rememberCustomQuery() {
-        const connId = connections.selectedConnectionId;
+        // The custom query belongs to the table the panel is showing, which is the loaded
+        // connection — not whichever connection is selected in the sidebar.
+        const connId = loadedConnectionId.value;
         const tableName = selectedTableName.value;
 
         if (!connId || !tableName) {
@@ -77,6 +81,9 @@ export function _useQuery() {
     }
 
     async function loadSelectedTable(connectionId: number, tableName: string, options?: LoadSelectedTableOptions) {
+        // Only the newest load may write: an older table's slow response used to land after a newer
+        // one and show the previous table's rows under the new table's name.
+        const loadId = ++loadSequence;
         isCustomQueryMode.value = false;
         loadedConnectionId.value = connectionId;
         const offset = Math.max(0, Math.round(options?.offset ?? tableData.value.offset ?? 0));
@@ -109,6 +116,10 @@ export function _useQuery() {
 
             const [tableInfo2, tableData2] = await Promise.all([tableInfoPromise, tableDataPromise]);
 
+            if (loadId !== loadSequence) {
+                return;
+            }
+
             gridQueryText.value = tableData2.sql ?? '';
             const customQueryKey = `${connectionId}:${tableName}`;
             const cachedCustomQuery = customQueryCache[customQueryKey];
@@ -122,13 +133,19 @@ export function _useQuery() {
                 `[perf][ui] loadSelectedTable ${Math.round(performance.now() - startedAt)}ms ${JSON.stringify({ connectionId, tableName, getTableInfo: infoDurationMs, getTableData: dataDurationMs })}`
             );
         } catch {
+            if (loadId !== loadSequence) {
+                return;
+            }
+
             customQueryText.value = '';
             isCustomQueryMode.value = false;
             customQuerySourceSql.value = undefined;
             tableInfo.value = undefined;
             tableData.value = getEmptyTableData();
         } finally {
-            isLoadingSelectedTable.value = false;
+            if (loadId === loadSequence) {
+                isLoadingSelectedTable.value = false;
+            }
         }
     }
 
@@ -197,9 +214,10 @@ export function _useQuery() {
                 lastResult = result;
 
                 if (result.kind === 'rows') {
-                    // The statement travels with its rows so a later edit can name the table it came
-                    // from; a column-shape guess picked an unrelated table with the same key column.
-                    lastRowResult = { ...result, sourceSql: statement };
+                    // The statement and the connection travel with the rows so a later edit can name
+                    // the table and database they came from: a column-shape guess picked an unrelated
+                    // table, and the tab's current connection can differ from the one that ran.
+                    lastRowResult = { ...result, sourceSql: statement, sourceConnectionId: connectionId };
                 }
 
                 onStatement?.({
@@ -246,7 +264,10 @@ export function _useQuery() {
          *  auto-select or auto-load a table — the caller (e.g. activateTab)
          *  is responsible for calling selectTable / loadSelectedTable. */
         async loadTables(connectionId: number | undefined) {
-            // connectionId ??= connections.selectedConnectionId;
+            // The panel is bound to this connection from here on: its tables, its grid actions and
+            // its custom query all name it instead of reading the sidebar's selection.
+            loadedConnectionId.value = connectionId;
+
             if (!connectionId) {
                 tables.value = [];
                 selectedTableName.value = undefined;
@@ -287,37 +308,46 @@ export function _useQuery() {
             await this.loadSelectedTable(connectionId, tableName, { offset: 0 });
         },
         loadSelectedTable: loadSelectedTable,
-        async runQuery(onStatement?: (entry: Omit<SqlHistoryEntry, 'id' | 'timestamp'>) => void) {
-            if (!connections.selectedConnectionId) {
-                return;
+        /**
+         * Runs the editor's SQL against the connection the caller names — the script tab's own
+         * connection — never the sidebar's selection, which can point at another database while the
+         * tab is open. The result is returned instead of assigned so the caller can attach it to the
+         * tab that started the run, even if the user switched tabs while it was in flight.
+         */
+        async runQuery(connectionId: number | undefined, onStatement?: (entry: Omit<SqlHistoryEntry, 'id' | 'timestamp'>) => void) {
+            if (!connectionId) {
+                return undefined;
             }
 
             isRunningQuery.value = true;
 
             try {
-                queryResult.value = await runSqlBatch(connections.selectedConnectionId, queryText.value, onStatement);
+                const result = await runSqlBatch(connectionId, queryText.value, onStatement);
+
+                // The script may have changed data that the (currently hidden) table grid shows:
+                // leave the reload to the table tab's activation instead of fetching a table the
+                // user is not looking at.
+                isTableDataStale.value = true;
+                return result;
             } catch {
-                queryResult.value = undefined;
-                isRunningQuery.value = false;
-                return;
+                return undefined;
             } finally {
                 isRunningQuery.value = false;
             }
-
-            // The script may have changed data that the (currently hidden) table
-            // grid shows: leave the reload to the table tab's activation instead
-            // of fetching a table the user is not looking at.
-            isTableDataStale.value = true;
         },
         async runCustomQuery() {
-            if (!connections.selectedConnectionId || !customQueryText.value.trim()) {
+            // The panel's own connection, not the sidebar's selection: the rows on screen and the
+            // query that replaces them must belong to the same database.
+            const connectionId = loadedConnectionId.value;
+
+            if (!connectionId || !customQueryText.value.trim()) {
                 return;
             }
 
             isRunningQuery.value = true;
 
             try {
-                const result = await runSqlBatch(connections.selectedConnectionId, customQueryText.value);
+                const result = await runSqlBatch(connectionId, customQueryText.value);
 
                 if (result?.kind === 'rows') {
                     const isSameAsGrid = customQueryText.value.trim() === gridQueryText.value.trim();
@@ -347,7 +377,7 @@ export function _useQuery() {
         },
         setCustomQueryText: setCustomQueryText,
         clearCustomQuery() {
-            const connId = connections.selectedConnectionId;
+            const connId = loadedConnectionId.value;
             const tableName = selectedTableName.value;
 
             if (connId && tableName) {

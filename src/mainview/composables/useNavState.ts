@@ -3,7 +3,6 @@ import type { QueryExecutionResult, SqlDiagnosticMarker } from '../../shared/typ
 import { strToNumber, uniqueId } from '../../shared/utils/utils';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
-import { useGridFormatters } from './useGridFormatters';
 import { useQuery } from './useQuery';
 import { useScriptsDb } from './useScriptsDb';
 import { useServers } from './useServers';
@@ -117,6 +116,18 @@ const createNavState = () => {
             ...currentTab,
             connectionId,
         });
+
+        // Rows in the result panel were read from the previous connection. They must not stay on
+        // screen under the new database, where a save would write them into the wrong table.
+        const runtimeState = scriptTabRuntimeStateByHash[tabHash];
+
+        if (runtimeState) {
+            runtimeState.queryResult = undefined;
+        }
+
+        if (settings.activeTabHash === tabHash) {
+            query.queryResult = undefined;
+        }
     }
 
     /** Explicit counterpart of the old `query.queryText` watcher: the editor calls
@@ -515,9 +526,7 @@ const createNavState = () => {
                     await query.selectTable(tab.connectionId, tableName);
                 }
 
-                // Load grid formatters for the current connection + table.
-                useGridFormatters().loadContext(conns.selectedConnectionId!, tableName);
-
+                // The grid loads its own table's formatter context when the table changes.
                 return;
             }
 

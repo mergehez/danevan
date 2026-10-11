@@ -145,7 +145,7 @@ export const DbTabs = component(
                                     v-tooltip={{ value: 'New scratch tab', xs: true, nowrap: true }}
                                     smaller={true}
                                     disabled={!connections.connections.length}
-                                    onClick={() => navState.openScratchTab()}
+                                    onClick={() => navState.openScratchTab(navState.activeTab?.connectionId ?? connections.selectedConnectionId ?? undefined)}
                                 />
                             ) : null}
                         </div>

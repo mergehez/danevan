@@ -360,6 +360,9 @@ export type QueryExecutionResult =
           /** The statement that produced these rows, attached by the caller that ran it. The grid
            *  names its update target from it instead of guessing the table from the columns. */
           sourceSql?: string;
+          /** The connection that produced these rows: an edit belongs to it, not to whichever
+           *  connection the tab points at later. */
+          sourceConnectionId?: number;
       }
     | {
           kind: 'mutation';

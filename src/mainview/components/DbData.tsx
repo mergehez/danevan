@@ -54,7 +54,7 @@ export const DbData = component(
         async function applyDataLimit(limit: number) {
             await settings.setQueryRowLimit(limit);
 
-            const connId = connections.selectedConnectionId;
+            const connId = query.loadedConnectionId;
             if (connId && query.selectedTableName) {
                 await query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
             }
@@ -79,7 +79,7 @@ export const DbData = component(
                 return;
             }
 
-            const connId = connections.selectedConnectionId;
+            const connId = query.loadedConnectionId;
             const nextOffset = Math.max(0, currentPageOffset.value - Math.max(currentPageLimit.value, 1));
             if (connId && query.selectedTableName) {
                 await query.loadSelectedTable(connId, query.selectedTableName, { offset: nextOffset, orderBy: orderBy.value });
@@ -91,7 +91,7 @@ export const DbData = component(
                 return;
             }
 
-            const connId = connections.selectedConnectionId;
+            const connId = query.loadedConnectionId;
             const nextOffset = currentPageOffset.value + Math.max(currentPageLimit.value, 1);
             if (connId && query.selectedTableName) {
                 await query.loadSelectedTable(connId, query.selectedTableName, { offset: nextOffset, orderBy: orderBy.value });
@@ -101,7 +101,7 @@ export const DbData = component(
         const hasResultColumns = computed(() => (query.tableData?.columns.length ?? 0) > 0);
 
         const fkPeekViews = useForeignKeyPeekViews({
-            selectedConnectionId: computed(() => connections.selectedConnectionId),
+            selectedConnectionId: computed(() => query.loadedConnectionId),
             selectedTableName: computed(() => query.selectedTableName),
             ensureTableDetails: (connectionId, tableName) => connections.ensureTableDetails(connectionId, tableName),
             getTableInfo: (connectionId, tableName) => connections.getTableDetailsState(connectionId, tableName).info,
@@ -112,13 +112,15 @@ export const DbData = component(
             },
         });
         const customQuerySourceTable = useResultSourceTable({
-            connectionId: () => connections.selectedConnectionId,
+            connectionId: () => query.loadedConnectionId,
             sql: () => (query.isCustomQueryMode ? query.customQuerySourceSql : undefined),
             resultColumns: () => (query.isCustomQueryMode ? query.tableData?.columns : undefined),
         });
 
         const dataGridState = useDbDataGrid({
-            connectionId: () => connections.selectedConnectionId!,
+            // The connection whose table the panel is showing, not the sidebar's selection: a
+            // selection change must not retarget the read, the reload or the save of this grid.
+            connectionId: () => query.loadedConnectionId,
             // A result set with columns means a table is loaded: only an empty
             // grid needs the "select a table" hint.
             emptyText: () => (hasResultColumns.value ? 'No rows' : `Select a table to preview${isUnlimitedDataLimit.value ? '' : ` up to ${settings.state.queryRowLimit} rows`}.`),
@@ -246,14 +248,14 @@ export const DbData = component(
         // The grid calls onSortChange when the user clicks a column header.
         // We reload the table data with the new sort order explicitly.
         function onGridSortChange(_columnName: string) {
-            const connId = connections.selectedConnectionId;
+            const connId = query.loadedConnectionId;
             if (connId && query.selectedTableName && !query.isCustomQueryMode) {
                 void query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
             }
         }
 
         function reloadGrid() {
-            const connId = connections.selectedConnectionId;
+            const connId = query.loadedConnectionId;
             const tableName = query.selectedTableName;
 
             if (connId && tableName) {

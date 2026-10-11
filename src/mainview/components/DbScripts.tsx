@@ -137,33 +137,52 @@ export const DbScripts = component(
             offset: 0,
         });
 
+        // The result belongs to the connection that produced it: the tab's DB selector can change
+        // after a run, and an edit must not be written into the newly selected database.
+        const resultConnectionId = computed(() =>
+            query.queryResult?.kind === 'rows' ? (query.queryResult.sourceConnectionId ?? editorConnectionId.value) : editorConnectionId.value
+        );
+
         const resultSourceTable = useResultSourceTable({
-            connectionId: () => editorConnectionId.value,
+            connectionId: () => resultConnectionId.value,
             sql: () => (query.queryResult?.kind === 'rows' ? query.queryResult.sourceSql : undefined),
             resultColumns: () => (query.queryResult?.kind === 'rows' ? query.queryResult.columns : undefined),
         });
 
         const resultDbGridState = useDbDataGrid({
-            connectionId: () => editorConnectionId.value!,
+            connectionId: () => resultConnectionId.value!,
             tableData: () => (query.queryResult?.kind === 'rows' ? query.queryResult : getEmptyTableData()) as TableData,
             tableInfo: () => resultSourceTable.tableInfo.value,
             tableName: () => resultSourceTable.tableName.value,
             emptyText: () => 'Query returned no rows.',
         });
 
-        function appendActiveScriptHistory(entry: Omit<SqlHistoryEntry, 'id' | 'timestamp'>) {
+        /**
+         * Runs the open script against the connection its tab is bound to (never the sidebar's
+         * selection) and files the result under the tab that started it, so a run that finishes
+         * after a tab switch does not appear — or get saved — in the other tab.
+         */
+        async function runActiveScriptQuery() {
             const tabHash = activeScriptTab.value?.hash;
+            const connectionId = editorConnectionId.value;
 
-            if (!tabHash) {
+            if (!tabHash || typeof connectionId !== 'number') {
                 return;
             }
 
-            navState.addScriptHistoryEntry(tabHash, entry);
+            const result = await query.runQuery(connectionId, (entry) => navState.addScriptHistoryEntry(tabHash, entry));
+
+            if (activeScriptTab.value?.hash === tabHash) {
+                query.queryResult = result;
+                return;
+            }
+
+            navState.setScriptTabRuntimeState(tabHash, { queryResult: result });
         }
 
         function reloadQueryResult() {
             if (query.queryText.trim()) {
-                void query.runQuery(appendActiveScriptHistory);
+                void runActiveScriptQuery();
             }
         }
 
@@ -364,7 +383,7 @@ export const DbScripts = component(
         async function runSelectedScript() {
             await settings.setActiveView('scripts');
             resultPanelTab.value = 'result';
-            await query.runQuery(appendActiveScriptHistory);
+            await runActiveScriptQuery();
         }
 
         function handleSqlDiagnosticsChanged(result: SqlDiagnosticsResult) {
