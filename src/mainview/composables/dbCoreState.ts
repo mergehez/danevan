@@ -20,3 +20,22 @@ export const _dbCoreState = reactive({
         _dbCoreState.stateCounter++;
     },
 });
+
+/** Incremented per selection change; only the newest may apply its bootstrap. */
+let selectionSequence = 0;
+
+/**
+ * Applies the bootstrap of a selection change (connection, server, script) only if it is still the
+ * newest one. Selection is a snapshot of the whole app context, so a slow earlier answer used to
+ * revert the sidebar, the grid's target and the run target to the selection the user had left.
+ */
+export async function applySelectionBootstrap(run: () => Promise<AppBootstrapApi>): Promise<AppBootstrapApi> {
+    const sequence = ++selectionSequence;
+    const nextBootstrap = await run();
+
+    if (sequence === selectionSequence) {
+        _dbCoreState.applyBootstrap(nextBootstrap);
+    }
+
+    return nextBootstrap;
+}

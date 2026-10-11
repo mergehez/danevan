@@ -44,6 +44,8 @@ export type ComparisonTableOption = {
 export function _useComparison() {
     const connections = useConnections();
     const servers = useServers();
+    /** Incremented per comparison load; only the newest load may write the shared state. */
+    let loadSequence = 0;
 
     const options = reactive<ComparisonOptions>(cloneComparisonOptions(readComparisonOptions()));
     watch(
@@ -202,6 +204,7 @@ export function _useComparison() {
         },
 
         async loadComparison(force: boolean) {
+            const loadId = ++loadSequence;
             state.loading = true;
             state.errorMessage = '';
 
@@ -230,6 +233,18 @@ export function _useComparison() {
                         markConnectionFresh(targetConnectionId);
                     }
 
+                    // The pickers stay enabled while this loads. A slow sweep for an earlier pair
+                    // must not answer for the pair the user has since chosen: Apply would build the
+                    // destination schema from the stale table.
+                    if (
+                        state.sourceConnectionId !== sourceConnectionId ||
+                        state.sourceTableName !== sourceTableName ||
+                        state.targetConnectionId !== targetConnectionId ||
+                        state.targetTableName !== targetTableName
+                    ) {
+                        return;
+                    }
+
                     state.sourceInfo = sourceInfo;
                     state.targetInfo = targetInfo;
                     return;
@@ -252,12 +267,21 @@ export function _useComparison() {
 
                 markConnectionFresh(sourceConnectionId);
                 markConnectionFresh(targetConnectionId);
+
+                if (state.sourceConnectionId !== sourceConnectionId || state.targetConnectionId !== targetConnectionId) {
+                    return;
+                }
+
                 state.sourceTableInfos = sourceTableInfos;
                 state.targetTableInfos = targetTableInfos;
             } catch (error) {
-                state.errorMessage = error instanceof Error ? error.message : String(error);
+                if (loadId === loadSequence) {
+                    state.errorMessage = error instanceof Error ? error.message : String(error);
+                }
             } finally {
-                state.loading = false;
+                if (loadId === loadSequence) {
+                    state.loading = false;
+                }
             }
         },
 

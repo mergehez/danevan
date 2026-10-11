@@ -28,6 +28,21 @@ export function _useDbSettings() {
         collectionFilter: getDefaultCollectionFilter(),
     } as EditorSettings);
 
+    /**
+     * Serialises settings writes. Two quick toggles used to build their payload from the same
+     * pre-click state, so the later response silently reverted the earlier change.
+     */
+    let pendingUpdate: Promise<unknown> = Promise.resolve();
+
+    function queueUpdate(build: (current: EditorSettings) => EditorSettings) {
+        const next = pendingUpdate.then(async () => {
+            state.value = await tasks.updateEditorSettings.run({ settings: build(state.value) });
+        });
+
+        pendingUpdate = next.catch(() => undefined);
+        return next;
+    }
+
     return reactive({
         state: state,
         isSettingsModalOpen: false,
@@ -39,34 +54,32 @@ export function _useDbSettings() {
             state.value = await tasks.updateEditorSettings.run({ settings: nextSettings });
         },
         async toggleCollectionState<T extends keyof CollectionFilterState>(key: T, subKey: keyof CollectionFilterState[T]) {
-            state.value = await tasks.updateEditorSettings.run({
-                settings: {
-                    ...state.value,
-                    collectionFilter: {
-                        ...state.value.collectionFilter,
-                        [key]: {
-                            ...state.value.collectionFilter[key],
-                            [subKey]: state.value.collectionFilter[key][subKey] == false,
-                        },
+            await queueUpdate((current) => ({
+                ...current,
+                collectionFilter: {
+                    ...current.collectionFilter,
+                    [key]: {
+                        ...current.collectionFilter[key],
+                        [subKey]: current.collectionFilter[key][subKey] == false,
                     },
                 },
-            });
+            }));
         },
         async setActiveView(nextView: EditorSettings['activeView']) {
             if (state.value.activeView === nextView) {
                 return;
             }
 
-            await this.update({
-                ...state.value,
+            await queueUpdate((current) => ({
+                ...current,
                 activeView: nextView,
-            });
+            }));
         },
         async setQueryRowLimit(limit: number) {
-            await this.update({
-                ...state.value,
+            await queueUpdate((current) => ({
+                ...current,
                 queryRowLimit: Math.round(limit),
-            });
+            }));
         },
         openSettingsWindow(panel?: SettingsPanel) {
             this.selectedSettingsPanel = panel ?? 'section1';

@@ -72,11 +72,19 @@ export const SqlEditor = component(
 
             isFormatting.value = true;
 
+            const sqlBeforeFormat = modelValue.value;
+
             try {
-                modelValue.value = await appClientRpc.request.formatSql({
-                    sql: modelValue.value,
+                const formatted = await appClientRpc.request.formatSql({
+                    sql: sqlBeforeFormat,
                     dialect: props.sqlDialect,
                 });
+
+                // The active tab may have changed while the formatter ran. Applying the result then
+                // would overwrite the other tab's draft with this tab's formatted text.
+                if (modelValue.value === sqlBeforeFormat) {
+                    modelValue.value = formatted;
+                }
             } catch (error) {
                 toast.showToast(error instanceof Error ? error.message : String(error), 'danger');
             } finally {

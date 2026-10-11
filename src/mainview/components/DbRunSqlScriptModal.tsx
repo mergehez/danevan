@@ -87,16 +87,32 @@ export const DbRunSqlScriptModal = component(
                     return;
                 }
 
+                // The dialog can be closed and reopened for another file or connection before this
+                // answers; the confirmation must describe the run the user is looking at.
+                const isCurrent = () => props.open && props.connectionId === connectionId && props.scriptPath === scriptPath;
+
                 reset();
                 isLoadingDefaults.value = true;
 
                 try {
-                    defaults.value = await tasks.getRunSqlScriptDefaults.run({ connectionId, filePath: scriptPath });
+                    const nextDefaults = await tasks.getRunSqlScriptDefaults.run({ connectionId, filePath: scriptPath });
+
+                    if (!isCurrent()) {
+                        return;
+                    }
+
+                    defaults.value = nextDefaults;
                 } catch (error) {
+                    if (!isCurrent()) {
+                        return;
+                    }
+
                     phase.value = 'done';
                     outcome.value = { severity: 'danger', message: error instanceof Error ? error.message : String(error) };
                 } finally {
-                    isLoadingDefaults.value = false;
+                    if (isCurrent()) {
+                        isLoadingDefaults.value = false;
+                    }
                 }
             },
             { immediate: true }

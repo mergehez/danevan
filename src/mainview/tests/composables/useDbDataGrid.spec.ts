@@ -18,6 +18,8 @@ vi.mock('../../appClient', () => ({
     appClientRpc: {
         request: {
             getGridCustomFormatters: async () => holders.formatters,
+            // The grid loads its own table's formatter context, not just the formatter list.
+            getGridFormatterState: async () => ({ formatters: holders.formatters, columnFormatterIds: {} }),
         },
     },
 }));

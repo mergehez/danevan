@@ -526,7 +526,7 @@ export function useForeignKeyPeekViews(opts: {
 
         const relation = findFkPeekRelation(view.tableInfo, context.sourceColumnName);
 
-        if (!relation || !selectedConnectionId.value) {
+        if (!relation) {
             return [];
         }
 
@@ -535,12 +535,10 @@ export function useForeignKeyPeekViews(opts: {
                 id: `peek-relation-${view.id}-${context.sourceColumnName}`,
                 label: 'Peek Relation',
                 action: async () => {
-                    if (!selectedConnectionId.value) {
-                        return;
-                    }
-
+                    // The view carries the connection it was built from; the injected selection can
+                    // have moved on since.
                     await openPeekView({
-                        connectionId: selectedConnectionId.value,
+                        connectionId: view.connectionId,
                         relation,
                         value: context.value as SqlValue,
                         event: context.event,
@@ -699,7 +697,11 @@ export function useForeignKeyPeek(opts: {
         errorMessage: undefined,
     });
 
+    /** Incremented per peek; only the newest lookup may fill the popover. */
+    let peekSequence = 0;
+
     function closeFkPeekPopover() {
+        peekSequence += 1;
         fkPeekPopover.open = false;
         fkPeekPopover.loading = false;
         fkPeekPopover.title = '';
@@ -727,6 +729,9 @@ export function useForeignKeyPeek(opts: {
         }
 
         const value = opts.getDisplayedCellValue(rowIndex, columnName);
+        // Only the newest peek may fill the popover: a slow lookup for a previous cell used to
+        // land after a new one and show that cell's related row under the new title.
+        const peekId = ++peekSequence;
         fkPeekPopover.open = true;
         fkPeekPopover.loading = true;
         fkPeekPopover.left = Math.min(event.clientX + 8, Math.max(window.innerWidth - 372, 12));
@@ -748,6 +753,10 @@ export function useForeignKeyPeek(opts: {
                 limit: 1,
             });
 
+            if (peekId !== peekSequence) {
+                return;
+            }
+
             if (result.kind !== 'rows') {
                 fkPeekPopover.errorMessage = 'Relation lookup returned no rows.';
                 return;
@@ -760,9 +769,15 @@ export function useForeignKeyPeek(opts: {
                 fkPeekPopover.errorMessage = 'No related row found.';
             }
         } catch (error) {
+            if (peekId !== peekSequence) {
+                return;
+            }
+
             fkPeekPopover.errorMessage = error instanceof Error ? error.message : String(error);
         } finally {
-            fkPeekPopover.loading = false;
+            if (peekId === peekSequence) {
+                fkPeekPopover.loading = false;
+            }
         }
     }
 

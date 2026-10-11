@@ -2151,6 +2151,8 @@ export function _useModifyTable() {
     let currentHistorySnapshot: ModifyTableHistorySnapshot | undefined;
     let currentHistorySerialized: string | undefined;
     let suppressHistory = false;
+    /** Incremented per openModal; a slow load must not fill the draft of a later table. */
+    let openModalSequence = 0;
 
     const state = reactive({
         mode: 'edit' as ModifyTableMode,
@@ -2514,6 +2516,7 @@ export function _useModifyTable() {
         },
         async openModal(params: ModifyTableOpenParams) {
             const mode = params.mode ?? 'edit';
+            const openId = ++openModalSequence;
 
             state.open = true;
             state.loading = true;
@@ -2526,6 +2529,11 @@ export function _useModifyTable() {
                 if (mode === 'create') {
                     await Promise.all([connections.ensureConnectionTables(params.connectionId), state.loadCollationOptions(params.connectionId)]);
 
+                    // The modal may have been reopened for another table while this loaded.
+                    if (openId !== openModalSequence) {
+                        return;
+                    }
+
                     state.currentTableInfo = undefined;
                     state.table = createTableDraft(params.tableName ?? '', state.driver);
                     state.originalColumns = [];
@@ -2537,6 +2545,11 @@ export function _useModifyTable() {
                     const tableName = params.tableName!;
 
                     await Promise.all([connections.ensureTableDetails(params.connectionId, tableName, true), state.loadCollationOptions(params.connectionId)]);
+
+                    if (openId !== openModalSequence) {
+                        return;
+                    }
+
                     const tableInfo = connections.getTableDetailsState(params.connectionId, tableName).info;
 
                     if (!tableInfo) {
@@ -2559,9 +2572,13 @@ export function _useModifyTable() {
                 state.allowTableRebuild = false;
                 resetHistory();
             } catch (error) {
-                state.errorMessage = error instanceof Error ? error.message : String(error);
+                if (openId === openModalSequence) {
+                    state.errorMessage = error instanceof Error ? error.message : String(error);
+                }
             } finally {
-                state.loading = false;
+                if (openId === openModalSequence) {
+                    state.loading = false;
+                }
             }
         },
         async loadCollationOptions(connectionId?: number) {

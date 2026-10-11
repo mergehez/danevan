@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
-import { _dbCoreState } from '../composables/dbCoreState';
+import { _dbCoreState, applySelectionBootstrap } from '../composables/dbCoreState';
 import { useDbCaches } from '../composables/useDbCaches';
 import { tasks } from '../composables/useTasks';
 import { confirmAction } from '../lib/utils';
@@ -270,7 +270,7 @@ export function _useConnections() {
             }
         },
         async selectConnection(connectionId: number | undefined) {
-            _dbCoreState.applyBootstrap(await tasks.selectConnection.run({ connectionId }));
+            await applySelectionBootstrap(() => tasks.selectConnection.run({ connectionId }));
         },
         openMysqldumpExport(connectionId: number) {
             state.mysqldumpExportModal.connectionId = connectionId;

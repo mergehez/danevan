@@ -89,6 +89,13 @@ export const DbServerSchemasModal = component(
                 }
 
                 await loadSchemas();
+
+                // The popover moved to another server while the schemas loaded; that server's own
+                // watcher run owns the selection.
+                if (server.value?.id !== serverId) {
+                    return;
+                }
+
                 selectedSchemaNames.value = [...normalizedVisibleSchemaNames.value];
 
                 if (!schemas.value.length && server.value?.kind === 'server') {
@@ -134,15 +141,28 @@ export const DbServerSchemasModal = component(
                 return;
             }
 
+            // The popover can be reopened on another server before this answers; its schema names
+            // must not be listed (or applied to) the server the popover now targets.
+            const requestedServerId = server.value.id;
             loading.value = true;
             errorMessage.value = undefined;
 
             try {
-                schemas.value = await servers.ensureServerSchemas(server.value.id);
+                const nextSchemas = await servers.ensureServerSchemas(requestedServerId);
+
+                if (server.value?.id !== requestedServerId) {
+                    return;
+                }
+
+                schemas.value = nextSchemas;
             } catch (error) {
-                errorMessage.value = error instanceof Error ? error.message : String(error);
+                if (server.value?.id === requestedServerId) {
+                    errorMessage.value = error instanceof Error ? error.message : String(error);
+                }
             } finally {
-                loading.value = false;
+                if (server.value?.id === requestedServerId) {
+                    loading.value = false;
+                }
             }
         }
 

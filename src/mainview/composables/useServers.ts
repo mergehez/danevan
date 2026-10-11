@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
 import { dbTypes, type CreateServerParams, type DbType, type ServerSchemaRecord, type UpdateServerParams } from '../../shared/types';
 import { confirmAction } from '../lib/utils';
-import { _dbCoreState } from './dbCoreState';
+import { _dbCoreState, applySelectionBootstrap } from './dbCoreState';
 import { useConnections } from './useConnections';
 import { useDbCaches } from './useDbCaches';
 import { tasks } from './useTasks';
@@ -123,7 +123,7 @@ export function _useServers() {
             return schemas;
         },
         async selectServer(serverId: number | undefined) {
-            _dbCoreState.applyBootstrap(await tasks.selectServer.run({ serverId }));
+            await applySelectionBootstrap(() => tasks.selectServer.run({ serverId }));
         },
         async createServer(server: CreateServerParams) {
             _dbCoreState.applyBootstrap(await tasks.createServer.run(server));

@@ -163,7 +163,16 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     });
     const supportsForeignKeyCheckToggle = computed(() => sqlDialect.value === 'sqlite' || sqlDialect.value === 'mysql');
     const gridFormatters = useGridFormatters();
-    void gridFormatters.loadFormatters();
+
+    // Load the formatters of this grid's own table. A bare loadFormatters() kept the context of
+    // whichever table was activated last, so another table's assignments decorated these columns.
+    watch(
+        () => [options.connectionId(), tableName.value] as const,
+        ([connectionId, currentTableName]) => {
+            void gridFormatters.loadContext(connectionId, currentTableName);
+        },
+        { immediate: true }
+    );
 
     const fkPeek = useForeignKeyPeek({
         connectionId: computed(() => options.connectionId()),

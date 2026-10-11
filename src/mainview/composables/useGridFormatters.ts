@@ -50,6 +50,8 @@ export function _useGridFormatters() {
     let formatterWorkerReady = false;
     let queuedFormatterRequests: QueuedFormatterRequest[] = [];
     let nextRequestId = 0;
+    /** Incremented per context load; a slow response must not describe another table. */
+    let contextLoadSequence = 0;
 
     function clearFormatterCaches() {
         formatterResultCache.clear();
@@ -191,6 +193,7 @@ export function _useGridFormatters() {
             bumpRenderVersion(this);
         },
         async loadContext(connectionId: number | undefined, tableName: string | undefined) {
+            const loadId = ++contextLoadSequence;
             const normalizedTableName = normalizeTableName(tableName);
 
             if (!connectionId || !normalizedTableName) {
@@ -204,6 +207,12 @@ export function _useGridFormatters() {
                 connectionId,
                 tableName: normalizedTableName,
             });
+
+            // Another table was activated while this answered: its load owns the context.
+            if (loadId !== contextLoadSequence) {
+                return;
+            }
+
             this.currentContext = {
                 connectionId,
                 tableName: normalizedTableName,
