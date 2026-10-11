@@ -1,9 +1,17 @@
 import { computed, reactive, ref, watch } from 'vue';
-import type { QueryExecutionResult, SqlDiagnosticMarker } from '../../shared/types';
+import type { SqlDiagnosticMarker } from '../../shared/types';
 import { strToNumber, uniqueId } from '../../shared/utils/utils';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
-import { useQuery } from './useQuery';
+import {
+    dropQueryStateForTab,
+    markQueryTextSeeded,
+    moveQueryStateForTab,
+    queryStateTabHashes,
+    seedQueryTextForTab,
+    useQuery,
+    useQueryForTab,
+} from './useQuery';
 import { useScriptsDb } from './useScriptsDb';
 import { useServers } from './useServers';
 import { type Tab, useSettings } from './useSettings';
@@ -19,7 +27,6 @@ type DisplayTab = Tab & {
 };
 
 type ScriptTabRuntimeState = {
-    queryResult: QueryExecutionResult | undefined;
     resultPanelTab: 'result' | 'problems' | 'history';
     scriptProblems: SqlDiagnosticMarker[];
     scriptHistory: SqlHistoryEntry[];
@@ -46,6 +53,8 @@ const createNavState = () => {
     const closedTabsState = reactive<Tab[]>([]);
     const scriptTabRuntimeStateByHash = reactive<Record<string, ScriptTabRuntimeState | undefined>>({});
     const hydratingTableTabConnectionIds = reactive<Record<number, boolean>>({});
+    /** Last tab activated per connection, so re-selecting a connection reopens what the user had. */
+    const lastTabHashByConnection = new Map<number, string>();
     /** Connections whose table list has been refetched from the database this session. */
     const verifiedTableTabConnectionIds = new Set<number>();
     const hasHydratedBootstrap = computed(() => _dbCoreState.stateCounter > 0);
@@ -119,25 +128,23 @@ const createNavState = () => {
 
         // Rows in the result panel were read from the previous connection. They must not stay on
         // screen under the new database, where a save would write them into the wrong table.
-        const runtimeState = scriptTabRuntimeStateByHash[tabHash];
-
-        if (runtimeState) {
-            runtimeState.queryResult = undefined;
-        }
-
-        if (settings.activeTabHash === tabHash) {
-            query.queryResult = undefined;
-        }
+        useQueryForTab(tabHash).queryResult = undefined;
     }
 
     /** Explicit counterpart of the old `query.queryText` watcher: the editor calls
      *  this on every change, and the active script/scratch tab stores the text. */
     function setActiveTabText(text: string) {
-        query.queryText = text;
-
         const currentTab = settings.tabs.find((tab) => tab.hash === settings.activeTabHash);
 
-        if (!currentTab || !isScriptTab(currentTab) || currentTab.draftSql === text) {
+        if (!currentTab) {
+            return;
+        }
+
+        // The tab owns its editor text; a background tab keeps its own.
+        useQueryForTab(currentTab.hash).queryText = text;
+        markQueryTextSeeded(currentTab.hash);
+
+        if (!isScriptTab(currentTab) || currentTab.draftSql === text) {
             return;
         }
 
@@ -258,7 +265,6 @@ const createNavState = () => {
     function getScriptTabRuntimeState(tabHash: string | undefined) {
         if (!tabHash) {
             return {
-                queryResult: undefined,
                 resultPanelTab: 'problems' as const,
                 scriptProblems: [],
                 scriptHistory: [],
@@ -267,7 +273,6 @@ const createNavState = () => {
 
         return (
             scriptTabRuntimeStateByHash[tabHash] ?? {
-                queryResult: undefined,
                 resultPanelTab: 'problems' as const,
                 scriptProblems: [],
                 scriptHistory: [],
@@ -279,7 +284,6 @@ const createNavState = () => {
         const currentState = getScriptTabRuntimeState(tabHash);
 
         scriptTabRuntimeStateByHash[tabHash] = {
-            queryResult: nextState.queryResult !== undefined ? nextState.queryResult : currentState.queryResult,
             resultPanelTab: nextState.resultPanelTab ?? currentState.resultPanelTab,
             scriptProblems: nextState.scriptProblems ?? currentState.scriptProblems,
             scriptHistory: nextState.scriptHistory ?? currentState.scriptHistory,
@@ -298,7 +302,6 @@ const createNavState = () => {
         }
 
         scriptTabRuntimeStateByHash[toHash] = {
-            queryResult: currentState.queryResult,
             resultPanelTab: currentState.resultPanelTab,
             scriptProblems: [...currentState.scriptProblems],
             scriptHistory: [...currentState.scriptHistory],
@@ -433,6 +436,7 @@ const createNavState = () => {
         };
 
         moveScriptTabRuntimeState(scratchHash, nextTab.hash);
+        moveQueryStateForTab(scratchHash, nextTab.hash);
         setTabs(settings.tabs.map((tab) => (tab.hash === scratchHash ? nextTab : tab)));
         settings.setActiveTab(nextTab);
         activateActiveTab();
@@ -502,16 +506,14 @@ const createNavState = () => {
         try {
             tasks.dismissError();
 
-            // Activation awaits several backend calls; text typed during them
-            // belongs to the user, not to the tab we were loading.
-            const textBeforeActivation = query.queryText;
-
             if (conns.selectedConnectionId !== tab.connectionId) {
                 await conns.selectConnection(tab.connectionId);
             }
 
             if (tab.type === 'table') {
-                await query.loadTables(tab.connectionId);
+                const tabQuery = useQueryForTab(tab.hash);
+
+                await tabQuery.loadTables(tab.connectionId);
 
                 await scripts.selectScript(undefined);
 
@@ -522,8 +524,8 @@ const createNavState = () => {
                     return;
                 }
 
-                if (query.selectedTableName !== tableName || query.loadedConnectionId !== tab.connectionId || query.isTableDataStale) {
-                    await query.selectTable(tab.connectionId, tableName);
+                if (tabQuery.selectedTableName !== tableName || tabQuery.loadedConnectionId !== tab.connectionId || tabQuery.isTableDataStale) {
+                    await tabQuery.selectTable(tab.connectionId, tableName);
                 }
 
                 // The grid loads its own table's formatter context when the table changes.
@@ -551,23 +553,27 @@ const createNavState = () => {
                     await scripts.selectScript(tab.targetId);
                 }
 
-                const nextQueryText = tab.draftSql ?? script.sql_text ?? '';
-
-                if (query.queryText === textBeforeActivation && query.queryText !== nextQueryText) {
-                    query.queryText = nextQueryText;
-                }
+                // A first open seeds the editor from the stored draft; later activations keep what
+                // the user has typed into this tab's own state.
+                seedQueryTextForTab(tab.hash, tab.draftSql ?? script.sql_text ?? '');
 
                 return;
             }
 
             await scripts.selectScript(undefined);
 
-            if (query.queryText === textBeforeActivation && query.queryText !== (tab.draftSql ?? '')) {
-                query.queryText = tab.draftSql ?? '';
-            }
+            seedQueryTextForTab(tab.hash, tab.draftSql ?? '');
         } catch (error) {
             sanitizeTabs();
             tasks.reportError(error instanceof Error ? error.message : String(error));
+        } finally {
+            // The tab's connection may have been corrected while it activated; remember it under
+            // whichever connection it now belongs to, for the selection watcher below.
+            const currentTab = settings.tabs.find((entry) => entry.hash === tab.hash);
+
+            if (currentTab) {
+                lastTabHashByConnection.set(currentTab.connectionId, currentTab.hash);
+            }
         }
     }
 
@@ -651,6 +657,39 @@ const createNavState = () => {
         { immediate: true }
     );
 
+    /**
+     * Selecting a connection (a tree row, a file source, a new connection) must not leave another
+     * database's panel on screen. Activate a tab of that connection, or show the empty workspace.
+     * Activation itself selects the tab's connection, so this settles instead of looping.
+     */
+    watch(
+        () => _dbCoreState.selectedConnectionId,
+        (connectionId) => {
+            if (!hasHydratedBootstrap.value || connectionId === undefined) {
+                return;
+            }
+
+            const currentTab = settings.tabs.find((tab) => tab.hash === settings.activeTabHash);
+
+            if (currentTab?.connectionId === connectionId) {
+                return;
+            }
+
+            const rememberedHash = lastTabHashByConnection.get(connectionId);
+            const rememberedTab = rememberedHash
+                ? settings.tabs.find((tab) => tab.hash === rememberedHash && tab.connectionId === connectionId)
+                : undefined;
+            const nextTab = rememberedTab ?? [...settings.tabs].reverse().find((tab) => tab.connectionId === connectionId);
+
+            if (nextTab) {
+                selectTab(nextTab);
+                return;
+            }
+
+            settings.setActiveTab(undefined);
+        }
+    );
+
     watch(
         () => settings.tabs.map((tab) => tab.hash).join('|'),
         () => {
@@ -659,6 +698,12 @@ const createNavState = () => {
             for (const hash of Object.keys(scriptTabRuntimeStateByHash)) {
                 if (!activeHashes.has(hash)) {
                     delete scriptTabRuntimeStateByHash[hash];
+                }
+            }
+
+            for (const hash of queryStateTabHashes()) {
+                if (!activeHashes.has(hash)) {
+                    dropQueryStateForTab(hash);
                 }
             }
         },

@@ -385,3 +385,29 @@ export async function openMySqlTable(page: Page, source: { serverId: number; con
 
     await openSidebarTable(page, source.connectionId, tableName);
 }
+
+/** Creates a saved script for a connection and returns its id. */
+export async function createScript(request: APIRequestContext, connectionId: number, name: string, sqlText: string) {
+    const bootstrap = await post(request, 'createScript', { connectionId, name, sqlText });
+    const script = bootstrap.scripts.find((entry: { name: string }) => entry.name === name);
+
+    if (!script) {
+        throw new Error(`fixture: script ${name} was not created`);
+    }
+
+    return script.id as number;
+}
+
+/** Opens a saved script from the scripts tree by double-clicking its row. */
+export async function openScriptTab(page: Page, connectionId: number, scriptId: number) {
+    const groupRow = page.locator(`[data-node-id="script-connection:${connectionId}"]`);
+    await expect(groupRow).toBeVisible({ timeout: 15_000 });
+
+    if ((await groupRow.getAttribute('data-sidebar-collapsed')) === 'true') {
+        await groupRow.dispatchEvent('click');
+    }
+
+    const scriptRow = page.locator(`[data-node-id="script:${scriptId}"]`);
+    await expect(scriptRow).toBeVisible({ timeout: 15_000 });
+    await scriptRow.dispatchEvent('dblclick');
+}

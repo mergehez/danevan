@@ -10,7 +10,7 @@ import { useConnections } from '../composables/useConnections';
 import { useDbDataGrid } from '../composables/useDbDataGrid';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useNavState } from '../composables/useNavState';
-import { useQuery } from '../composables/useQuery';
+import { useQuery, useQueryForTab } from '../composables/useQuery';
 import { useResultSourceTable } from '../composables/useResultSourceTable';
 import { useScriptsDb } from '../composables/useScriptsDb';
 import { useServers } from '../composables/useServers';
@@ -159,8 +159,8 @@ export const DbScripts = component(
 
         /**
          * Runs the open script against the connection its tab is bound to (never the sidebar's
-         * selection) and files the result under the tab that started it, so a run that finishes
-         * after a tab switch does not appear — or get saved — in the other tab.
+         * selection). The tab owns its query state, so the result is written there: a run that
+         * finishes after a tab switch waits in its own tab instead of appearing in the other one.
          */
         async function runActiveScriptQuery() {
             const tabHash = activeScriptTab.value?.hash;
@@ -170,14 +170,9 @@ export const DbScripts = component(
                 return;
             }
 
-            const result = await query.runQuery(connectionId, (entry) => navState.addScriptHistoryEntry(tabHash, entry));
+            const tabQuery = useQueryForTab(tabHash);
 
-            if (activeScriptTab.value?.hash === tabHash) {
-                query.queryResult = result;
-                return;
-            }
-
-            navState.setScriptTabRuntimeState(tabHash, { queryResult: result });
+            tabQuery.queryResult = await tabQuery.runQuery(connectionId, (entry) => navState.addScriptHistoryEntry(tabHash, entry));
         }
 
         function reloadQueryResult() {
@@ -189,27 +184,12 @@ export const DbScripts = component(
         watch(
             () => activeScriptTab.value?.hash,
             (nextTabHash) => {
+                // The rows are the tab's own query state; only the panel choices are restored here.
                 const nextState = navState.getScriptTabRuntimeState(nextTabHash);
-                query.queryResult = nextState.queryResult;
                 resultPanelTab.value = nextState.resultPanelTab;
                 scriptProblems.value = [...nextState.scriptProblems];
             },
             { immediate: true }
-        );
-
-        watch(
-            () => query.queryResult,
-            (nextQueryResult) => {
-                const activeTabHash = activeScriptTab.value?.hash;
-
-                if (!activeTabHash) {
-                    return;
-                }
-
-                navState.setScriptTabRuntimeState(activeTabHash, {
-                    queryResult: nextQueryResult,
-                });
-            }
         );
 
         watch(resultPanelTab, (nextResultPanelTab) => {

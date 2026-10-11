@@ -34,6 +34,7 @@ const holders = vi.hoisted(() => ({
     scripts: null as any,
     servers: null as any,
     query: null as any,
+    queryStates: new Map<string, any>(),
     dbCoreState: null as any,
     freshTables: [] as any[],
     ensureConnectionTables: undefined as any,
@@ -139,22 +140,60 @@ vi.mock('../../composables/useQuery', async () => {
     const store = reactive({
         queryText: '',
         selectedTableName: undefined as string | undefined,
+        isTableDataStale: false,
     });
     holders.query = store;
+
+    const seededTabs = new Set<string>();
+
+    // One state per tab, like the real store. The editor text is seeded once per tab, by first open.
+    const stateForTab = (hash = 'current') => {
+        let state = holders.queryStates.get(hash);
+
+        if (!state) {
+            state = {
+                get queryText() {
+                    return store.queryText;
+                },
+                set queryText(value: string) {
+                    store.queryText = value;
+                },
+                get selectedTableName() {
+                    return store.selectedTableName;
+                },
+                set selectedTableName(value: string | undefined) {
+                    store.selectedTableName = value;
+                },
+                get isTableDataStale() {
+                    return store.isTableDataStale;
+                },
+                queryResult: undefined,
+                loadTables: vi.fn(async () => {}),
+                selectTable: vi.fn(async () => {}),
+            };
+            holders.queryStates.set(hash, state);
+        }
+
+        return state;
+    };
+
     return {
-        useQuery: () => ({
-            get queryText() {
-                return store.queryText;
-            },
-            set queryText(value: string) {
-                store.queryText = value;
-            },
-            get selectedTableName() {
-                return store.selectedTableName;
-            },
-            loadTables: vi.fn(async () => {}),
-            selectTable: vi.fn(async () => {}),
-        }),
+        useQuery: () => stateForTab(),
+        useQueryForTab: (hash: string | undefined) => stateForTab(hash ?? 'current'),
+        seedQueryTextForTab: (hash: string | undefined, text: string) => {
+            const key = hash ?? 'current';
+
+            if (seededTabs.has(key)) {
+                return;
+            }
+
+            seededTabs.add(key);
+            stateForTab(key).queryText = text;
+        },
+        markQueryTextSeeded: (hash: string | undefined) => seededTabs.add(hash ?? 'current'),
+        dropQueryStateForTab: () => holders.queryStates.clear(),
+        queryStateTabHashes: () => [...holders.queryStates.keys()],
+        moveQueryStateForTab: () => {},
     };
 });
 
@@ -172,7 +211,7 @@ vi.mock('../../composables/useTasks', () => ({
 }));
 
 vi.mock('../../composables/dbCoreState', () => {
-    const dbCoreState = { stateCounter: 1 };
+    const dbCoreState = { stateCounter: 1, selectedConnectionId: 1 };
     holders.dbCoreState = dbCoreState;
     return { _dbCoreState: dbCoreState };
 });
@@ -203,6 +242,7 @@ describe('useNavState draft-sync round-trip', () => {
         holders.conns.connections = [{ id: 1, name: 'test' }];
         holders.conns.selectedConnectionId = 1;
         holders.query.queryText = '';
+        holders.queryStates.clear();
         selectScriptRun.mockClear();
         holders.selectScriptPending = false;
         holders.resolveSelectScript = undefined;
@@ -272,6 +312,7 @@ describe('useNavState tab actions', () => {
         holders.conns.connections = [{ id: 1, name: 'test' }];
         holders.conns.selectedConnectionId = 1;
         holders.query.queryText = '';
+        holders.queryStates.clear();
         selectScriptRun.mockClear();
         holders.selectScriptPending = false;
         holders.resolveSelectScript = undefined;

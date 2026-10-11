@@ -4,6 +4,7 @@ import type { QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateCo
 import { splitSqlStatements } from '../../shared/utils/sqlStatements';
 import { useConnections } from './useConnections';
 import { useDbSettings } from './useDbSettings';
+import { useSettings } from './useSettings';
 import type { SqlHistoryEntry } from './useSqlHistory';
 import { tasks } from './useTasks';
 
@@ -16,6 +17,12 @@ type LoadSelectedTableOptions = {
     offset?: number;
     orderBy?: SortOrder;
 };
+
+/**
+ * Shared by every tab, not owned by one: a script anywhere can drop or rename a table, so every
+ * table tab's list is stale until it refetches.
+ */
+const isTableDataStale = ref(false);
 
 export function _useQuery() {
     const connections = useConnections();
@@ -40,8 +47,6 @@ export function _useQuery() {
     const isLoadingTables = ref(false);
     const isLoadingSelectedTable = ref(false);
     const isRunningQuery = ref(false);
-    /** Set when raw SQL runs, so the grid reloads when its table tab is shown again. */
-    const isTableDataStale = ref(false);
     const customQueryText = ref('');
     const isCustomQueryMode = ref(false);
     /** The statement behind the rows the custom query is showing; the grid's update target. */
@@ -403,9 +408,100 @@ export function _useQuery() {
     });
 }
 
-let querySingleton: ReturnType<typeof _useQuery> | undefined;
+export type TQueryState = ReturnType<typeof _useQuery>;
 
-export function useQuery() {
-    querySingleton ??= _useQuery();
-    return querySingleton;
+const queryStatesByTabHash = new Map<string, TQueryState>();
+let detachedQueryState: TQueryState | undefined;
+
+/**
+ * The query state a tab owns: created on first use and kept while the tab is open, so two tabs can
+ * never share rows, a table target, draft SQL or a result. The editor text is filled by
+ * `seedQueryTextForTab` on the tab's first open, not here, because a render can create the state
+ * before the tab activates.
+ */
+export function useQueryForTab(tabHash: string | undefined): TQueryState {
+    if (!tabHash) {
+        detachedQueryState ??= _useQuery();
+        return detachedQueryState;
+    }
+
+    let state = queryStatesByTabHash.get(tabHash);
+
+    if (!state) {
+        state = _useQuery();
+        queryStatesByTabHash.set(tabHash, state);
+    }
+
+    return state;
+}
+
+/** Tabs whose editor text has been seeded from the stored draft (or typed into) at least once. */
+const seededTextTabs = new Set<string>();
+
+/**
+ * Puts the tab's stored draft into its editor, once. The state can be created by a render before
+ * the tab activates, so this is ordered by "first open" rather than by state creation.
+ */
+export function seedQueryTextForTab(tabHash: string | undefined, text: string) {
+    if (!tabHash || seededTextTabs.has(tabHash)) {
+        return;
+    }
+
+    seededTextTabs.add(tabHash);
+    useQueryForTab(tabHash).queryText = text;
+}
+
+/** Marks the tab as having its own text, so a later activation does not seed over what was typed. */
+export function markQueryTextSeeded(tabHash: string | undefined) {
+    if (tabHash) {
+        seededTextTabs.add(tabHash);
+    }
+}
+
+export function dropQueryStateForTab(tabHash: string) {
+    queryStatesByTabHash.delete(tabHash);
+    seededTextTabs.delete(tabHash);
+}
+
+/** Carries a state to a new hash when a scratch tab becomes a saved script. */
+export function moveQueryStateForTab(fromHash: string, toHash: string) {
+    if (fromHash === toHash) {
+        return;
+    }
+
+    const state = queryStatesByTabHash.get(fromHash);
+
+    if (!state) {
+        return;
+    }
+
+    queryStatesByTabHash.set(toHash, state);
+    queryStatesByTabHash.delete(fromHash);
+
+    if (seededTextTabs.delete(fromHash)) {
+        seededTextTabs.add(toHash);
+    }
+}
+
+/** The tabs that still hold a query state, so a closed tab's state can be dropped. */
+export function queryStateTabHashes(): string[] {
+    return [...queryStatesByTabHash.keys()];
+}
+
+/**
+ * The state of the tab that is active now. A proxy rather than a captured object because the
+ * composables that read it are singletons: a value captured at setup would belong to whichever tab
+ * happened to be active then. Every read and write resolves the current tab.
+ */
+export function useQuery(): TQueryState {
+    const resolve = () => useQueryForTab(useSettings().activeTabHash);
+
+    return new Proxy({} as TQueryState, {
+        get: (_target, property) => Reflect.get(resolve(), property),
+        set: (_target, property, value) => {
+            Reflect.set(resolve(), property, value);
+            return true;
+        },
+        has: (_target, property) => Reflect.has(resolve(), property),
+    });
 }

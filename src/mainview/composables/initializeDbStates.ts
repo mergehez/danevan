@@ -1,14 +1,14 @@
 import { onMounted } from 'vue';
 import { _dbCoreState } from './dbCoreState';
+import { useConnections } from './useConnections';
 import { useDbSettings } from './useDbSettings';
-import { useQuery } from './useQuery';
 import { tasks } from './useTasks';
 
 let hasLoadedBootstrap = false;
 
 export function initializeDbStates() {
     const settings = useDbSettings();
-    const query = useQuery();
+    const connections = useConnections();
 
     onMounted(() => {
         if (hasLoadedBootstrap) {
@@ -21,7 +21,12 @@ export function initializeDbStates() {
             const nextBootstrap = await tasks.getBootstrap.run(undefined);
             _dbCoreState.applyBootstrap(nextBootstrap);
             await settings.load();
-            await query.loadTables(_dbCoreState.selectedConnectionId);
+
+            // Warm the selected connection's table list for the sidebar. The active tab loads its
+            // own state when it activates; writing into it here would target whichever tab exists.
+            if (_dbCoreState.selectedConnectionId !== undefined) {
+                await connections.ensureConnectionTables(_dbCoreState.selectedConnectionId);
+            }
         })();
     });
 }
