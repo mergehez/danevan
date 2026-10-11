@@ -44,13 +44,15 @@ export function _useQuery() {
     const isTableDataStale = ref(false);
     const customQueryText = ref('');
     const isCustomQueryMode = ref(false);
+    /** The statement behind the rows the custom query is showing; the grid's update target. */
+    const customQuerySourceSql = ref(undefined as string | undefined);
     /** SQL returned by the backend for the current grid view. */
     const gridQueryText = ref('');
 
     // Per-table cache of the custom query text + custom-query mode, so a user's
     // custom query is restored when they return to a table. Written explicitly by
     // the paths that change it instead of by a watcher on the refs.
-    const customQueryCache: Record<string, { text: string; isCustomQueryMode: boolean }> = {};
+    const customQueryCache: Record<string, { text: string; isCustomQueryMode: boolean; sourceSql?: string }> = {};
 
     function rememberCustomQuery() {
         const connId = connections.selectedConnectionId;
@@ -60,11 +62,17 @@ export function _useQuery() {
             return;
         }
 
-        customQueryCache[`${connId}:${tableName}`] = { text: customQueryText.value, isCustomQueryMode: isCustomQueryMode.value };
+        customQueryCache[`${connId}:${tableName}`] = {
+            text: customQueryText.value,
+            isCustomQueryMode: isCustomQueryMode.value,
+            sourceSql: customQuerySourceSql.value,
+        };
     }
 
     function setCustomQueryText(text: string) {
         customQueryText.value = text;
+        // The shown rows belong to the previous text until it is run again.
+        customQuerySourceSql.value = undefined;
         rememberCustomQuery();
     }
 
@@ -106,6 +114,7 @@ export function _useQuery() {
             const cachedCustomQuery = customQueryCache[customQueryKey];
             customQueryText.value = cachedCustomQuery?.text ?? gridQueryText.value;
             isCustomQueryMode.value = cachedCustomQuery?.isCustomQueryMode ?? false;
+            customQuerySourceSql.value = cachedCustomQuery?.sourceSql;
             tableInfo.value = tableInfo2;
             tableData.value = tableData2;
             isTableDataStale.value = false;
@@ -115,6 +124,7 @@ export function _useQuery() {
         } catch {
             customQueryText.value = '';
             isCustomQueryMode.value = false;
+            customQuerySourceSql.value = undefined;
             tableInfo.value = undefined;
             tableData.value = getEmptyTableData();
         } finally {
@@ -187,7 +197,9 @@ export function _useQuery() {
                 lastResult = result;
 
                 if (result.kind === 'rows') {
-                    lastRowResult = result;
+                    // The statement travels with its rows so a later edit can name the table it came
+                    // from; a column-shape guess picked an unrelated table with the same key column.
+                    lastRowResult = { ...result, sourceSql: statement };
                 }
 
                 onStatement?.({
@@ -223,6 +235,8 @@ export function _useQuery() {
         queryResult: queryResult,
         customQueryText: customQueryText,
         isCustomQueryMode: isCustomQueryMode,
+        /** The statement the custom query last ran; names the table an edit is written to. */
+        customQuerySourceSql: customQuerySourceSql,
         gridQueryText: gridQueryText,
         isLoadingTables: isLoadingTables,
         isLoadingSelectedTable: isLoadingSelectedTable,
@@ -316,13 +330,16 @@ export function _useQuery() {
                         offset: 0,
                     };
                     isCustomQueryMode.value = !isSameAsGrid;
+                    customQuerySourceSql.value = result.sourceSql;
                 } else {
                     tableData.value = getEmptyTableData();
                     isCustomQueryMode.value = false;
+                    customQuerySourceSql.value = undefined;
                 }
             } catch {
                 tableData.value = getEmptyTableData();
                 isCustomQueryMode.value = false;
+                customQuerySourceSql.value = undefined;
             } finally {
                 isRunningQuery.value = false;
                 rememberCustomQuery();
@@ -339,6 +356,7 @@ export function _useQuery() {
 
             customQueryText.value = '';
             isCustomQueryMode.value = false;
+            customQuerySourceSql.value = undefined;
             rememberCustomQuery();
 
             if (connId && tableName) {

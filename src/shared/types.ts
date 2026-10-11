@@ -357,6 +357,9 @@ export type QueryExecutionResult =
           columns: string[];
           columnStats: Record<string, number>;
           rows: Array<Record<string, SqlValue>>;
+          /** The statement that produced these rows, attached by the caller that ran it. The grid
+           *  names its update target from it instead of guessing the table from the columns. */
+          sourceSql?: string;
       }
     | {
           kind: 'mutation';

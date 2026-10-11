@@ -15,6 +15,7 @@ import { useDbSettings } from '../composables/useDbSettings';
 import { formatUsageRelationColumns, isFkPeekRowsView, isFkUsageListView, useForeignKeyPeekViews, type FkPeekRowsView } from '../composables/useForeignKeyPeek';
 import { useNavState } from '../composables/useNavState';
 import { useQuery } from '../composables/useQuery';
+import { useResultSourceTable } from '../composables/useResultSourceTable';
 import { useServers } from '../composables/useServers';
 import { DbGridToolbar } from './DbGridToolbar.tsx';
 import { DbSaveBar } from './DbSaveBar.tsx';
@@ -110,6 +111,12 @@ export const DbData = component(
                 return server?.driver || 'sqlite';
             },
         });
+        const customQuerySourceTable = useResultSourceTable({
+            connectionId: () => connections.selectedConnectionId,
+            sql: () => (query.isCustomQueryMode ? query.customQuerySourceSql : undefined),
+            resultColumns: () => (query.isCustomQueryMode ? query.tableData?.columns : undefined),
+        });
+
         const dataGridState = useDbDataGrid({
             connectionId: () => connections.selectedConnectionId!,
             // A result set with columns means a table is loaded: only an empty
@@ -133,8 +140,8 @@ export const DbData = component(
                 });
             },
             tableData: () => query.tableData,
-            tableInfo: () => query.tableInfo,
-            tableName: () => query.selectedTableName,
+            tableInfo: () => (query.isCustomQueryMode ? customQuerySourceTable.tableInfo.value : query.tableInfo),
+            tableName: () => (query.isCustomQueryMode ? customQuerySourceTable.tableName.value : query.selectedTableName),
             ignoreDisplayFilters: () => query.isCustomQueryMode,
             onSortChange: onGridSortChange,
             disabledFiltersMessage: 'Filters are disabled. To re-enable: click the "Reset to generated query" button.',

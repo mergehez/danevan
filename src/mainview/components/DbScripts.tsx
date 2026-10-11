@@ -11,6 +11,7 @@ import { useDbDataGrid } from '../composables/useDbDataGrid';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useNavState } from '../composables/useNavState';
 import { useQuery } from '../composables/useQuery';
+import { useResultSourceTable } from '../composables/useResultSourceTable';
 import { useScriptsDb } from '../composables/useScriptsDb';
 import { useServers } from '../composables/useServers';
 import type { SqlHistoryEntry } from '../composables/useSqlHistory';
@@ -136,44 +137,17 @@ export const DbScripts = component(
             offset: 0,
         });
 
-        const resultTableInfo = computed(() => {
-            if (query.queryResult?.kind !== 'rows' || !editorConnectionId.value) {
-                return undefined;
-            }
-
-            const connectionId = editorConnectionId.value;
-            const resultColumns = new Set(query.queryResult.columns.map((c) => c.toLowerCase()));
-            const tablesState = connections.getConnectionTablesState(connectionId);
-            const knownTables = tablesState.tables;
-
-            for (const table of knownTables) {
-                const info = connections.getTableDetailsState(connectionId, table.name).info;
-
-                if (!info) {
-                    continue;
-                }
-
-                const pkColumns = info.columns.filter((c) => c.isPrimaryKey).map((c) => c.name.toLowerCase());
-
-                if (!pkColumns.length) {
-                    continue;
-                }
-
-                if (pkColumns.every((pk) => resultColumns.has(pk))) {
-                    return info;
-                }
-            }
-
-            return undefined;
+        const resultSourceTable = useResultSourceTable({
+            connectionId: () => editorConnectionId.value,
+            sql: () => (query.queryResult?.kind === 'rows' ? query.queryResult.sourceSql : undefined),
+            resultColumns: () => (query.queryResult?.kind === 'rows' ? query.queryResult.columns : undefined),
         });
-
-        const resultDetectedTableName = computed(() => resultTableInfo.value?.name);
 
         const resultDbGridState = useDbDataGrid({
             connectionId: () => editorConnectionId.value!,
             tableData: () => (query.queryResult?.kind === 'rows' ? query.queryResult : getEmptyTableData()) as TableData,
-            tableInfo: () => resultTableInfo.value,
-            tableName: () => resultDetectedTableName.value,
+            tableInfo: () => resultSourceTable.tableInfo.value,
+            tableName: () => resultSourceTable.tableName.value,
             emptyText: () => 'Query returned no rows.',
         });
 

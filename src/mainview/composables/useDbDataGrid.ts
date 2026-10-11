@@ -443,6 +443,14 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             const matchColumn = primaryKeyColumns.value[0];
             const previousValue = coerceSqlValue(rawValue);
 
+            // Without a named table a save has no target: the result is a join, a derived table or
+            // a statement that reads no table of this connection. Refusing beats writing somewhere
+            // the user did not ask for.
+            if (!tableName.value) {
+                toast.showToast('Editing is unavailable for this result: it does not read a single known table.', 'warning');
+                return undefined;
+            }
+
             // Without a primary key there is no WHERE clause that names the edited row: the first
             // column used to stand in for one, so a save overwrote every row sharing its value.
             // A pending insert needs no match column, so it stays editable.
