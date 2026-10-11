@@ -519,6 +519,14 @@ export const TreeServer = component(
                                 contextMenuItems={connectionMenuitems}
                                 children={() => getConnectionTreeChildren(connection.id)}
                                 slots={{
+                                    // The connection row carries the lock for a server source, the way a
+                                    // file source carries it on its own row.
+                                    text: ({ text }) => (
+                                        <>
+                                            {text}
+                                            {connection.readonly ? <ReadOnlyLock /> : null}
+                                        </>
+                                    ),
                                     child: ({ item: collection, parentId, allItems }) => (
                                         <TreeTable server={server} collection={collection} parentId={parentId} skipTitle={allItems.length === 1} />
                                     ),
