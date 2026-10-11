@@ -1,14 +1,15 @@
 # todos — findings, fix list and test audit
 
-**Status:** 24 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
-2026-10-11 audit: T16, T17, T18, T20, T21, T24, T26, T30) · 9 open (T15, T19, T22, T23, T25, T27–T29,
-T31) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob,
-T11, T12, T14's tree work) · suite: **1019 unit tests (83 files) · 114 browser tests (33 files) · 13
-Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source file
-**46.0 % statements / 37.7 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+**Status:** 26 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
+2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30) · 8 open (T15, T19, T25, T27–T29,
+T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings
+blob, T11, T12, T14's tree work) · suite: **1032 unit tests (83 files) · 116 browser tests (34 files) ·
+13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source file
+**46.1 % statements / 37.8 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
-audit also measured the gate itself: neither Electron suite can fail it (T15), and a complete browser run
-could not be reproduced in the session that closed T18 (the sandbox SIGTERM'd it — T31).
+audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
+could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
+10 s limit to time out under load (T32).
 
 This file is the single source for the project's tasks and for what the tests already prove. It merges
 the 2026-10-09 performance/fix list and the test audit, which used to live in two files; both long
@@ -340,6 +341,22 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   sweep with its name filter. Every case was checked against a mutation of the branch it covers
   (five mutations, five caught). `useMySqlDriver.ts` went from 16.6 % to **42.6 % lines / 35.8 % branches
   / 50.5 % functions**.
+- **T22 — a MySQL failure now says what it means.** `describeMySqlError` (`useMySqlDriver.ts`) maps the
+  driver's codes — duplicate key, rejected statement, lock wait/deadlock, refused credentials,
+  unreachable, lost connection — to a sentence the user can act on, keeps mysql2's own text (which
+  carries the key and the line), and leaves an error it does not know exactly as it was, so a read-only
+  refusal or a "was not found" is not re-wrapped. It is applied at `testConnection` and at both pooled
+  clients, which is every path a statement takes. `useMySqlDriver.spec.ts` covers each mapped family,
+  the `driverError` nesting, a code carried only by the message, the unknown case and the tool-level
+  path; the browser spec asserts the exact text the editor's History panel shows for a duplicate key and
+  a syntax error, target prefix included.
+- **T23 — a DATE/DATETIME/TIMESTAMP is the text MySQL holds.** It used to arrive as a JS Date, be
+  serialised to an ISO instant and read back in the host's zone: on this machine (UTC+1)
+  `2024-02-29 13:45:56.789` reached the grid as `2024-02-29T12:45:56.789Z` and a `date` column showed
+  **2024-02-28**. `dateStrings: true` in the MySQL DataSource (next to the `supportBigNumbers` /
+  `bigNumberStrings` the driver already set) hands over exactly what the server stored.
+  `mysql-types.spec.ts` pins DECIMAL, DATE, DATETIME(3), TIMESTAMP(3), YEAR, JSON and NULL-versus-empty
+  through the API and through the grid's editor; without the fix it fails on the shifted dates.
 
 ### What a green suite already proves
 
@@ -516,19 +533,24 @@ Each item is work a green run already proves; do not redo it.
   estimate and no `COUNT(*)`, a page with `LIMIT`/`OFFSET` and the unbounded `limit < 0` form, the result
   columns of a read, the native DDL copy, `validateSql`'s `SET`/`PREPARE`/`DEALLOCATE` sequence and the
   four-catalog sweep. Five mutations of the branches it covers each fail it.
+- **The MySQL failure text and its value fidelity** (`useMySqlDriver.spec.ts`, `sql-editor-panels.spec.ts`,
+  `mysql-types.spec.ts`, T22, T23): every mapped error family and the unknown case (unit), the exact
+  sentence the editor's History panel shows for a duplicate key and a syntax error on a live server, and
+  DECIMAL, DATE, DATETIME(3), TIMESTAMP(3), YEAR, JSON and NULL-versus-`''` read through the API and the
+  grid's editor, with the date text the server stored rather than an ISO instant.
 
 ## Open
 
 The 2026-10-11 stability audit (SQLite + MySQL on macOS) asked whether "tests green" means "app stable"
 and answered no, adding T15–T29. Four themes, in the order they weaken the signal: the gate does not run
-the suites that prove the shipped macOS app (T15); the signal is not deterministic (T17, T18 — both
-closed, with the one thing a sandbox could not verify recorded in T18); the browser suite contributes no
-coverage and `src/mainview` has no floor (T19 open, T20 closed); and the two dialects had named holes,
-most of which are now closed (T16, T21, T24, T26, T30 in `## Done`; T22, T23, T25, T27, T28 and the app
-database's own client at T29 still open). T27 is the one entry whose diagnosis changed while being worked
-on: the failure happens before the rebuild, when the table's metadata cannot be read at all. T31 is a new
-finding from the session that closed T18. T2b and the two earlier test-audit items stay in
-`## Open (blocked)`.
+the suites that prove the shipped macOS app (T15); the signal is not deterministic (T16–T18 closed, with
+the one thing a sandbox could not verify recorded in T18 and a load-sensitive unit spec left in T32); the
+browser suite contributes no coverage and `src/mainview` has no floor (T19 open, T20 closed); and the two
+dialects had named holes, most of them now closed (T16, T17, T20–T24, T26, T30 in `## Done`; T25, T27,
+T28 and the app database's own client at T29 still open). T27 is the one entry whose diagnosis changed
+while being worked on: the failure happens before the rebuild, when the table's metadata cannot be read at
+all. T31 and T32 are new findings from the sessions that closed T18 and T22/T23. T2b and the two earlier
+test-audit items stay in `## Open (blocked)`.
 
 - **T15 · `release:validate` does not run the shipped shell or the packaged app (medium)** — the gate is
   `bun run test:coverage && bun run test:e2e && bun run build` (`package.json:39`), so
@@ -556,22 +578,6 @@ finding from the session that closed T18. T2b and the two earlier test-audit ite
       report; add `src/mainview/**` and `src/electronUtils/**` floors once the merged numbers exist.
     - _verify_: a component no spec imports appears in the merged report with browser-hit lines, and
       deleting its spec lowers a floor.
-- **T22 · MySQL failures are unmapped and mostly unasserted (medium)** — no spec asserts a duplicate-key
-  error, a syntax error or a timeout, and `db-tools.ts` has no MySQL error mapper. What exists is
-  `ECONNREFUSED` (`failure-modes.spec.ts:50`) and `Access denied` (`:107-109`); `testConnection`
-  (`useMySqlDriver.ts:920-948`) has no assertion of its own.
-    - _fix_: map the driver's error codes to the message a user should read (duplicate entry, syntax,
-      lock-wait timeout, lost connection) and cover `testConnection` success and failure.
-    - _verify_: a live-server spec for a duplicate key and a syntax error asserting the exact message,
-      plus a unit case per mapped code; swallowing the message fails the spec.
-- **T23 · MySQL value fidelity is unasserted for everything but text, int and blob (medium)** — the e2e
-  fixtures use `varchar`/`int`/`bigint` (`modify-table.spec.ts:5-20`) and the hostile-values MySQL table
-  `varchar` + `blob` (`hostile-input.spec.ts:206-215`, the blob asserted byte-exact at `:248`); no spec
-  opens, reads, edits or saves `DECIMAL`, `DATETIME`/`TIMESTAMP`, `BIT`, `JSON` or `YEAR`, and none
-  distinguishes `NULL` from an empty string.
-    - _fix_: a seeded table over those types, read through the grid, edited and saved, with the read-back
-      asserted exactly (including the grid's `NULL` rendering versus `''`).
-    - _verify_: a mutation that rounds a DECIMAL or shifts a DATETIME fails the spec.
 - **T25 · the MySQL half of the suite runs only on the developer's own fixtures (medium)** — `MYSQL`
   (`helpers.ts:12-20`) defaults to `127.0.0.1:3306` root with an empty password, and the specs need a
   pre-existing `tirsik3_test` with rows (`open-table.spec.ts:34-37`), a table estimated above 100 000 rows
@@ -630,6 +636,15 @@ finding from the session that closed T18. T2b and the two earlier test-audit ite
     - _fix_: pass `-sTCP:LISTEN` and prove it: start a second process that holds a *client* connection on
       the port and assert it survives the cleanup while a stale listener does not.
     - _verify_: a stale dev server on 3263 is killed, a spec run talking to 3264 is untouched.
+- **T32 · the MS Access bridge spec sits at its 10 s limit (small)** — `msAccessBridge.spec.ts:91`
+  ("creates a table, reads its metadata and its rows back") spawns the JVM and took **8.2 s alone**
+  (5.8 s on an earlier run) against the 10 s test timeout. In a full parallel `bun run test:coverage` it
+  timed out — `Error: Test timed out in 10000ms` — while the other 82 files ran, and the whole run went
+  red for load rather than for a change. `AGENTS.md` forbids raising the timeout; the cost is the JVM.
+    - _fix_: stop paying a JVM start per case — reuse one bridge process across the file's four cases, or
+      batch their probes into one worker session.
+    - _verify_: the file's cases stay under a few seconds each and `bun run test:coverage` is green on a
+      loaded machine, with the same metadata and rows asserted.
 
 ## Open (blocked)
 
