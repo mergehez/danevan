@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 27 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U6, then the
-2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30) · 11 open (T15, T19, T25, T27–T29,
-T31–T35) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings
-blob, T11, T12, T14's tree work) · suite: **1040 unit tests (84 files) · 119 browser tests (35 files) ·
-13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source file
-**46.4 % statements / 38.3 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+**Status:** 30 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U6, then the
+2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
+T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
+settings blob, T11, T12, T14's tree work) · suite: **1043 unit tests (85 files) · 120 browser tests
+(36 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
+file **46.3 % statements / 38.2 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -417,6 +417,31 @@ Guarded by `src/mainview/tests/e2e/connection-context.spec.ts` (grid save after 
 source, run after selecting another source, result dropped when the tab moves to another database) and
 by `src/mainview/tests/e2e/result-save-target.spec.ts` for the table half.
 
+The three structural follow-ups from that audit are fixed too:
+
+- **T33 — the sidebar selection and the open tab agree.** Selecting a connection (tree row, file
+  source, new connection) now activates a tab of that connection — the last one used for it, else the
+  last in the tab list — or clears the active tab so the workspace shows its empty state instead of
+  another database's panel. `useNavState` watches `selectedConnectionId`; activation selects the tab's
+  connection, so the two settle instead of looping. Guarded by
+  `src/mainview/tests/e2e/connection-context.spec.ts` (a source with no tab clears the workspace and its
+  tab returns to it; a source with a tab brings that tab forward).
+- **T34 — one query state per tab.** `useQuery` is no longer a singleton: `useQueryForTab(hash)` owns a
+  state per tab and `useQuery()` is a proxy that resolves the active tab on every read and write, so a
+  value captured at setup can no longer belong to whichever tab was open then. The editor text is
+  seeded once per tab (`seedQueryTextForTab`, marked on typing), `isTableDataStale` is shared on purpose
+  (a script anywhere can drop a table), a closed tab's state is dropped with its runtime state, and a
+  scratch tab that becomes a saved script carries its state to the new hash. `DbScripts` lost the
+  result routing: a run writes its result into its own tab's state. Guarded by
+  `src/mainview/tests/e2e/tab-query-state.spec.ts` (a slow run is left behind, its result waits in its
+  own tab, and the other tab keeps its text and shows no result).
+- **T35 — a stale bootstrap cannot land at all.** `buildBootstrap` stamps every snapshot with a
+  monotonic `version` and `_dbCoreState.applyBootstrap` ignores one that is not newer than the applied
+  state, so a slow `hideConnection`/`updateConnection`/`deleteServer`/`deleteScript` response can no
+  longer revert a selection made while it ran (they are all full snapshots, so the newer one already
+  carries the change). The per-call `applySelectionBootstrap` wrapper is gone. Guarded by
+  `src/mainview/tests/composables/dbCoreState.spec.ts`.
+
 ### What a green suite already proves
 
 Each item is work a green run already proves; do not redo it.
@@ -704,35 +729,6 @@ test-audit items stay in `## Open (blocked)`.
       batch their probes into one worker session.
     - _verify_: the file's cases stay under a few seconds each and `bun run test:coverage` is green on a
       loaded machine, with the same metadata and rows asserted.
-
-Findings from the 2026-10-12 stale-context audit that are not fixed yet (the actions themselves are
-fixed; these are the structural causes and the one visible inconsistency left):
-
-- **T33 · the sidebar selection can disagree with the open tab (small).** Selecting a connection or a
-  file source changes `selectedConnectionId` without changing the active tab, so the scripts tree and
-  the row highlight follow the selection while the data/script panel keeps showing the tab's own
-  connection. No action can target the wrong database any more (`DbData`/`DbScripts` name their own
-  connection), but the two halves of the screen describe different databases. Decide the intended
-  behaviour — activate that connection's tab, or clear the active tab — and cover it with a browser
-  spec.
-    - _repro_: open a table of source A, double-click source B: the sidebar marks B while the panel
-      shows A's table.
-- **T34 · `useQuery` is one singleton for every tab and connection (medium).** `queryText`,
-  `queryResult`, `tableData`, `tableInfo`, `selectedTableName`, `customQueryText`,
-  `customQuerySourceSql` and `isCustomQueryMode` are overwritten as tabs activate, so a background
-  panel has no state of its own apart from `scriptTabRuntimeStateByHash`. The audit's guards keep the
-  wrong target out of a save, but the class recurs every time a new field is added: key the state by
-  tab (or move it into the panel component) so two tabs cannot share a value.
-    - _verify_: run a query in tab A, switch to B while it runs, and assert A keeps its rows, its
-      pending changes and its table target without the hand-rolled routing in `DbScripts`.
-- **T35 · a mutation's bootstrap can still land over a newer selection (medium).** Only
-  `selectConnection`/`selectServer`/`selectScript` go through `applySelectionBootstrap`; a slow
-  `hideConnection`, `updateConnection`, `deleteServer` or `deleteScript` also applies a whole-state
-  snapshot on arrival, so a selection made while it ran can be reverted by the older snapshot (the DB
-  change itself is kept). Version the bootstrap on the backend, or apply a mutation's snapshot without
-  its selection fields when a newer selection has already been applied.
-    - _repro_: hide a connection on a slow server, then select another connection before the hide
-      answers: the sidebar can jump back to the previous selection.
 
 ## Open (blocked)
 

@@ -138,7 +138,17 @@ Suggested from the 2026-10-12 stale-context audit:
 - **A response is applied only while its context is still current.** Every async load that writes shared
   state carries a sequence (or the key it was requested for) and drops its result when a newer request
   started, the tab/table/connection changed, or the popover closed; otherwise the last response to
-  arrive wins instead of the last action the user took. `applySelectionBootstrap`, `loadSelectedTable`,
-  `loadComparison`, `loadContext`, `openFkPeek` and `openModal` in this tree are the existing examples.
+  arrive wins instead of the last action the user took. `loadSelectedTable`, `loadComparison`,
+  `loadContext`, `openFkPeek` and `openModal` in this tree are the existing examples.
+- **Per-tab state is keyed by the tab, never swapped through one shared object.** `useQuery` used to be a
+  singleton whose fields were copied in and out as tabs activated, so a value written for one tab could
+  surface in another; it is now one state per tab (`useQueryForTab`) behind a proxy that resolves the
+  active tab (`useQuery()`), with the editor text seeded once on first open. A new panel field goes into
+  that per-tab state (or the component), and a background run writes its own tab's state instead of a
+  global that the active tab reads. Guarded by `src/mainview/tests/e2e/tab-query-state.spec.ts`.
+- **A whole-state snapshot is versioned, not trusted.** The renderer applies a bootstrap only when the
+  backend's `version` is newer, so a slow mutation response cannot revert a selection made after it.
+  Adding a field to `AppBootstrapApi` means adding it to `buildBootstrap`; never apply a snapshot on
+  arrival alone. Guarded by `src/mainview/tests/composables/dbCoreState.spec.ts`.
 
 
