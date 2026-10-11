@@ -1,6 +1,6 @@
 # todos — findings, fix list and test audit
 
-**Status:** 26 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
+**Status:** 27 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U6, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30) · 8 open (T15, T19, T25, T27–T29,
 T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings
 blob, T11, T12, T14's tree work) · suite: **1032 unit tests (83 files) · 116 browser tests (34 files) ·
@@ -130,7 +130,7 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
 
 ## Done
 
-### Fix list (T1–T14, U1–U5)
+### Fix list (T1–T14, U1–U6)
 
 - **T1 — one connection and one keychain read per backend call.** `remoteDataSourcePool` keeps one
   `DataSource` per target and hands each request its own query runner; keychain secrets are cached in
@@ -265,6 +265,18 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   value was committed" (`src/mainview/tests/components/ListBox.spec.ts`) and by the undo/redo test in
   `src/mainview/tests/e2e/modify-table-popup.spec.ts`, which now asserts the field reverts to
   `varchar(200)` and the preview reads "No change yet" before Redo re-applies the change.
+- **U6 — an edit to a script result went to another table.** The result grid guessed its table by
+  walking the connection's cached tables and taking the first whose primary-key columns appeared in
+  the result (`DbScripts.tsx`), so `select * from people` on a schema that also holds `accounts (id, …)`
+  built `UPDATE "accounts" …`; the data tab's custom query had the same hole from the other side, using
+  the table open in the sidebar. The executed statement now travels with its rows
+  (`QueryExecutionResult.sourceSql`, set in `useQuery.runSqlBatch`) and
+  `src/shared/utils/sqlSourceTable.ts` names the one table a plain select reads, refusing a join, a
+  derived table, a set operation, an unknown qualifier or a result whose columns the table does not
+  carry; `useResultSourceTable` loads that table's metadata and the grid writes to it, or refuses the
+  edit with a reason. Guarded by `src/shared/utils/sqlSourceTable.spec.ts` and
+  `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
+  the preview names the table and only that table's row changed).
 
 ### 2026-10-11 stability-audit fixes
 

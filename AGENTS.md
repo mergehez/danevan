@@ -116,3 +116,14 @@ Suggested from the 2026-10-10 `bun do mac` failure:
   `bun do mac` before it packages anything — which is how the API error message helper broke the
   release. `src/electronUtils/releaseConfig.spec.ts` loads the config in a real Node process, so the
   next one fails in the unit suite instead.
+
+Suggested from the 2026-10-12 wrong-table save:
+
+- **Name a row's table from the statement that produced it, never from the columns.** The result grid
+  used to pick the first cached table whose primary key appeared in the result, so `select * from
+  people` on a schema that also holds `accounts (id, …)` staged `UPDATE "accounts" …`; the data tab's
+  custom query used the table open in the sidebar instead. Carry the executed statement with the rows
+  (`QueryExecutionResult.sourceSql`), resolve it with `src/shared/utils/sqlSourceTable.ts` — which
+  refuses joins, derived tables, set operations and unknown qualifiers — and refuse the edit when no
+  single table can be named: writing to the wrong table is silent data loss. Guarded by
+  `src/mainview/tests/e2e/result-save-target.spec.ts`.
