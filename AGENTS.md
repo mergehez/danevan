@@ -127,3 +127,18 @@ Suggested from the 2026-10-12 wrong-table save:
   refuses joins, derived tables, set operations and unknown qualifiers — and refuse the edit when no
   single table can be named: writing to the wrong table is silent data loss. Guarded by
   `src/mainview/tests/e2e/result-save-target.spec.ts`.
+
+Suggested from the 2026-10-12 stale-context audit:
+
+- **An action names its target; it never reads the selection.** A panel, tab, modal or row action must
+  pass the connection/server/table/file it was opened for. Reading `connections.selectedConnectionId`,
+  `servers.selectedServerId` or `query.selectedTableName` at click time is how a script ran on another
+  connection, a grid saved into another database and a comparison ALTERed another schema — the sidebar
+  selection can move without the open tab moving.
+- **A response is applied only while its context is still current.** Every async load that writes shared
+  state carries a sequence (or the key it was requested for) and drops its result when a newer request
+  started, the tab/table/connection changed, or the popover closed; otherwise the last response to
+  arrive wins instead of the last action the user took. `applySelectionBootstrap`, `loadSelectedTable`,
+  `loadComparison`, `loadContext`, `openFkPeek` and `openModal` in this tree are the existing examples.
+
+

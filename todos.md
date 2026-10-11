@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
 **Status:** 27 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U6, then the
-2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30) · 8 open (T15, T19, T25, T27–T29,
-T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings
-blob, T11, T12, T14's tree work) · suite: **1032 unit tests (83 files) · 116 browser tests (34 files) ·
+2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30) · 11 open (T15, T19, T25, T27–T29,
+T31–T35) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings
+blob, T11, T12, T14's tree work) · suite: **1040 unit tests (84 files) · 119 browser tests (35 files) ·
 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source file
-**46.1 % statements / 37.8 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+**46.4 % statements / 38.3 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -370,6 +370,53 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   `mysql-types.spec.ts` pins DECIMAL, DATE, DATETIME(3), TIMESTAMP(3), YEAR, JSON and NULL-versus-empty
   through the API and through the grid's editor; without the fix it fails on the shifted dates.
 
+### 2026-10-12 stale-context audit (U6 follow-up)
+
+Prompted by "the same thing happened with a connection once": a scan for actions whose target
+(connection, server, table) came from global/selected state or from a response that outlived the
+context that started it. All of these were reachable and are fixed in the working tree; each action now
+names the entity its panel acts on, and a response whose context has moved on is not applied.
+
+- **The data grid read and wrote the sidebar's selected connection, not the table's.** With a table
+  open, double-clicking another source selects it without changing the tab, so Reload/sort/paging
+  fetched that database's rows under the old tab and `applyTableChanges` sent the edits there.
+  `DbData.tsx` now passes `query.loadedConnectionId` (set by `loadTables`/`loadSelectedTable`) to the
+  grid, the FK-peek views, paging, sort, reload and the custom-query resolver; `rememberCustomQuery`
+  and `runCustomQuery` use it too.
+- **The script editor ran on the selected connection, not the tab's.** `query.runQuery` read
+  `connections.selectedConnectionId` while the header showed the tab's own `editorConnectionId`.
+  `runQuery(connectionId, …)` now takes the connection explicitly and `DbScripts` passes the tab's; the
+  browser spec asserts the request body's `connectionId`.
+- **A script result stayed bound to the tab's new database.** Changing the header's DB/server kept the
+  previous connection's rows on screen while the grid targeted the new connection — a save wrote them
+  into a same-named table there. `QueryExecutionResult.sourceConnectionId` (set in `runSqlBatch`)
+  travels with the rows, the grid and the table resolver bind to it, and `updateTabConnection` clears a
+  tab's cached result when its connection changes.
+- **A query result landed in whichever script tab was active on arrival.** The run is now filed under
+  the tab that started it (including its history entries) instead of `query.queryResult` + the active
+  tab.
+- **A slow table load overwrote the table loaded after it.** `loadSelectedTable` carries a sequence
+  and only the newest load writes rows, metadata and the loading flag.
+- **The comparison applied an earlier target's metadata** while the pickers were on a newer pair, so
+  Apply could build the destination schema from the stale table. The load is keyed to the requested
+  pair and sequence-guarded.
+- **Format SQL could overwrite another tab's draft** when the tab changed while the formatter ran; the
+  result is dropped unless the editor text is unchanged.
+- **Modify Table's slow open filled the draft of the table opened after it** (Cancel then reopen);
+  `openModal` carries a sequence.
+- **A slow selection response reverted the whole app context.** `applySelectionBootstrap`
+  (`dbCoreState.ts`) applies a connection/server/script selection only while it is the newest.
+- **Smaller stale writes:** the server-schema popover keys its load to the server, the FK peek ignores
+  a response for a cell that was replaced (and a closed popover invalidates it), the grid formatter
+  context is sequence-guarded and loaded for the grid's own table, rapid settings toggles are
+  serialized instead of rebuilding from the same old state, the Run-SQL-script dialog guards its
+  defaults like the mysqldump modal does, the FK-peek menu uses the view's own connection, and a new
+  scratch tab opens on the active tab's connection.
+
+Guarded by `src/mainview/tests/e2e/connection-context.spec.ts` (grid save after selecting another
+source, run after selecting another source, result dropped when the tab moves to another database) and
+by `src/mainview/tests/e2e/result-save-target.spec.ts` for the table half.
+
 ### What a green suite already proves
 
 Each item is work a green run already proves; do not redo it.
@@ -657,6 +704,35 @@ test-audit items stay in `## Open (blocked)`.
       batch their probes into one worker session.
     - _verify_: the file's cases stay under a few seconds each and `bun run test:coverage` is green on a
       loaded machine, with the same metadata and rows asserted.
+
+Findings from the 2026-10-12 stale-context audit that are not fixed yet (the actions themselves are
+fixed; these are the structural causes and the one visible inconsistency left):
+
+- **T33 · the sidebar selection can disagree with the open tab (small).** Selecting a connection or a
+  file source changes `selectedConnectionId` without changing the active tab, so the scripts tree and
+  the row highlight follow the selection while the data/script panel keeps showing the tab's own
+  connection. No action can target the wrong database any more (`DbData`/`DbScripts` name their own
+  connection), but the two halves of the screen describe different databases. Decide the intended
+  behaviour — activate that connection's tab, or clear the active tab — and cover it with a browser
+  spec.
+    - _repro_: open a table of source A, double-click source B: the sidebar marks B while the panel
+      shows A's table.
+- **T34 · `useQuery` is one singleton for every tab and connection (medium).** `queryText`,
+  `queryResult`, `tableData`, `tableInfo`, `selectedTableName`, `customQueryText`,
+  `customQuerySourceSql` and `isCustomQueryMode` are overwritten as tabs activate, so a background
+  panel has no state of its own apart from `scriptTabRuntimeStateByHash`. The audit's guards keep the
+  wrong target out of a save, but the class recurs every time a new field is added: key the state by
+  tab (or move it into the panel component) so two tabs cannot share a value.
+    - _verify_: run a query in tab A, switch to B while it runs, and assert A keeps its rows, its
+      pending changes and its table target without the hand-rolled routing in `DbScripts`.
+- **T35 · a mutation's bootstrap can still land over a newer selection (medium).** Only
+  `selectConnection`/`selectServer`/`selectScript` go through `applySelectionBootstrap`; a slow
+  `hideConnection`, `updateConnection`, `deleteServer` or `deleteScript` also applies a whole-state
+  snapshot on arrival, so a selection made while it ran can be reverted by the older snapshot (the DB
+  change itself is kept). Version the bootstrap on the backend, or apply a mutation's snapshot without
+  its selection fields when a newer selection has already been applied.
+    - _repro_: hide a connection on a slow server, then select another connection before the hide
+      answers: the sidebar can jump back to the previous selection.
 
 ## Open (blocked)
 
