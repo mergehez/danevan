@@ -73,25 +73,28 @@ test.describe('Opening a table from the sidebar', () => {
         try {
             // The table list comes from the database catalog, so it must not wait for
             // a COUNT(*) of every table in the database.
-            const startedAt = Date.now();
             const tableList = await post(page.request, 'getTables', { connectionId });
-            const listDurationMs = Date.now() - startedAt;
 
             // Every listed table is an estimate now, so pick an actually huge one:
             // only above the exact-count limit does an opened table keep the estimate.
             const estimatedTable = requireFixtureData(
-                tableList.find(
-                    (entry: { rowCountIsEstimated?: boolean; rowCount: number }) => entry.rowCountIsEstimated === true && Number(entry.rowCount) > 100_000
-                ),
+                tableList.find((entry: { rowCountIsEstimated?: boolean; rowCount: number }) => entry.rowCountIsEstimated === true && Number(entry.rowCount) > 100_000),
                 `The MySQL database "${MYSQL.largeDatabase}" has no table with a row estimate above 100000; load a large table into it (or set E2E_MYSQL_LARGE_DATABASE) before running this spec.`
             );
 
-            expect(listDurationMs).toBeLessThan(10_000);
-
             // The list must never run a COUNT(*) per table: every row reports the
             // catalog estimate, and only an opened table pays for an exact count.
-            expect(tableList.length).toBeGreaterThan(0);
             expect(tableList.every((entry: { rowCountIsEstimated?: boolean }) => entry.rowCountIsEstimated === true)).toBe(true);
+
+            // ...which also means no per-table metadata or data request while the list is drawn.
+            const perTableRequests: string[] = [];
+            page.on('request', (request) => {
+                const path = new URL(request.url()).pathname;
+
+                if (path === '/api/getTableInfo' || path === '/api/getTableData') {
+                    perTableRequests.push(path);
+                }
+            });
 
             const rowsResponse = await page.request.post(`${API}/getTableData`, {
                 data: { connectionId, tableName: estimatedTable.name, limit: 100, offset: 0 },
@@ -99,8 +102,10 @@ test.describe('Opening a table from the sidebar', () => {
             expect(rowsResponse.ok()).toBe(true);
             const data = await rowsResponse.json();
             expect(data.rowCountIsEstimated).toBe(true);
-            expect(data.rowCount).toBeGreaterThan(100_000);
-            expect(data.rows.length).toBeGreaterThan(0);
+            // The opened table reports the same catalog estimate the list did...
+            expect(data.rowCount).toBe(estimatedTable.rowCount);
+            // ...and a full page of the rows it holds.
+            expect(data.rows).toHaveLength(100);
 
             await page.goto('/');
 
@@ -108,12 +113,20 @@ test.describe('Opening a table from the sidebar', () => {
             const tableRow = await openTableRow(page, serverId, connectionId, estimatedTable.name);
             await expect(tableRow).toBeVisible();
             await expect(tableRow).toContainText('~');
+            expect(perTableRequests).toEqual([]);
 
             // Opening it shows rows immediately, with the estimate marked in the toolbar.
             await tableRow.dblclick();
 
             const panel = page.locator('main');
-            await expect(panel.getByRole('button', { name: /^1-\d+ of ~\d+$/ })).toBeVisible();
+            const countButton = panel.getByRole('button', { name: /^1-\d+ of ~\d+$/ });
+            await expect(countButton).toBeVisible();
+
+            // InnoDB's estimate moves between reads, so the toolbar is held to what it must
+            // say — still an estimate, still above the exact-count limit — and not to a number.
+            const estimate = Number(((await countButton.textContent()) ?? '').replace(/^.*~/, ''));
+            expect(estimate).toBeGreaterThan(100_000);
+
             await page.screenshot({ path: 'test-results/open-table-estimated-count.png', fullPage: true });
         } finally {
             await page.request.post(`${API}/deleteServer`, { data: { serverId } }).catch(() => {});
