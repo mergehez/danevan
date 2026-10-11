@@ -1,14 +1,14 @@
 # todos — findings, fix list and test audit
 
-**Status:** 20 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
-2026-10-11 audit: T16, T24, T26, T30) · 12 open (T15, T17–T23, T25, T27–T29) · 3 blocked (T2b, e2e-13,
-unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12, T14's tree work) · suite:
-**1009 unit tests (82 files) · 114 browser tests (33 files) · 13 Electron shell tests** (dev build ×12 +
-the packaged `.app`) · coverage over every source file **45.6 % statements / 37.4 % branches**, and
-unit-only: the browser suite is not instrumented (T19) · aggregate and per-area floors enforced in
-`vitest.config.js` · a run that skips a precondition fails · the audit also measured the gate itself: the
-full browser run is red on order dependence (T17, T18), and neither Electron suite can fail the gate
-(T15).
+**Status:** 22 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
+2026-10-11 audit: T16, T17, T20, T24, T26, T30) · 10 open (T15, T18, T19, T21–T23, T25, T27–T29) · 3
+blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12,
+T14's tree work) · suite: **1009 unit tests (82 files) · 114 browser tests (33 files) · 13 Electron shell
+tests** (dev build ×12 + the packaged `.app`) · coverage over every source file **45.6 % statements /
+37.3 % branches**, and unit-only: the browser suite is not instrumented (T19) · aggregate and per-area
+floors enforced in `vitest.config.js` · a run that skips a precondition fails · the audit also measured the
+gate itself: the full browser run is red on order dependence (T18), and neither Electron suite can fail the
+gate (T15).
 
 This file is the single source for the project's tasks and for what the tests already prove. It merges
 the 2026-10-09 performance/fix list and the test audit, which used to live in two files; both long
@@ -299,6 +299,20 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   menu. The connection row now renders the lock from `connection.readonly`, the way the file source row
   does. Guarded by the lock assertions in `readonly-connection.spec.ts`, which fail with the branch
   removed.
+- **T17 — the mysqldump export modal replaced the paths the user had typed.** The defaults watcher
+  assigned `executable`, `outputPath`, `databases` and `tables` when the answer arrived, so a path typed
+  while the request was in flight (the Browse buttons are disabled then, the inputs are not) was
+  overwritten and Run used the default instead. A field that still holds the value it had when the
+  request started is now filled in; one the user changed keeps its value, and an answer for a closed or
+  switched modal is dropped. Guarded by the failure-mode spec, which now holds the response back with
+  `page.route` and types first: on the old component it fails at the field assertion, with the fix it
+  passes three runs in a row.
+- **T20 — assertions in `open-table.spec.ts` that could not fail.** The wall-clock bound
+  (`toBeLessThan(10_000)`), `tableList.length > 0` and `data.rows.length > 0` are gone. The huge-table
+  spec now asserts that no per-table `getTableInfo`/`getTableData` request is made while the list is
+  drawn, that the opened table reports exactly the catalog estimate the list did, that the page holds its
+  100 rows, and that the toolbar prints an estimate above the exact-count limit (InnoDB's estimate moves
+  between reads, so holding the toolbar to a fixed number would be flaky by design).
 
 ### What a green suite already proves
 
@@ -474,12 +488,14 @@ Each item is work a green run already proves; do not redo it.
 
 The 2026-10-11 stability audit (SQLite + MySQL on macOS) asked whether "tests green" means "app stable"
 and answered no, adding T15–T29. Four themes, in the order they weaken the signal: the gate does not run
-the suites that prove the shipped macOS app (T15); the signal is not deterministic — order dependence or a
-response race reddens the browser run (T17, T18); the browser suite contributes no coverage and
-`src/mainview` has no floor (T19, T20); and the two dialects have named holes (T21–T23, T25, T27, T28,
-plus the app database's own client at T29). The first four of those are already fixed and in `## Done`:
-the leaked `ListBox` timer (T16), the read-only MySQL coverage and the sidebar lock it exposed (T24, T30),
-and the SQLite driver surfaces (T26). T2b and the two earlier test-audit items stay in
+the suites that prove the shipped macOS app (T15); the signal is not deterministic — order dependence
+reddens the browser run, and one of the two response races it found is fixed (T18 open, T17 closed); the
+browser suite contributes no coverage and `src/mainview` has no floor (T19 open, T20 closed); and the two
+dialects have named holes (T21–T23, T25, T27, T28, plus the app database's own client at T29). The round
+that fixed T17 and T20 also closed the leaked `ListBox` timer (T16), the read-only MySQL coverage and the
+sidebar lock it exposed (T24, T30), and the SQLite driver surfaces (T26) — all in `## Done`. T27 is the
+one entry whose diagnosis changed while being worked on: the failure happens before the rebuild, when the
+table's metadata cannot be read at all. T2b and the two earlier test-audit items stay in
 `## Open (blocked)`.
 
 - **T15 · `release:validate` does not run the shipped shell or the packaged app (medium)** — the gate is
@@ -496,18 +512,6 @@ and the SQLite driver surfaces (T26). T2b and the two earlier test-audit items s
       there is green).
     - _verify_: rename a key in the preload bridge — `bun run release:validate` must fail now and pass
       with the current gate.
-- **T17 · the export modal overwrites what the user typed (medium)** — the watcher on `[open,
-  connectionId]` awaits `getMysqldumpExportDefaults` and then assigns `form.executable`,
-  `form.outputPath`, `form.databases` and `form.tables` unconditionally
-  (`src/mainview/components/DbMysqldumpExportModal.tsx:61-85`), so anything typed before the answer
-  arrives, or after the modal was closed or switched, is replaced. `failure-modes.spec.ts:145-151` fills
-  both fields and clicks Run; it passes alone (**2.6 s**) and fails in a full run, where the run used the
-  defaults (`/usr/local/mysql/bin/mysqldump`, `~/mysqldump/…`) instead of the filled
-  `/tmp/e2e-mysqldump-that-is-gone` and reported the resulting write failure.
-    - _fix_: do not clobber a field the user edited (dirty flags), ignore a response whose connection
-      changed or whose modal closed, and mark the fields while `loadingDefaults`.
-    - _verify_: a spec that fills both paths before the defaults answer and asserts they survive and that
-      the Run error names the typed executable; the existing spec must pass inside the full run.
 - **T18 · the browser suite is order-dependent, and can attach to the wrong app DB (medium)** — a run
   shares one `.e2e-data` app DB, so earlier sources change later assertions: `sidebar-sticky.spec.ts`
   fails in the full run (`expect(received).toBeLessThan(1)`, received 48) and passes alone (4.2 s); the
@@ -531,13 +535,6 @@ and the SQLite driver surfaces (T26). T2b and the two earlier test-audit items s
       report; add `src/mainview/**` and `src/electronUtils/**` floors once the merged numbers exist.
     - _verify_: a component no spec imports appears in the merged report with browser-hit lines, and
       deleting its spec lowers a floor.
-- **T20 · assertions that cannot fail, against the repo's own rules (small)** — `open-table.spec.ts:89`
-  `expect(listDurationMs).toBeLessThan(10_000)` (wall-clock), `:93`
-  `expect(tableList.length).toBeGreaterThan(0)` and `:103` `expect(data.rows.length).toBeGreaterThan(0)`
-  all hold for an empty schema, a single-table schema and any speed. `AGENTS.md` forbids exactly these.
-    - _fix_: assert the table count the fixture really has, the row values the seeded table holds, and
-      the `~` estimate text; drop the wall-clock bound.
-    - _verify_: returning one table or zero rows from `getTableNames`/`getTableData` fails the spec.
 - **T21 · the MySQL driver's tools have no unit spec, and `db-tools.spec.ts` tests a mock (large)** —
   `useMySqlDriver.spec.ts` does not exist; `useMySqlDriverTools` (`src/backend/useMySqlDriver.ts:832-1017`,
   186 lines) has zero unit coverage and `db-tools.spec.ts:187` mocks the module outright, so
@@ -577,16 +574,24 @@ and the SQLite driver surfaces (T26). T2b and the two earlier test-audit items s
       the estimate table with a recursive-CTE insert), or ship a seeding script plus a `require*` that
       names it; keep the `E2E_MYSQL_*` overrides for a real server.
     - _verify_: on a MySQL that holds none of these databases, the suite provisions them and is green.
-- **T27 · a generated column is rebuilt as a plain one (medium)** — the column info carries `hidden` and
-  `columnKind` (`useSqliteDriver.ts:36-37`), but `buildSqliteColumnDefinition`
-  (`sqliteTableDdl.ts:197-221`) ignores both and `readSqliteViewInfo` drops every `hidden === 1` column
-  (`useSqliteDriver.ts:562`). A `GENERATED ALWAYS AS (…)`/`AS (…)` column therefore leaves the column list
-  and returns as an ordinary column after a modify-table rebuild — a silent schema change. No spec
-  mentions generated columns.
-    - _fix_: keep the generated expression (and `STORED`/`VIRTUAL`) in the definition, and refuse the
-      rebuild with the reason when it cannot be represented.
-    - _verify_: a temp-file spec with one `STORED` and one `VIRTUAL` generated column; after modifying
-      another column, `PRAGMA table_info` (`hidden`) and `sqlite_master.sql` still report them generated.
+- **T27 · a SQLite table with a generated column cannot be inspected at all (medium)** — the entry used to
+  say the rebuild turned a `GENERATED` column into a plain one. Trying to write that spec showed the
+  failure happens earlier: `getTableInfoFresh` calls TypeORM's `queryRunner.getTable`
+  (`useSqliteDriver.ts:630`), and for a table that carries a generated column TypeORM asks a
+  `typeorm_metadata` table that the app never creates (`grep typeorm_metadata src` = nothing), so the call
+  throws `SqliteError: no such table: typeorm_metadata`. A user who opens such a table sees that error,
+  and the Modify Table dialog cannot even build a plan for it — so the silent-rebuild path is not reachable
+  today, and a refusal guard in `applyModifyTable` would be dead code (tried, reverted).
+    - _repro_: a temp file with `CREATE TABLE people (n text, first text GENERATED ALWAYS AS (substr(n, 1, 1)) VIRTUAL)`,
+      then `useSqliteDriverTools({...}).getTableInfoFresh(1, 'people')` → `no such table: typeorm_metadata`.
+      `bunx vitest run src/backend/useSqliteDriver.spec.ts` has the harness to drive it.
+    - _fix_: read a table that has a generated column without TypeORM's metadata query — build its info from
+      `PRAGMA table_xinfo` plus `sqlite_master.sql` (the DDL module already parses collation and
+      AUTOINCREMENT out of the create statement) and fall back to `getTable` for every other table. Creating
+      the missing `typeorm_metadata` table in the user's file is not an option: it is their schema, and a
+      read-only inspection must not write to it.
+    - _verify_: a temp-file spec with one `STORED` and one `VIRTUAL` generated column that reads the info
+      (`hidden` 2 and 3, the column names) and then rebuilds the table with the generation intact.
 - **T28 · the SQLite environments a user hits are untested, and the TypeORM shim has no spec (medium)** —
   nothing mentions a busy or locked database (`busy_timeout` is set at `useSqliteDriver.ts:376`), WAL on
   an opened user database (`bunTypeOrmSqliteDriver.ts:74`; only the app DB's `journal_mode` is asserted),
