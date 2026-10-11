@@ -1,11 +1,14 @@
 # todos — findings, fix list and test audit
 
-**Status:** 16 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5) · 0 open
-· 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11,
-T12, T14's tree work) · suite: **997 unit tests (82 files) · 112 browser tests (33 files) · 13 Electron
-shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source file
-**45.2 % statements / 37.2 % branches** · aggregate and per-area floors enforced in `vitest.config.js` ·
-a run that skips a precondition fails.
+**Status:** 16 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5) · 15 open
+(T15–T29, the 2026-10-11 "does green mean stable?" audit for SQLite + MySQL on macOS) · 3 blocked (T2b,
+e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12, T14's tree work)
+· suite: **997 unit tests (82 files) · 112 browser tests (33 files) · 13 Electron shell tests** (dev build
+×12 + the packaged `.app`) · coverage over every source file **45.2 % statements / 37.2 % branches**, and
+unit-only: the browser suite is not instrumented (T19) · aggregate and per-area floors enforced in
+`vitest.config.js` · a run that skips a precondition fails · the audit also measured the gate itself: the
+unit run exits 1 at random on a leaked timer (T16), the full browser run is red on order dependence (T17,
+T18), and neither Electron suite can fail the gate (T15).
 
 This file is the single source for the project's tasks and for what the tests already prove. It merges
 the 2026-10-09 performance/fix list and the test audit, which used to live in two files; both long
@@ -32,6 +35,8 @@ not (`## Open (blocked)`).
   specs this list used to flag as pre-existing failures now pass: `sql-editor-cursor.spec.ts` in the
   full run, and `sidebar-sticky.spec.ts` when it is run alone — it failed in a full run whose earlier
   specs had left extra sidebar sources behind, so re-run it in isolation before blaming a change.
+  The 2026-10-11 audit found the full run red here on that order dependence rather than on the fixtures
+  (T18), and on the same class of it in `failure-modes.spec.ts` (T17).
 - `bun` crashes on `better-sqlite3` (NAPI): inspect the app DB with `node`/`npx tsx`, not bun.
 - Local test databases on `127.0.0.1:3306` (root, empty password): `tirsik3_test` (59 tables),
   `eezytool_e2e` (39), `etwp` (163 small tables), `wikiferheng` (23 huge tables, 30 GB).
@@ -421,8 +426,164 @@ Each item is work a green run already proves; do not redo it.
 
 ## Open
 
-Nothing unblocked is left: T2a shipped (see `## Done`), and every remaining entry waits on a machine
-this one is not — T2b and the two test-audit items are in `## Open (blocked)`.
+The 2026-10-11 stability audit (SQLite + MySQL on macOS) asked whether "tests green" means "app stable"
+and answered no, adding T15–T29. Its four themes, in the order they weaken the signal: the gate does not
+run the suites that prove the shipped macOS app (T15); the signal is not deterministic — a leaked timer
+reddens the unit run (T16), and order dependence or a response race reddens the browser run (T17, T18);
+the browser suite contributes no coverage and `src/mainview` has no floor (T19, T20); and the two
+dialects have named holes (T21–T28, plus the app database's own client at T29). T2b and the two earlier
+test-audit items stay in `## Open (blocked)`.
+
+- **T15 · `release:validate` does not run the shipped shell or the packaged app (medium)** — the gate is
+  `bun run test:coverage && bun run test:e2e && bun run build` (`package.json:39`), so
+  `test:e2e:electron` (`playwright.electron.config.ts`: `shell.spec.ts`, `flows.spec.ts`,
+  `restart.spec.ts`, `second-launch.spec.ts`, `shell-native.spec.ts`) and `test:e2e:packaged`
+  (`packaged.spec.ts`, the real `build/mac-arm64/Danevan.app`) cannot fail it. Those are the only specs
+  that load `src/electron/main.ts` (0 % lines), the preload bridge (`src/electron/preload.ts`) and the
+  externalised `better-sqlite3` out of `app.asar`, while the browser suite speaks plain `fetch`
+  (`browserOnlyHelpers.ts`) where the app goes preload → IPC (`mainviewHelpers.ts`). `RELEASING.md:64` is
+  stale besides: it documents the gate as `vitest run` + `vp run build`.
+    - _fix_: add both suites to `release:validate` (build the shell first), correct `RELEASING.md`, and
+      add the fail-on-skip reporter to `playwright.packaged.config.ts` (it is `'html'` only, so a skip
+      there is green).
+    - _verify_: rename a key in the preload bridge — `bun run release:validate` must fail now and pass
+      with the current gate.
+- **T16 · the unit gate fails at random on an uncleaned `ListBox` timer (small)** — `onFocus` schedules a
+  100 ms `setTimeout` that reads `document.activeElement` (`src/shared/components/ListBox.tsx:321-329`)
+  and nothing clears it, so a component unmounted (or a jsdom environment torn down) before the timer
+  fires throws `ReferenceError: document is not defined` after the tests, and vitest exits 1 although
+  every test passed. Reproduced 1 of 3 full `bun run test:coverage` runs: `82 passed (82)`, `997 passed
+  (997)`, `Errors 1 error`, exit 1. `showDropdown` has a second uncleaned timer at `:336`.
+    - _fix_: keep the timer id, clear it on unmount and before re-scheduling, and guard the callback.
+    - _verify_: a spec that mounts `ListBox`, focuses the input and unmounts before 100 ms, asserting no
+      unhandled error; five consecutive `bun run test:coverage` runs must exit 0.
+- **T17 · the export modal overwrites what the user typed (medium)** — the watcher on `[open,
+  connectionId]` awaits `getMysqldumpExportDefaults` and then assigns `form.executable`,
+  `form.outputPath`, `form.databases` and `form.tables` unconditionally
+  (`src/mainview/components/DbMysqldumpExportModal.tsx:61-85`), so anything typed before the answer
+  arrives, or after the modal was closed or switched, is replaced. `failure-modes.spec.ts:145-151` fills
+  both fields and clicks Run; it passes alone (**2.6 s**) and fails in a full run, where the run used the
+  defaults (`/usr/local/mysql/bin/mysqldump`, `~/mysqldump/…`) instead of the filled
+  `/tmp/e2e-mysqldump-that-is-gone` and reported the resulting write failure.
+    - _fix_: do not clobber a field the user edited (dirty flags), ignore a response whose connection
+      changed or whose modal closed, and mark the fields while `loadingDefaults`.
+    - _verify_: a spec that fills both paths before the defaults answer and asserts they survive and that
+      the Run error names the typed executable; the existing spec must pass inside the full run.
+- **T18 · the browser suite is order-dependent, and can attach to the wrong app DB (medium)** — a run
+  shares one `.e2e-data` app DB, so earlier sources change later assertions: `sidebar-sticky.spec.ts`
+  fails in the full run (`expect(received).toBeLessThan(1)`, received 48) and passes alone (4.2 s); the
+  same class of failure hit `failure-modes.spec.ts:132` (T17). `reuseExistingServer: !process.env.CI`
+  (`playwright.config.ts:57`) also lets a local run reuse a dev server started with a different
+  `APP_DATA_DIR`, because `webServer.env.APP_DATA_DIR` (`:62`) only applies to a server Playwright
+  starts — so specs can run against `~/Library/Application Support/danevan` and still be green.
+    - _fix_: give each spec (or file) its own app data dir/DB, or make the sticky spec independent of
+      accumulated sources; reuse a server only when a probe proves it uses this run's data dir.
+    - _verify_: two consecutive full `bun run test:e2e` runs green with no isolation re-run; a dev server
+      without `APP_DATA_DIR` is not reused.
+- **T19 · the browser suite contributes no coverage, and `src/mainview` has no floor (medium)** — no
+  coverage instrumentation exists in `playwright.config.ts`, the specs or the helpers, so
+  `coverage/coverage-summary.json` is unit-only: 52 of 182 files are at 0 % lines while the browser suite
+  drives them (`App.tsx`, every modal, `DbSidebar.tsx`, `DbData.tsx`, `ModifyTableModal.tsx`), and the
+  spec-driven ones look worse than the app is (`useModifyTable.ts` 1428 lines at 0.8 %, `useConnections.ts`
+  5.6 %, `useMySqlDriver.ts` 16.6 %). The floors in `vitest.config.js` cover `src/backend`,
+  `src/datagrid`, `src/shared` and `src/directives` only, so a new `src/mainview` component with no spec
+  moves no number.
+    - _fix_: instrument the Playwright run (v8/istanbul, e.g. monocart) and merge it with the vitest
+      report; add `src/mainview/**` and `src/electronUtils/**` floors once the merged numbers exist.
+    - _verify_: a component no spec imports appears in the merged report with browser-hit lines, and
+      deleting its spec lowers a floor.
+- **T20 · assertions that cannot fail, against the repo's own rules (small)** — `open-table.spec.ts:89`
+  `expect(listDurationMs).toBeLessThan(10_000)` (wall-clock), `:93`
+  `expect(tableList.length).toBeGreaterThan(0)` and `:103` `expect(data.rows.length).toBeGreaterThan(0)`
+  all hold for an empty schema, a single-table schema and any speed. `AGENTS.md` forbids exactly these.
+    - _fix_: assert the table count the fixture really has, the row values the seeded table holds, and
+      the `~` estimate text; drop the wall-clock bound.
+    - _verify_: returning one table or zero rows from `getTableNames`/`getTableData` fails the spec.
+- **T21 · the MySQL driver's tools have no unit spec, and `db-tools.spec.ts` tests a mock (large)** —
+  `useMySqlDriver.spec.ts` does not exist; `useMySqlDriverTools` (`src/backend/useMySqlDriver.ts:832-1017`,
+  186 lines) has zero unit coverage and `db-tools.spec.ts:187` mocks the module outright, so
+  `db-tools.ts:583` never runs the real driver. The tools reach a connection through
+  `remoteDataSourcePool.withDataSource` (`useMySqlDriver.ts:881`, `:901`) — the boundary to fake, the way
+  `remoteDataSourcePool.spec.ts` already builds a fake `DataSource`.
+    - _fix_: drive the real `useMySqlDriverTools` over a faked pool entry and assert the statements and
+      mapping for `getTableInfos`, `getTableNames`, `getTableData` (limit/offset),
+      `buildReadTableStatement` (`limit < 0`, `offset > 0`), `getTableDdl`/`getMySqlNativeDdl`,
+      `testConnection` and `validateSql` (PREPARE/DEALLOCATE); then drop the `vi.mock` in
+      `db-tools.spec.ts`, or pair it with a real-tools case.
+    - _verify_: `useMySqlDriver.ts` coverage rises well above 16.6 % lines; a mutation in the tools fails
+      the spec.
+- **T22 · MySQL failures are unmapped and mostly unasserted (medium)** — no spec asserts a duplicate-key
+  error, a syntax error or a timeout, and `db-tools.ts` has no MySQL error mapper. What exists is
+  `ECONNREFUSED` (`failure-modes.spec.ts:50`) and `Access denied` (`:107-109`); `testConnection`
+  (`useMySqlDriver.ts:920-948`) has no assertion of its own.
+    - _fix_: map the driver's error codes to the message a user should read (duplicate entry, syntax,
+      lock-wait timeout, lost connection) and cover `testConnection` success and failure.
+    - _verify_: a live-server spec for a duplicate key and a syntax error asserting the exact message,
+      plus a unit case per mapped code; swallowing the message fails the spec.
+- **T23 · MySQL value fidelity is unasserted for everything but text, int and blob (medium)** — the e2e
+  fixtures use `varchar`/`int`/`bigint` (`modify-table.spec.ts:5-20`) and the hostile-values MySQL table
+  `varchar` + `blob` (`hostile-input.spec.ts:206-215`, the blob asserted byte-exact at `:248`); no spec
+  opens, reads, edits or saves `DECIMAL`, `DATETIME`/`TIMESTAMP`, `BIT`, `JSON` or `YEAR`, and none
+  distinguishes `NULL` from an empty string.
+    - _fix_: a seeded table over those types, read through the grid, edited and saved, with the read-back
+      asserted exactly (including the grid's `NULL` rendering versus `''`).
+    - _verify_: a mutation that rounds a DECIMAL or shifts a DATETIME fails the spec.
+- **T24 · read-only is only proven on SQLite (small)** — `readonly-connection.spec.ts` builds every source
+  with `createFileSource`, so the shared `assertWritable` path (tested only through an injected fake in
+  `remote-driver-tools.spec.ts`) is never driven against MySQL, where the row-mutation, modify and script
+  paths are what a read-only connection must refuse.
+    - _fix_: the same spec shape on a MySQL connection: the lock in the sidebar, the row menu's 'Allow
+      writes', a refused save that names the connection, and reads that keep working.
+    - _verify_: removing the `assertWritable` call from the MySQL write path fails the spec.
+- **T25 · the MySQL half of the suite runs only on the developer's own fixtures (medium)** — `MYSQL`
+  (`helpers.ts:12-20`) defaults to `127.0.0.1:3306` root with an empty password, and the specs need a
+  pre-existing `tirsik3_test` with rows (`open-table.spec.ts:34-37`), a table estimated above 100 000 rows
+  in the 30 GB `wikiferheng` (`:82-86`), a provisioned SQLFluff runtime (`helpers.ts:111`) and a writable
+  keychain for a password (`connection-form.spec.ts:91`). A fresh Mac or CI runner cannot be green, so
+  "green" is a property of this machine rather than of the product.
+    - _fix_: seed what the specs shape their assertions around (create the schema and the rows, and make
+      the estimate table with a recursive-CTE insert), or ship a seeding script plus a `require*` that
+      names it; keep the `E2E_MYSQL_*` overrides for a real server.
+    - _verify_: on a MySQL that holds none of these databases, the suite provisions them and is green.
+- **T26 · SQLite driver methods no spec executes (medium)** — with real temp files: `testConnection`
+  (`useSqliteDriver.ts:499-523`, only mocked at `db-tools.spec.ts:52` or rejected by an input guard at
+  `appApi.spec.ts:352`), `getTablesFresh` including the per-table `rowCount` (`:591-616`),
+  `applyTableChanges` and its `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` (`:806-850`) plus
+  `collectSqliteForeignKeyViolationMessages` (`:461-493`, only mocked at `db-tools.spec.ts:66`),
+  `validateSql` (`:777-781`), `getTableDdl` (`:691-728`, which the e2e only checks with
+  `toContain('keep_me')`) and the refusals at `:228-231`, `:234-240` and `:254-256`.
+    - _fix_: a unit spec against a real temp file for each — the batched save's rollback and its FK
+      violation message first, because a failed save is where data is at risk.
+    - _verify_: each new spec fails against a mutation of the branch it covers.
+- **T27 · a generated column is rebuilt as a plain one (medium)** — the column info carries `hidden` and
+  `columnKind` (`useSqliteDriver.ts:36-37`), but `buildSqliteColumnDefinition`
+  (`sqliteTableDdl.ts:197-221`) ignores both and `readSqliteViewInfo` drops every `hidden === 1` column
+  (`useSqliteDriver.ts:562`). A `GENERATED ALWAYS AS (…)`/`AS (…)` column therefore leaves the column list
+  and returns as an ordinary column after a modify-table rebuild — a silent schema change. No spec
+  mentions generated columns.
+    - _fix_: keep the generated expression (and `STORED`/`VIRTUAL`) in the definition, and refuse the
+      rebuild with the reason when it cannot be represented.
+    - _verify_: a temp-file spec with one `STORED` and one `VIRTUAL` generated column; after modifying
+      another column, `PRAGMA table_info` (`hidden`) and `sqlite_master.sql` still report them generated.
+- **T28 · the SQLite environments a user hits are untested, and the TypeORM shim has no spec (medium)** —
+  nothing mentions a busy or locked database (`busy_timeout` is set at `useSqliteDriver.ts:376`), WAL on
+  an opened user database (`bunTypeOrmSqliteDriver.ts:74`; only the app DB's `journal_mode` is asserted),
+  an OS-read-only file, `WITHOUT ROWID`, `ATTACH` or date handling. `bunTypeOrmSqliteDriver.ts` has no
+  spec at all (`toPragmaNumbers` `:12-26`, `defaultSafeIntegers` `:73`, `pragma`/`exec` `:81-89` run
+  incidentally).
+    - _fix_: specs on real temp files: a second connection holding a write transaction, a read-only file
+      on disk, a permission-denied write, a `WITHOUT ROWID` table and a `datetime` column across a save.
+    - _verify_: removing `busy_timeout` or `defaultSafeIntegers` fails the spec that covers it.
+- **T29 · the app database's own client is untested, and its specs fake it (small)** —
+  `src/electronUtils/useDatabase.ts` (228 lines, including the accounts/groups/repositories schema at
+  `:168-195`) has no spec and no production caller: `appDbSchema.ts:1` and `appDbMaintenance.ts:1` import
+  its `DatabaseClient` **type**, `db-app.ts:4` imports `resolveAppDataDir`, and `appDbSchema.spec.ts:16-36`
+  / `appDbMaintenance.spec.ts:14-25` hand-roll the client (`as unknown as …`) instead. Either the factory
+  is dead code or it is the app store's real client with no coverage.
+    - _fix_: decide — delete the unused factory (and the schema it carries) or make the app-DB specs
+      drive it against a real temp file instead of the hand-rolled client.
+    - _verify_: the app-DB specs use the production client, or the dead code is gone and the type lives
+      with its users.
 
 ## Open (blocked)
 
