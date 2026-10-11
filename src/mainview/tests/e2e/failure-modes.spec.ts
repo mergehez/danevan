@@ -135,6 +135,17 @@ test.describe('Failure modes', () => {
         const { serverId, connectionId } = await createMySqlServerAndConnection(request, MYSQL.database, 'export-failure');
 
         try {
+            // Hold the defaults answer until the paths below are typed: the answer used to replace
+            // what the user had entered while it was in flight (T17).
+            let releaseDefaults = () => {};
+            const defaultsHeld = new Promise<void>((resolve) => {
+                releaseDefaults = resolve;
+            });
+            await page.route('**/api/getMysqldumpExportDefaults', async (route) => {
+                await defaultsHeld;
+                await route.continue();
+            });
+
             await page.goto('/');
             await expandSidebarRow(page.locator(`[data-node-id="server:${serverId}"]`));
             await openSidebarRowMenu(page.locator(`[data-node-id="connection:${connectionId}"]`));
@@ -146,6 +157,15 @@ test.describe('Failure modes', () => {
             const missingExecutable = '/tmp/e2e-mysqldump-that-is-gone';
             await modal.getByPlaceholder('/path/to/mysqldump').fill(missingExecutable);
             await modal.getByPlaceholder('/path/to/dump.sql').fill('/tmp/e2e-export-failure.sql');
+
+            // Wait for the answer that arrives after them: it must not replace them.
+            const answered = page.waitForResponse('**/api/getMysqldumpExportDefaults');
+            releaseDefaults();
+            await answered;
+
+            await expect(modal.getByPlaceholder('/path/to/mysqldump')).toHaveValue(missingExecutable);
+            await expect(modal.getByPlaceholder('/path/to/dump.sql')).toHaveValue('/tmp/e2e-export-failure.sql');
+
             await modal.getByRole('button', { name: 'Run', exact: true }).click();
 
             await expect(modal).toContainText(`The mysqldump executable was not found at: ${missingExecutable}`);

@@ -69,16 +69,43 @@ export const DbMysqldumpExportModal = component(
                 status.success = false;
                 loadingDefaults.value = true;
 
+                // What the fields hold while the defaults are in flight: the Browse buttons are
+                // disabled then, but the inputs are not, and an answer that arrived late used to
+                // replace the paths the user had already typed.
+                const beforeRequest = { executable: form.executable, outputPath: form.outputPath, databases: form.databases, tables: form.tables };
+                const isCurrent = () => props.open && props.connectionId === connectionId;
+
                 try {
                     const defaults = await tasks.getMysqldumpExportDefaults.run({ connectionId });
-                    form.executable = defaults.executable ?? '';
-                    form.outputPath = defaults.defaultOutputPath;
-                    form.databases = defaults.database;
-                    form.tables = '';
+
+                    // The modal can close, or move to another connection, while it waits.
+                    if (!isCurrent()) {
+                        return;
+                    }
+
+                    if (form.executable === beforeRequest.executable) {
+                        form.executable = defaults.executable ?? '';
+                    }
+
+                    if (form.outputPath === beforeRequest.outputPath) {
+                        form.outputPath = defaults.defaultOutputPath;
+                    }
+
+                    if (form.databases === beforeRequest.databases) {
+                        form.databases = defaults.database;
+                    }
+
+                    if (form.tables === beforeRequest.tables) {
+                        form.tables = '';
+                    }
                 } catch (error) {
-                    status.message = error instanceof Error ? error.message : String(error);
+                    if (isCurrent()) {
+                        status.message = error instanceof Error ? error.message : String(error);
+                    }
                 } finally {
-                    loadingDefaults.value = false;
+                    if (isCurrent()) {
+                        loadingDefaults.value = false;
+                    }
                 }
             },
             { immediate: true }
