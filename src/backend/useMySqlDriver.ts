@@ -16,6 +16,67 @@ type MySqlSchemaHelperDeps = {
     quoteRemoteIdentifier: (driver: 'mysql', identifier: string) => string;
 };
 
+/**
+ * What the user can do about a driver failure, per mysql2 code. mysql2 already says what happened
+ * ("Duplicate entry '1' for key 'people.PRIMARY'"); these sentences say what it means, and the
+ * driver's own text stays in the message so the detail is never swallowed.
+ */
+const MY_SQL_ERROR_HINTS: ReadonlyArray<{ codes: readonly string[]; hint: string }> = [
+    { codes: ['ER_DUP_ENTRY', 'ER_DUP_KEY'], hint: 'A row with that key already exists' },
+    {
+        codes: ['ER_PARSE_ERROR', 'ER_SYNTAX_ERROR', 'ER_BAD_FIELD_ERROR', 'ER_NO_SUCH_TABLE', 'ER_BAD_DB_ERROR', 'ER_NONUNIQ_TABLE'],
+        hint: 'MySQL rejected the statement',
+    },
+    { codes: ['ER_LOCK_WAIT_TIMEOUT', 'ER_LOCK_DEADLOCK'], hint: 'Another transaction holds that row' },
+    { codes: ['ER_ACCESS_DENIED_ERROR', 'ER_DBACCESS_DENIED_ERROR', 'ER_TABLEACCESS_DENIED_ERROR'], hint: 'MySQL refused the credentials' },
+    { codes: ['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'EAI_AGAIN'], hint: 'MySQL could not be reached' },
+    {
+        codes: ['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'PROTOCOL_SEQUENCE_TIMEOUT', 'ER_CON_COUNT_ERROR'],
+        hint: 'The connection to MySQL was lost',
+    },
+];
+
+/** mysql2 puts the code on the error; TypeORM nests it under `driverError`, and sometimes it only
+ *  survives as a `CODE: ` prefix on the message. */
+function readMySqlErrorCode(error: unknown) {
+    for (const candidate of [error, (error as { driverError?: unknown } | null)?.driverError]) {
+        const code = (candidate as { code?: unknown } | null)?.code;
+
+        if (typeof code === 'string' && code) {
+            return code;
+        }
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+
+    return /^([A-Z][A-Z0-9_]{3,}):/u.exec(message)?.[1];
+}
+
+/** The sentence a user reads for a MySQL failure. */
+export function describeMySqlError(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = readMySqlErrorCode(error);
+    const hint = code ? MY_SQL_ERROR_HINTS.find((entry) => entry.codes.includes(code))?.hint : undefined;
+
+    if (!hint) {
+        return message;
+    }
+
+    return `${hint}: ${message.replace(new RegExp(`^${code}:\\s*`), '')}`;
+}
+
+/** Keeps an error the mapper does not know as it is: a refusal or a "was not found" is already the
+ *  message the user should read, and re-wrapping it would only lose its identity. */
+function rethrowMySqlError(error: unknown): never {
+    const message = describeMySqlError(error);
+
+    if (error instanceof Error && error.message === message) {
+        throw error;
+    }
+
+    throw new Error(message);
+}
+
 type MySqlTableRow = {
     name: string | null;
     type: string | null;
@@ -878,43 +939,51 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
     }
 
     async function withMySqlClient<T>(connectionId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
-        return await remoteDataSourcePool.withDataSource(
-            connectionPoolKey(connectionId),
-            // The target and its secret are only resolved when a new pool entry is needed.
-            async () => {
-                const target = deps.getRemoteConnectionTarget(connectionId);
-                const password = (await deps.readConnectionPassword(connectionId)) ?? '';
+        try {
+            return await remoteDataSourcePool.withDataSource(
+                connectionPoolKey(connectionId),
+                // The target and its secret are only resolved when a new pool entry is needed.
+                async () => {
+                    const target = deps.getRemoteConnectionTarget(connectionId);
+                    const password = (await deps.readConnectionPassword(connectionId)) ?? '';
 
-                return createMySqlDataSource({
-                    host: target.hostname,
-                    port: target.port,
-                    database: target.database,
-                    username: target.username,
-                    password,
-                });
-            },
-            (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
-        );
+                    return createMySqlDataSource({
+                        host: target.hostname,
+                        port: target.port,
+                        database: target.database,
+                        username: target.username,
+                        password,
+                    });
+                },
+                (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
+            );
+        } catch (error) {
+            rethrowMySqlError(error);
+        }
     }
 
     async function withMySqlServerClient<T>(serverId: number, callback: (client: RemoteDriverClient) => Promise<T>): Promise<T> {
-        return await remoteDataSourcePool.withDataSource(
-            serverPoolKey(serverId),
-            // The target and its secret are only resolved when a new pool entry is needed.
-            async () => {
-                const target = deps.getRemoteServerTarget(serverId);
-                const password = (await deps.readServerPassword(serverId)) ?? '';
+        try {
+            return await remoteDataSourcePool.withDataSource(
+                serverPoolKey(serverId),
+                // The target and its secret are only resolved when a new pool entry is needed.
+                async () => {
+                    const target = deps.getRemoteServerTarget(serverId);
+                    const password = (await deps.readServerPassword(serverId)) ?? '';
 
-                return createMySqlDataSource({
-                    host: target.hostname,
-                    port: target.port,
-                    database: target.database,
-                    username: target.username,
-                    password,
-                });
-            },
-            (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
-        );
+                    return createMySqlDataSource({
+                        host: target.hostname,
+                        port: target.port,
+                        database: target.database,
+                        username: target.username,
+                        password,
+                    });
+                },
+                (dataSource, queryRunner) => callback(createRemoteClient(dataSource, queryRunner))
+            );
+        } catch (error) {
+            rethrowMySqlError(error);
+        }
     }
 
     async function testConnection(params: TestConnectionParams): Promise<TestConnectionResult> {
@@ -932,7 +1001,11 @@ export function useMySqlDriverTools(deps: MySqlDriverToolsDeps): DriverTools {
             password: params.password ?? '',
         });
 
-        await dataSource.initialize();
+        try {
+            await dataSource.initialize();
+        } catch (error) {
+            rethrowMySqlError(error);
+        }
 
         try {
             const databaseName = getConnectedDatabaseName(dataSource);

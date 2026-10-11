@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { createFileSource, post, requireSqlFluffRuntime } from './helpers';
+import { API, MYSQL, createFileSource, createMySqlServerAndConnection, post, requireMySqlDatabase, requireSqlFluffRuntime } from './helpers';
 
 const MESSY_SQL = 'select  1  as ok ,2 as two from (select 1) t;';
 const FORMATTED_SQL = 'select\n    1 as ok,\n    2 as two\nfrom (select 1) t';
@@ -240,6 +240,53 @@ test.describe('SQL editor panels', () => {
             await expect(page.locator('pre', { hasText: 'history_probe' })).toHaveText('select 7 as history_probe');
         } finally {
             await source.cleanup();
+        }
+    });
+});
+
+// A statement the server rejects has to reach the user as the sentence the driver wrote for it — not
+// as a mysql2 code, and not swallowed into an empty result.
+test.describe('MySQL run errors', () => {
+    test('shows the duplicate-key and syntax errors MySQL reported', async ({ page, request }) => {
+        await requireMySqlDatabase(MYSQL.database, 'the MySQL run-error spec');
+
+        const source = await createMySqlServerAndConnection(request, MYSQL.database, 'run-errors');
+        const tableName = `e2e_run_errors_${Date.now()}`;
+
+        try {
+            await post(request, 'runQuery', {
+                connectionId: source.connectionId,
+                sql: `CREATE TABLE \`${tableName}\` (id int NOT NULL, name varchar(50), PRIMARY KEY (id))`,
+            });
+            await post(request, 'runQuery', { connectionId: source.connectionId, sql: `INSERT INTO \`${tableName}\` (id, name) VALUES (1, 'Ada')` });
+
+            const duplicateScriptId = await createScript(request, source.connectionId, 'duplicate-key', `INSERT INTO \`${tableName}\` (id, name) VALUES (1, 'Grace')`);
+            const syntaxScriptId = await createScript(request, source.connectionId, 'syntax-error', 'SELECT FROM');
+
+            await openApp(page);
+
+            /** The history entry for a statement, and the error line it shows under the SQL. */
+            const historyError = (sqlFragment: string) => page.locator('pre', { hasText: sqlFragment }).locator('xpath=following-sibling::div[1]');
+            // The failure reaches the screen named for the connection it happened on.
+            const target = `${source.connectionName} (${MYSQL.host}:${MYSQL.port}/${MYSQL.database})`;
+
+            await openScriptTab(page, source.connectionId, duplicateScriptId, 'Grace');
+            await runAndCaptureSql(page);
+            await panelTab(page, 'History').click();
+
+            await expect(page.getByText('error', { exact: true })).toBeVisible();
+            await expect(historyError('Grace')).toHaveText(`${target}: A row with that key already exists: Duplicate entry '1' for key '${tableName}.PRIMARY'`);
+
+            await openScriptTab(page, source.connectionId, syntaxScriptId, 'FROM');
+            await runAndCaptureSql(page);
+            await panelTab(page, 'History').click();
+
+            await expect(historyError('SELECT FROM')).toHaveText(
+                `${target}: MySQL rejected the statement: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'FROM' at line 1`
+            );
+        } finally {
+            await request.post(`${API}/runQuery`, { data: { connectionId: source.connectionId, sql: `DROP TABLE IF EXISTS \`${tableName}\`` } }).catch(() => undefined);
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => undefined);
         }
     });
 });

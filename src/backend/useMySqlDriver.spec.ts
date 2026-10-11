@@ -5,7 +5,7 @@
 // mock, which is why none of these paths had a unit spec.)
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-type FakeAnswer = { match: RegExp; rows?: Array<Record<string, unknown>>; throws?: string };
+type FakeAnswer = { match: RegExp; rows?: Array<Record<string, unknown>>; throws?: string; throwsCode?: string };
 
 const fake = vi.hoisted(() => {
     const state = {
@@ -20,7 +20,10 @@ const fake = vi.hoisted(() => {
         const answer = [...state.answers].reverse().find((candidate) => candidate.match.test(sql));
 
         if (answer?.throws) {
-            throw new Error(answer.throws);
+            // Shaped like the driver's own failure: a message, and the code beside it.
+            const error = new Error(answer.throws) as Error & { code?: string };
+            error.code = answer.throwsCode;
+            throw error;
         }
 
         return answer?.rows ?? [];
@@ -56,10 +59,10 @@ vi.mock('./remoteDataSourcePool.ts', () => ({
     },
 }));
 
-import { useMySqlDriverTools } from './useMySqlDriver.ts';
+import { useMySqlDriverTools, describeMySqlError } from './useMySqlDriver.ts';
 
-function createTools() {
-    return useMySqlDriverTools({
+function createToolsDeps() {
+    return {
         escapeSqlString: (value: string) => `'${value.replaceAll("'", "''")}'`,
         normalizeOptionalText: (value: string | null | undefined) => (typeof value === 'string' && value.length > 0 ? value : null),
         getRemoteConnectionTarget: (connectionId: number) => ({ hostname: '127.0.0.1', port: 3306, database: `db_${connectionId}`, username: 'root' }),
@@ -71,7 +74,11 @@ function createTools() {
         normalizeColumnName: (columnName: string) => columnName.trim(),
         buildColumnStats: (columns: string[], rows: Array<Record<string, unknown>>) => Object.fromEntries(columns.map((column) => [column, rows.length])),
         remoteMutationId: (result: Record<string, unknown>) => Number(result.affectedRows ?? 0),
-    } as unknown as Parameters<typeof useMySqlDriverTools>[0]);
+    };
+}
+
+function createTools() {
+    return useMySqlDriverTools(createToolsDeps() as unknown as Parameters<typeof useMySqlDriverTools>[0]);
 }
 
 let tools: ReturnType<typeof useMySqlDriverTools>;
@@ -278,5 +285,78 @@ describe('MySQL metadata sweep', () => {
         expect(statements().every((sql) => sql.includes('information_schema'))).toBe(true);
         expect(statements().some((sql) => /COUNT\(\*\)/iu.test(sql))).toBe(false);
         expect(fake.calls[0]!.params).toEqual(['people', 'pets']);
+    });
+});
+
+describe('MySQL error messages', () => {
+    function driverError(message: string, code?: string) {
+        const error = new Error(message) as Error & { code?: string };
+        error.code = code;
+
+        return error;
+    }
+
+    it.each([
+        ['ER_DUP_ENTRY', "Duplicate entry '1' for key 'people.PRIMARY'", "A row with that key already exists: Duplicate entry '1' for key 'people.PRIMARY'"],
+        [
+            'ER_PARSE_ERROR',
+            "You have an error in your SQL syntax near 'FROM' at line 1",
+            "MySQL rejected the statement: You have an error in your SQL syntax near 'FROM' at line 1",
+        ],
+        ['ER_NO_SUCH_TABLE', "Table 'db.people' doesn't exist", "MySQL rejected the statement: Table 'db.people' doesn't exist"],
+        [
+            'ER_LOCK_WAIT_TIMEOUT',
+            'Lock wait timeout exceeded; try restarting transaction',
+            'Another transaction holds that row: Lock wait timeout exceeded; try restarting transaction',
+        ],
+        ['ER_LOCK_DEADLOCK', 'Deadlock found when trying to get lock', 'Another transaction holds that row: Deadlock found when trying to get lock'],
+        [
+            'ER_ACCESS_DENIED_ERROR',
+            "Access denied for user 'root'@'localhost' (using password: YES)",
+            "MySQL refused the credentials: Access denied for user 'root'@'localhost' (using password: YES)",
+        ],
+        ['ECONNREFUSED', 'connect ECONNREFUSED 127.0.0.1:3306', 'MySQL could not be reached: connect ECONNREFUSED 127.0.0.1:3306'],
+        ['PROTOCOL_CONNECTION_LOST', 'Connection lost: The server closed the connection.', 'The connection to MySQL was lost: Connection lost: The server closed the connection.'],
+    ])('describes %s', (code, message, expected) => {
+        expect(describeMySqlError(driverError(message, code))).toBe(expected);
+    });
+
+    it('reads the code TypeORM nests under driverError', () => {
+        const wrapped = Object.assign(new Error("Duplicate entry '2' for key 'people.email'"), { driverError: driverError('duplicate', 'ER_DUP_ENTRY') });
+
+        expect(describeMySqlError(wrapped)).toBe("A row with that key already exists: Duplicate entry '2' for key 'people.email'");
+    });
+
+    it('strips a code the message carries itself', () => {
+        expect(describeMySqlError(new Error("ER_DUP_ENTRY: Duplicate entry '3' for key 'people.PRIMARY'"))).toBe(
+            "A row with that key already exists: Duplicate entry '3' for key 'people.PRIMARY'"
+        );
+    });
+
+    it('leaves a failure it does not know as it is', () => {
+        expect(describeMySqlError(new Error('The connection "x" is read-only, so the write was refused.'))).toBe('The connection "x" is read-only, so the write was refused.');
+        expect(describeMySqlError(driverError('Something the driver invented', 'ER_SOMETHING_NEW'))).toBe('Something the driver invented');
+    });
+
+    it('reports the mapped message through the tool that ran the statement', async () => {
+        fake.answers.push({
+            match: /^INSERT/u,
+            throws: "Duplicate entry '1' for key 'people.PRIMARY'",
+            throwsCode: 'ER_DUP_ENTRY',
+        });
+
+        await expect(tools.runQuery(1, 'INSERT INTO people (id) VALUES (1)')).rejects.toThrow("A row with that key already exists: Duplicate entry '1' for key 'people.PRIMARY'");
+    });
+
+    it('keeps a refusal the tool raised itself', async () => {
+        const refusal = 'The connection "x" is read-only, so the write was refused.';
+        const refusing = useMySqlDriverTools({
+            ...(createToolsDeps() as unknown as object),
+            assertWritable: () => {
+                throw new Error(refusal);
+            },
+        } as unknown as Parameters<typeof useMySqlDriverTools>[0]);
+
+        await expect(refusing.runQuery(1, 'UPDATE people SET name = "Ada"')).rejects.toThrow(refusal);
     });
 });
