@@ -218,6 +218,10 @@ export const ListBox = componentGeneric(
         const rootRef = ref<HTMLElement>();
         const dropdownPanelRef = ref<HTMLElement>();
         const refInput = ref<HTMLInputElement>();
+        // Cleared on unmount: a component gone before they fire touched a torn-down `document`
+        // (and a timer that survived its component is what failed the whole unit run).
+        let focusSelectTimer: ReturnType<typeof setTimeout> | undefined;
+        let scrollToSelectionTimer: ReturnType<typeof setTimeout> | undefined;
         const isDropdownOpen = ref(false);
         const isSelectingItem = ref(false);
         const dropdownStyle = ref<Record<string, string>>({});
@@ -318,7 +322,8 @@ export const ListBox = componentGeneric(
         function onFocus(e: Event) {
             listWidth.value = refInput.value?.offsetWidth ? refInput.value.offsetWidth + 'px' : 'auto';
             if (e instanceof FocusEvent) {
-                setTimeout(() => {
+                clearTimeout(focusSelectTimer);
+                focusSelectTimer = setTimeout(() => {
                     // `select()` focuses its input, so selecting after the user has already
                     // moved on would steal focus back and reopen the dropdown over whatever
                     // they clicked next.
@@ -333,7 +338,8 @@ export const ListBox = componentGeneric(
             listWidth.value = refInput.value?.offsetWidth ? refInput.value.offsetWidth + 'px' : 'auto';
             updateDropdownPosition();
             isDropdownOpen.value = true;
-            setTimeout(() => {
+            clearTimeout(scrollToSelectionTimer);
+            scrollToSelectionTimer = setTimeout(() => {
                 scrollToItem(props.selection);
             }, 0);
         }
@@ -444,6 +450,8 @@ export const ListBox = componentGeneric(
         });
 
         onUnmounted(() => {
+            clearTimeout(focusSelectTimer);
+            clearTimeout(scrollToSelectionTimer);
             window.removeEventListener('mousedown', onDocumentMouseDown, true);
             window.removeEventListener('resize', updateDropdownPosition);
             window.removeEventListener('scroll', updateDropdownPosition, true);

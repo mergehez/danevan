@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, ref } from 'vue';
 import ListBox from '../../../shared/components/ListBox.tsx';
 
@@ -10,6 +10,10 @@ const items = [
 ];
 
 describe('ListBox', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('keeps the current selection when it is focused and blurred without input', async () => {
         const scrollIntoView = vi.fn();
         Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
@@ -170,5 +174,62 @@ describe('ListBox', () => {
         expect(element.selectionEnd).toBe(9);
 
         wrapper.unmount();
+    });
+
+    it('selects the field text shortly after it is focused', async () => {
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+            configurable: true,
+            value: vi.fn(),
+        });
+        vi.useFakeTimers();
+
+        const wrapper = mount(ListBox, {
+            attachTo: document.body,
+            props: {
+                items,
+                selection: 'alpha',
+                onSelect: vi.fn(),
+            },
+        });
+
+        const input = wrapper.get('input').element as HTMLInputElement;
+
+        input.focus();
+        await wrapper.vm.$nextTick();
+        vi.advanceTimersByTime(100);
+
+        expect([input.selectionStart, input.selectionEnd]).toEqual([0, 'Alpha'.length]);
+
+        wrapper.unmount();
+    });
+
+    it('leaves no timer behind when it unmounts before the focus timer fires', () => {
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+            configurable: true,
+            value: vi.fn(),
+        });
+        vi.useFakeTimers();
+        const baseline = vi.getTimerCount();
+
+        const wrapper = mount(ListBox, {
+            attachTo: document.body,
+            props: {
+                items,
+                selection: 'alpha',
+                onSelect: vi.fn(),
+            },
+        });
+
+        (wrapper.get('input').element as HTMLInputElement).focus();
+
+        // The dropdown's 0 ms scroll timer has run; the 100 ms focus timer is still pending.
+        vi.advanceTimersByTime(0);
+        expect(vi.getTimerCount()).toBe(baseline + 1);
+
+        wrapper.unmount();
+
+        // A timer that outlives its component fires after jsdom is torn down and fails the whole
+        // run with "ReferenceError: document is not defined".
+        expect(vi.getTimerCount()).toBe(baseline);
     });
 });
