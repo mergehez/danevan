@@ -157,6 +157,10 @@ function createMySqlDataSource(config: MySqlDataSourceConfig) {
             connectionLimit: 1,
             supportBigNumbers: true,
             bigNumberStrings: true,
+            // A DATE/DATETIME/TIMESTAMP comes back as the exact text MySQL stored. As a JS Date it
+            // was serialised to an ISO instant and read back in the host's zone: a `date` column
+            // showed the day before, and a `datetime` was shifted by the offset.
+            dateStrings: true,
         },
     });
 }
