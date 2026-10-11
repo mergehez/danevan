@@ -33,6 +33,13 @@ function workspaceAppDataDir() {
     return appDataDir;
 }
 
+const APP_DATA_DIR = workspaceAppDataDir();
+
+// The specs are processes of this config's process, and the Electron config's helpers do the same:
+// give them the dir the server uses, so `requireSqlFluffRuntime` and anything else that resolves the
+// app data dir cannot look at the developer's real one.
+process.env.APP_DATA_DIR = APP_DATA_DIR;
+
 export default defineConfig({
     testDir: './src/mainview/tests/e2e',
     fullyParallel: false,
@@ -54,11 +61,15 @@ export default defineConfig({
     webServer: {
         command: 'bun run dev',
         port: FRONTEND_PORT,
-        reuseExistingServer: !process.env.CI,
+        // Never reuse a server this run did not start: a dev server the developer left running holds
+        // a different APP_DATA_DIR, which is how a run could read and write the real
+        // `~/Library/Application Support/danevan` while looking green. A busy port is an error, and
+        // the message names it — stop that server instead of letting it stand in for this one.
+        reuseExistingServer: false,
         cwd: process.cwd(),
         timeout: 60_000,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { APP_DATA_DIR: workspaceAppDataDir() },
+        env: { APP_DATA_DIR },
     },
 });

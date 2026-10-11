@@ -5,7 +5,7 @@
 // "is this row pinned" test the sidebar itself uses (its section starts above it), because the
 // sections are laid out with a gap and their flow positions are not the sticky slot pitch.
 import { expect, test, type Page } from '@playwright/test';
-import { createFileSource, expandSidebarRow } from './helpers';
+import { createFileSource, deleteAllServers, expandSidebarRow } from './helpers';
 
 type SidebarRow = { nodeId: string; top: number; height: number; bottom: number; pinned: boolean };
 
@@ -38,6 +38,11 @@ async function sidebarRows(page: Page, panelTop: number): Promise<SidebarRow[]> 
 
 test.describe('Sidebar first-depth rows', () => {
     test('stack at the top instead of sliding over each other', async ({ page, request }) => {
+        // The assertions below are about the whole first-depth list (which rows pin, and in what
+        // order), so the spec owns that list: sources earlier specs left behind used to push the
+        // first of these three out of the pinned stack.
+        await deleteAllServers(request);
+
         const sources: Awaited<ReturnType<typeof createFileSource>>[] = [];
 
         for (let index = 0; index < 3; index += 1) {
@@ -74,7 +79,6 @@ test.describe('Sidebar first-depth rows', () => {
             await scrollPanelToBottom();
 
             const rows = await sidebarRows(page, panelTop);
-            const ourRows = rows.filter((row) => sources.some((source) => row.nodeId === `server:${source.serverId}`));
             const rowFor = (nodeId: string) => rows.find((row) => row.nodeId === nodeId)!;
 
             // Each row starts where the row above it ends (within a rounding pixel): none slides over
@@ -83,7 +87,9 @@ test.describe('Sidebar first-depth rows', () => {
                 expect(rows[index]!.top - rows[index - 1]!.bottom).toBeGreaterThanOrEqual(-1);
             }
 
-            expect(ourRows.map((row) => row.nodeId)).toEqual(sources.map((source) => `server:${source.serverId}`));
+            // These three are the whole first-depth list: `deleteAllServers` cleared what earlier specs
+            // left behind, so the pinned-stack assertions below are about this run's own rows.
+            expect(rows.map((row) => row.nodeId)).toEqual(sources.map((source) => `server:${source.serverId}`));
 
             // The first source is scrolled past, so it is pinned at the top edge; the rows pinned
             // with it keep that stack tight instead of drifting apart.

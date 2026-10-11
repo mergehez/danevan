@@ -20,13 +20,38 @@ export const MYSQL = {
 };
 
 export async function post(request: APIRequestContext, method: string, data: unknown) {
-    const response = await request.post(`${API}/${method}`, { data });
+    const response = await postWhenApiIsUp(request, method, data);
 
     if (!response.ok()) {
         throw new Error(`POST /api/${method} failed with ${response.status()}: ${await response.text()}`);
     }
 
     return response.json();
+}
+
+/**
+ * Playwright calls the dev server ready as soon as the renderer port answers, and the vite plugin
+ * mounts the API on its own port right after that (`vite-plugin.ts` imports `devServer.ts` in the
+ * `listening` handler). A spec whose first action is an API call — before it loads the page — could
+ * therefore arrive a moment too early. Only a refused connection is retried, and only for a few
+ * seconds, so a backend that never came up still fails the spec.
+ */
+async function postWhenApiIsUp(request: APIRequestContext, method: string, data: unknown) {
+    const deadline = Date.now() + 5000;
+
+    for (;;) {
+        try {
+            return await request.post(`${API}/${method}`, { data });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+
+            if (!message.includes('ECONNREFUSED') || Date.now() > deadline) {
+                throw error;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+    }
 }
 
 /**
@@ -226,6 +251,19 @@ export async function createFileSource(request: APIRequestContext, options: { la
             }
         },
     };
+}
+
+/**
+ * Removes every source the app already holds. The specs share one app DB for a whole run, so a spec
+ * that measures the sidebar list (pinned rows, row order) has to start from a list it owns instead of
+ * whatever earlier specs left behind.
+ */
+export async function deleteAllServers(request: APIRequestContext) {
+    const bootstrap = (await post(request, 'getBootstrap', undefined)) as { servers?: Array<{ id: number }> };
+
+    for (const server of bootstrap.servers ?? []) {
+        await request.post(`${API}/deleteServer`, { data: { serverId: server.id } }).catch(() => undefined);
+    }
 }
 
 /**
