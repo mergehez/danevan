@@ -1,14 +1,14 @@
 # todos — findings, fix list and test audit
 
-**Status:** 22 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
-2026-10-11 audit: T16, T17, T20, T24, T26, T30) · 10 open (T15, T18, T19, T21–T23, T25, T27–T29) · 3
-blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob, T11, T12,
-T14's tree work) · suite: **1009 unit tests (82 files) · 114 browser tests (33 files) · 13 Electron shell
-tests** (dev build ×12 + the packaged `.app`) · coverage over every source file **45.6 % statements /
-37.3 % branches**, and unit-only: the browser suite is not instrumented (T19) · aggregate and per-area
-floors enforced in `vitest.config.js` · a run that skips a precondition fails · the audit also measured the
-gate itself: the full browser run is red on order dependence (T18), and neither Electron suite can fail the
-gate (T15).
+**Status:** 24 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U5, then the
+2026-10-11 audit: T16, T17, T18, T20, T21, T24, T26, T30) · 9 open (T15, T19, T22, T23, T25, T27–T29,
+T31) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10 settings blob,
+T11, T12, T14's tree work) · suite: **1019 unit tests (83 files) · 114 browser tests (33 files) · 13
+Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source file
+**46.0 % statements / 37.7 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
+audit also measured the gate itself: neither Electron suite can fail it (T15), and a complete browser run
+could not be reproduced in the session that closed T18 (the sandbox SIGTERM'd it — T31).
 
 This file is the single source for the project's tasks and for what the tests already prove. It merges
 the 2026-10-09 performance/fix list and the test audit, which used to live in two files; both long
@@ -313,6 +313,33 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   drawn, that the opened table reports exactly the catalog estimate the list did, that the page holds its
   100 rows, and that the toolbar prints an estimate above the exact-count limit (InnoDB's estimate moves
   between reads, so holding the toolbar to a fixed number would be flaky by design).
+- **T18 — the browser suite let one spec bleed into the next, and could borrow the wrong app DB.** A run
+  shares one `.e2e-data` app DB, so sources an earlier spec left behind (the two keychain specs fail
+  before their cleanup here) pushed the sticky spec's first source out of the pinned stack: it failed in
+  a full run with `top` 24 and passes alone. `sidebar-sticky.spec.ts` now clears the sources it did not
+  create (`deleteAllServers` in `helpers.ts`) and asserts the whole first-depth list is its own three
+  rows, so a leftover fails the spec instead of skewing it. `reuseExistingServer: false` replaces
+  `!process.env.CI`, so a dev server the developer left running — with a different `APP_DATA_DIR`, i.e.
+  the real `~/Library/Application Support/danevan` — can no longer stand in for this run's, and the
+  resolved `APP_DATA_DIR` is exported to the spec processes as well. `post()` retries a refused
+  connection for a few seconds, because the dev server answers on the renderer port before the vite
+  plugin mounts the API. Guarded by the pair `failure-modes.spec.ts sidebar-sticky.spec.ts`: without the
+  reset it fails at `expect(rowFor(server:first).top).toBeLessThan(1)` (received 24), with it the sticky
+  spec passes; and the earlier full run reached spec 90/114 with only the two keychain failures.
+  _Not verified_: two consecutive complete full runs — in this session every run of the whole suite was
+  SIGTERM'd by the sandbox at an irregular point (spec 5, 15, 95, 61 s, 6 s), and reverting this branch
+  did not change that (T31 records the one port-related suspect).
+- **T21 — the MySQL driver tools had no unit spec.** `useMySqlDriver.spec.ts` drives the real
+  `useMySqlDriverTools` over a faked pool entry (the socket boundary: `remoteDataSourcePool.withDataSource`
+  hands back a recording query runner, and each catalog is answered by hand), instead of the
+  `vi.mock('useMySqlDriver')` that made `db-tools.spec.ts` test its own fake. Ten cases: the catalog table
+  list (estimate flagged, one query, no `COUNT(*)`), a page with `LIMIT`/`OFFSET` and the unbounded
+  `limit < 0` form, the result columns of a read through the connection, the native DDL copy with
+  `SHOW CREATE TABLE`/`VIEW`, `validateSql`'s `SET`/`PREPARE`/`DEALLOCATE` sequence plus the
+  "not supported in the prepared statement protocol" and real-error paths, and the four-catalog metadata
+  sweep with its name filter. Every case was checked against a mutation of the branch it covers
+  (five mutations, five caught). `useMySqlDriver.ts` went from 16.6 % to **42.6 % lines / 35.8 % branches
+  / 50.5 % functions**.
 
 ### What a green suite already proves
 
@@ -482,20 +509,25 @@ Each item is work a green run already proves; do not redo it.
   rows the browser drew and uses the sidebar's own "this row is pinned" test (its section starts above
   it) instead of assuming a row height and a panel with no padding, which is why it failed on a clean
   checkout. Two mutations — pinned rows made to overlap, and a pinned click made to toggle instead of
-  scrolling back — each make it fail.
+  scrolling back — each make it fail. It also owns the list it measures now: `deleteAllServers` clears
+  what earlier specs left, and the spec asserts the whole first-depth list is its own three rows (T18).
+- **The MySQL driver tools against a faked pool** (`useMySqlDriver.spec.ts`, T21): the real
+  `useMySqlDriverTools` records its statements and answers each catalog by hand — the table list with its
+  estimate and no `COUNT(*)`, a page with `LIMIT`/`OFFSET` and the unbounded `limit < 0` form, the result
+  columns of a read, the native DDL copy, `validateSql`'s `SET`/`PREPARE`/`DEALLOCATE` sequence and the
+  four-catalog sweep. Five mutations of the branches it covers each fail it.
 
 ## Open
 
 The 2026-10-11 stability audit (SQLite + MySQL on macOS) asked whether "tests green" means "app stable"
 and answered no, adding T15–T29. Four themes, in the order they weaken the signal: the gate does not run
-the suites that prove the shipped macOS app (T15); the signal is not deterministic — order dependence
-reddens the browser run, and one of the two response races it found is fixed (T18 open, T17 closed); the
-browser suite contributes no coverage and `src/mainview` has no floor (T19 open, T20 closed); and the two
-dialects have named holes (T21–T23, T25, T27, T28, plus the app database's own client at T29). The round
-that fixed T17 and T20 also closed the leaked `ListBox` timer (T16), the read-only MySQL coverage and the
-sidebar lock it exposed (T24, T30), and the SQLite driver surfaces (T26) — all in `## Done`. T27 is the
-one entry whose diagnosis changed while being worked on: the failure happens before the rebuild, when the
-table's metadata cannot be read at all. T2b and the two earlier test-audit items stay in
+the suites that prove the shipped macOS app (T15); the signal is not deterministic (T17, T18 — both
+closed, with the one thing a sandbox could not verify recorded in T18); the browser suite contributes no
+coverage and `src/mainview` has no floor (T19 open, T20 closed); and the two dialects had named holes,
+most of which are now closed (T16, T21, T24, T26, T30 in `## Done`; T22, T23, T25, T27, T28 and the app
+database's own client at T29 still open). T27 is the one entry whose diagnosis changed while being worked
+on: the failure happens before the rebuild, when the table's metadata cannot be read at all. T31 is a new
+finding from the session that closed T18. T2b and the two earlier test-audit items stay in
 `## Open (blocked)`.
 
 - **T15 · `release:validate` does not run the shipped shell or the packaged app (medium)** — the gate is
@@ -512,17 +544,6 @@ table's metadata cannot be read at all. T2b and the two earlier test-audit items
       there is green).
     - _verify_: rename a key in the preload bridge — `bun run release:validate` must fail now and pass
       with the current gate.
-- **T18 · the browser suite is order-dependent, and can attach to the wrong app DB (medium)** — a run
-  shares one `.e2e-data` app DB, so earlier sources change later assertions: `sidebar-sticky.spec.ts`
-  fails in the full run (`expect(received).toBeLessThan(1)`, received 48) and passes alone (4.2 s); the
-  same class of failure hit `failure-modes.spec.ts:132` (T17). `reuseExistingServer: !process.env.CI`
-  (`playwright.config.ts:57`) also lets a local run reuse a dev server started with a different
-  `APP_DATA_DIR`, because `webServer.env.APP_DATA_DIR` (`:62`) only applies to a server Playwright
-  starts — so specs can run against `~/Library/Application Support/danevan` and still be green.
-    - _fix_: give each spec (or file) its own app data dir/DB, or make the sticky spec independent of
-      accumulated sources; reuse a server only when a probe proves it uses this run's data dir.
-    - _verify_: two consecutive full `bun run test:e2e` runs green with no isolation re-run; a dev server
-      without `APP_DATA_DIR` is not reused.
 - **T19 · the browser suite contributes no coverage, and `src/mainview` has no floor (medium)** — no
   coverage instrumentation exists in `playwright.config.ts`, the specs or the helpers, so
   `coverage/coverage-summary.json` is unit-only: 52 of 182 files are at 0 % lines while the browser suite
@@ -535,19 +556,6 @@ table's metadata cannot be read at all. T2b and the two earlier test-audit items
       report; add `src/mainview/**` and `src/electronUtils/**` floors once the merged numbers exist.
     - _verify_: a component no spec imports appears in the merged report with browser-hit lines, and
       deleting its spec lowers a floor.
-- **T21 · the MySQL driver's tools have no unit spec, and `db-tools.spec.ts` tests a mock (large)** —
-  `useMySqlDriver.spec.ts` does not exist; `useMySqlDriverTools` (`src/backend/useMySqlDriver.ts:832-1017`,
-  186 lines) has zero unit coverage and `db-tools.spec.ts:187` mocks the module outright, so
-  `db-tools.ts:583` never runs the real driver. The tools reach a connection through
-  `remoteDataSourcePool.withDataSource` (`useMySqlDriver.ts:881`, `:901`) — the boundary to fake, the way
-  `remoteDataSourcePool.spec.ts` already builds a fake `DataSource`.
-    - _fix_: drive the real `useMySqlDriverTools` over a faked pool entry and assert the statements and
-      mapping for `getTableInfos`, `getTableNames`, `getTableData` (limit/offset),
-      `buildReadTableStatement` (`limit < 0`, `offset > 0`), `getTableDdl`/`getMySqlNativeDdl`,
-      `testConnection` and `validateSql` (PREPARE/DEALLOCATE); then drop the `vi.mock` in
-      `db-tools.spec.ts`, or pair it with a real-tools case.
-    - _verify_: `useMySqlDriver.ts` coverage rises well above 16.6 % lines; a mutation in the tools fails
-      the spec.
 - **T22 · MySQL failures are unmapped and mostly unasserted (medium)** — no spec asserts a duplicate-key
   error, a syntax error or a timeout, and `db-tools.ts` has no MySQL error mapper. What exists is
   `ECONNREFUSED` (`failure-modes.spec.ts:50`) and `Access denied` (`:107-109`); `testConnection`
@@ -611,6 +619,17 @@ table's metadata cannot be read at all. T2b and the two earlier test-audit items
       drive it against a real temp file instead of the hand-rolled client.
     - _verify_: the app-DB specs use the production client, or the dead code is gone and the type lives
       with its users.
+- **T31 · the dev server's port cleanup kills clients, not just listeners (small)** — `killStaleServers`
+  (`src/electronUtils/vite-plugin.ts:74`) runs `lsof -ti:PORT | xargs kill -9`, and `lsof -i:PORT` matches
+  every socket on that port: a spec run's request context, the browser, an editor tab. Only a stale
+  *listener* should be killed, which is `lsof -tiTCP:PORT -sTCP:LISTEN`. Found while the whole browser
+  suite kept being SIGTERM'd in this session (at spec 5, 15 and 95, and at 61 s and 6 s): the diagnostic
+  showed the call resolves **no** listeners at dev-server startup (`listeners=[]`), so it is not proven to
+  be the killer — the `-sTCP:LISTEN` change was made, could not be verified (that run died after 6 s
+  instead) and was reverted rather than shipped blind.
+    - _fix_: pass `-sTCP:LISTEN` and prove it: start a second process that holds a *client* connection on
+      the port and assert it survives the cleanup while a stale listener does not.
+    - _verify_: a stale dev server on 3263 is killed, a spec run talking to 3264 is untouched.
 
 ## Open (blocked)
 
