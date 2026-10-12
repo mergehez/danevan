@@ -123,7 +123,7 @@ Suggested from the 2026-10-10 `bun do mac` failure:
   loader resolves extensions itself: `./x` is not `./x.ts`. An extensionless import there passes
   every unit test, every browser test and `vite build` (all of which resolve it), then fails
   `bun do mac` before it packages anything — which is how the API error message helper broke the
-  release. `src/electronUtils/releaseConfig.spec.ts` loads the config in a real Node process, so the
+  release. `src/mainview/tests/backend/releaseConfig.spec.ts` loads the config in a real Node process, so the
   next one fails in the unit suite instead.
 
 Suggested from the 2026-10-12 wrong-table save:
@@ -159,6 +159,15 @@ Suggested from the 2026-10-12 stale-context audit:
   backend's `version` is newer, so a slow mutation response cannot revert a selection made after it.
   Adding a field to `AppBootstrapApi` means adding it to `buildBootstrap`; never apply a snapshot on
   arrival alone. Guarded by `src/mainview/tests/composables/dbCoreState.spec.ts`.
+
+Suggested from the 2026-10-12 electronUtils reconciliation:
+
+- **`src/electronUtils` is project-agnostic and byte-identical in every app that uses it.** The folder is
+  copied between projects unchanged, so app-specific behaviour arrives through its options
+  (`nativeStandins`, `classifyError`, `runInRequestScope`, `fileExists`, `loadBackend`), through
+  `package.json` via `appConfig` (name, ports, `APP_DATA_DIR`), or through an app-owned script outside the
+  folder. Never branch on the app's name or hardcode one in it; keep its specs out of the folder so the
+  copies stay identical. `gitvan/src/electronUtils` is the reference copy.
 
 Suggested from the 2026-10-12 "the app quits immediately" report:
 

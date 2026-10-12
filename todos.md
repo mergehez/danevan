@@ -490,7 +490,7 @@ exit. The 26 `Danevan Helper` crash reports on this machine are that GPU crash l
 ad-hoc with the entitlements in `src/electronUtils/entitlements/` (`com.apple.security.inherit` for the
 helpers, the JIT/library ones for the app) and verifies the result. Proven on this machine before
 wiring it up: the unsigned bundle dies at ~1.5 s with GPU crash reports, the ad-hoc signed copy of the
-same bundle runs indefinitely with none. Guarded by `src/electronUtils/signMacApp.spec.ts` (a renamed
+same bundle runs indefinitely with none. Guarded by `src/mainview/tests/backend/signMacApp.spec.ts` (a renamed
 Electron helper gets `inherit`) and by `packaged.spec.ts`, which now also asserts the artifact carries
 a signature macOS accepts.
 
@@ -501,8 +501,35 @@ symlinks (`Electron Framework -> Versions/Current/Electron Framework`) into abso
 directory of an embedded framework" and died exactly like an unsigned one. `installMacApp.ts` now
 copies with `ditto` (which preserves symlinks, xattrs and the signature) and `releaseHelpers.ts`
 re-checks the installed signature, so a copy that breaks the bundle fails the release instead of the
-user's next launch. Guarded by `src/electronUtils/installMacApp.spec.ts` (the installed framework
+user's next launch. Guarded by `src/mainview/tests/backend/installMacApp.spec.ts` (the installed framework
 symlink is still relative) and by the existing launch checks.
+
+### 2026-10-12 `src/electronUtils` is one copy again
+
+The folder is meant to be copied between apps unchanged, but the two copies had drifted into forks: 9 files
+differed, 4 existed only here and 2 only in gitvan, and each side held fixes the other lacked. It is now
+byte-identical to `gitvan/src/electronUtils` (18 files), with the app-specific parts moved behind options:
+
+- `helpers.ts` gained gitvan's env port overrides (prefix derived from `pkg.name`) and the API request
+  timeout, and kept the `{error}` envelope reader — now in-folder as `apiErrorMessage.ts` — plus the
+  empty-body handling gitvan was missing.
+- `mainviewHelpers.ts` keeps the Vue-proxy unwrapping gitvan lacked; `executeCommand.ts`/`requestContext.ts`
+  bring gitvan's timeouts and request-scoped cancellation here; `useDatabase.ts`/`appDataDir.ts` keep
+  gitvan's statement cache and `transaction` with this app's data-dir seam; `vite-plugin.ts` adopts
+  gitvan's tested `extractApiMethods`, the LISTEN-only port cleanup (T31) and the dev/build guards.
+- `mainProloadHelpers.ts` unifies on gitvan's injectable `fileExists`/`loadBackend` plus this app's
+  single-instance lock, handler replacement and diagnostic-listener cleanup; IPC channels are namespaced
+  `api:<name>` on both ends.
+- `browserOnlyHelpers.ts` keeps this app's robust `listen`/`Server` result and takes gitvan's request
+  scoping, native stand-ins, `/health` handler-error report and `classifyError`; a void method now answers
+  `null` instead of an empty body.
+- `releaseHelpers.ts` runs `test:validate` only when the project has that script (gitvan does, this app
+  does not); `handleScripts.ts` offers the `perf` task to both. `perfBaseline.ts` left the folder for
+  `gitvan/scripts/`, and the folder's specs moved to `src/mainview/tests/backend/` so the copies match.
+
+Verified: 1048 unit tests + typecheck here (the one MS Access failure was machine load; it passes alone),
+1049 with `msAccessBridge.spec.ts` on its own, 12/12 Electron shell tests, and on the gitvan side 1135 unit
+tests, 7/7 shell tests and its native-picker browser spec.
 
 ### What a green suite already proves
 

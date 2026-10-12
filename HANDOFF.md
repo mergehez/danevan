@@ -46,7 +46,7 @@ browser dev API, Vite + Electron, Bun as runtime/package manager.
 | `src/datagrid/` | The canvas data grid (`DataGrid.tsx`, `useDataGrid.ts`, navigation, clipboard, layout persistence). Editors are DOM overlays on the canvas. |
 | `src/shared/` | Types (`types.ts` — `AppBootstrapApi`, `QueryExecutionResult`, …), components (`Button`, `CenteredModal`, `Splitter`, `ListBox`…), utils (`sqlStatements`, `sqlSourceTable`, `sqlIdentifiers`, `valueFormatting`, `tsxHelpers`, `useCache`…) |
 | `src/electron/` | `main.ts` (window + native handlers), `preload.ts` (IPC bridge), `bridge.ts` |
-| `src/electronUtils/` | `vite-plugin.ts` (mounts `devServer` in browser mode, auto-generates `apiMethods.ts`, dev ports), `mainviewHelpers.ts` (`createAppClientPpc`), `browserOnlyHelpers.ts`, `releaseConfig.ts`/`releaseHelpers.ts` (release chain, loaded by Node's ESM loader — keep `.ts` extensions there) |
+| `src/electronUtils/` | **Project-agnostic: byte-identical to `gitvan/src/electronUtils`** (see AGENTS.md). `vite-plugin.ts` (mounts `devServer` in browser mode, auto-generates `apiMethods.ts`, dev ports), `mainviewHelpers.ts` (`createAppClientPpc`), `browserOnlyHelpers.ts` (browser dev server; app specifics come in as options), `helpers.ts`/`appDataDir.ts`, `useDatabase.ts`, `executeCommand.ts`/`requestContext.ts`, `signMacApp.ts`/`installMacApp.ts` and `releaseHelpers.ts`/`electronConfig.ts` (release chain, loaded by Node's ESM loader — keep `.ts` extensions there) |
 | `src/directives/` | `v-tooltip`, `v-context-menu`, `v-loading`, `v-error` |
 | `todos.md` | The task ledger: Done / Open / Open (blocked) / Not planned, with the specs that guard each fix |
 
@@ -127,7 +127,7 @@ guards it are the reference.
    copy broke the fix once more: `fs.cp` rewrote the bundle's relative framework symlinks into absolute
    paths into `build/`, which unseals the signature, so the *installed* app behaved exactly like the
    unsigned one. *Rule:* sign the bundle ad-hoc and copy it with `ditto`. *Guards:*
-   `src/electronUtils/signMacApp.spec.ts`, `src/electronUtils/installMacApp.spec.ts`, `packaged.spec.ts`
+   `src/mainview/tests/backend/signMacApp.spec.ts`, `src/mainview/tests/backend/installMacApp.spec.ts`, `packaged.spec.ts`
    (the artifact must carry a signature macOS accepts), plus the post-install signature check in
    `releaseHelpers.ts`.
 
