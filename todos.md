@@ -444,6 +444,26 @@ The three structural follow-ups from that audit are fixed too:
   carries the change). The per-call `applySelectionBootstrap` wrapper is gone. Guarded by
   `src/mainview/tests/composables/dbCoreState.spec.ts`.
 
+### 2026-10-12 quit the app when the last window closes
+
+Reported from the dock: closing the window left the process resident (the macOS branch of
+`window-all-closed` skipped `app.quit()`), and clicking the icon ran `activate`, which recreated a
+window whose renderer never drew — a white screen, with the backend still holding the API port. The
+shell now quits on the last window close on every platform and the recreate path is gone, so the dock
+icon starts the app afresh. Guarded by `src/mainview/tests/electron/shell-native.spec.ts` (closing the
+only window ends the process with code 0).
+
+The Electron suite had also been red since `7713834` (the bootstrap `version`), which no run after that
+commit noticed:
+
+- `shell.spec.ts` listed the bootstrap keys without `version`; the shared helper is now
+  `withoutVolatileFields` (was `withoutTimestamps`) and drops that per-call field too.
+- `packaged.spec.ts` compared two of its own snapshots through a copy of that helper, which had the
+  same bug; it uses the shared one now, and it launches the artifact with the harness switches
+  `shellArgs` documents (`--no-sandbox --disable-gpu --user-data-dir=…`) and an `APP_DATA_DIR` of its
+  own, so it starts on a host without a Chromium sandbox instead of failing to launch and leaving its
+  DB and profile in the developer's `~/Library/Application Support`.
+
 ### What a green suite already proves
 
 Each item is work a green run already proves; do not redo it.
