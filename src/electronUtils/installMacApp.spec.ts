@@ -29,7 +29,7 @@ function createSignedAppShapedBundle(directory: string, name: string) {
     mkdirSync(join(frameworkPath, 'Versions', 'A'), { recursive: true });
     mkdirSync(join(appPath, 'Contents', 'MacOS'), { recursive: true });
     writeFileSync(join(frameworkPath, 'Versions', 'A', 'Electron Framework'), 'binary');
-    writeFileSync(join(appPath, 'Contents', 'MacOS', 'Danevan'), 'binary');
+    writeFileSync(join(appPath, 'Contents', 'MacOS', 'Probe'), 'binary');
     symlinkSync(versionsLinkTarget, join(frameworkPath, 'Versions', 'Current'));
     symlinkSync(frameworkLinkTarget, join(frameworkPath, 'Electron Framework'));
 
@@ -38,9 +38,9 @@ function createSignedAppShapedBundle(directory: string, name: string) {
 
 describe.skipIf(process.platform !== 'darwin')('installMacApp', () => {
     it('copies the bundle without rewriting its framework symlinks', async () => {
-        tempDir = mkdtempSync(join(tmpdir(), 'danevan-install-'));
+        tempDir = mkdtempSync(join(tmpdir(), 'electron-utils-install-'));
         const sourcePath = createSignedAppShapedBundle(tempDir, 'Built.app');
-        const targetPath = join(tempDir, 'Applications', 'Danevan.app');
+        const targetPath = join(tempDir, 'Applications', 'Probe.app');
         mkdirSync(join(tempDir, 'Applications'));
 
         await installMacApp(sourcePath, targetPath);
@@ -53,20 +53,20 @@ describe.skipIf(process.platform !== 'darwin')('installMacApp', () => {
     });
 
     it('replaces an app that is already installed', async () => {
-        tempDir = mkdtempSync(join(tmpdir(), 'danevan-install-'));
+        tempDir = mkdtempSync(join(tmpdir(), 'electron-utils-install-'));
         const sourcePath = createSignedAppShapedBundle(tempDir, 'Built.app');
-        const targetPath = join(tempDir, 'Applications', 'Danevan.app');
+        const targetPath = join(tempDir, 'Applications', 'Probe.app');
         mkdirSync(targetPath, { recursive: true });
         writeFileSync(join(targetPath, 'stale'), 'from the previous installation');
 
         await installMacApp(sourcePath, targetPath);
 
         expect(existsSync(join(targetPath, 'stale'))).toBe(false);
-        expect(existsSync(join(targetPath, 'Contents', 'MacOS', 'Danevan'))).toBe(true);
+        expect(existsSync(join(targetPath, 'Contents', 'MacOS', 'Probe'))).toBe(true);
     });
 
     it('refuses a bundle that is not there', async () => {
-        tempDir = mkdtempSync(join(tmpdir(), 'danevan-install-'));
+        tempDir = mkdtempSync(join(tmpdir(), 'electron-utils-install-'));
 
         await expect(installMacApp(join(tempDir, 'Missing.app'), join(tempDir, 'Installed.app'))).rejects.toThrow('No app bundle to install');
     });

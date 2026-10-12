@@ -47,7 +47,7 @@ function helperInfoPlist(executableName: string) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
     <key>CFBundleExecutable</key><string>${executableName}</string>
-    <key>CFBundleIdentifier</key><string>com.mergesoft.danevan.sign-spec.${executableName.replace(/[^a-zA-Z]/g, '').toLowerCase()}</string>
+    <key>CFBundleIdentifier</key><string>com.example.electron-utils.sign-spec.${executableName.replace(/[^a-zA-Z]/g, '').toLowerCase()}</string>
     <key>CFBundleName</key><string>${executableName}</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSUIElement</key><true/>
@@ -61,7 +61,7 @@ function helperInfoPlist(executableName: string) {
  * a Mach-O binary at the app's own path.
  */
 function createUnpackedApp() {
-    tempDir = mkdtempSync(join(tmpdir(), 'danevan-sign-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'electron-utils-sign-'));
     const appPath = join(tempDir, 'Probe.app');
     const frameworksDir = join(appPath, 'Contents', 'Frameworks');
     mkdirSync(join(appPath, 'Contents', 'MacOS'), { recursive: true });
@@ -87,7 +87,7 @@ function createUnpackedApp() {
         `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-    <key>CFBundleIdentifier</key><string>com.mergesoft.danevan.sign-spec</string>
+    <key>CFBundleIdentifier</key><string>com.example.electron-utils.sign-spec</string>
     <key>CFBundleExecutable</key><string>Probe</string>
     <key>CFBundlePackageType</key><string>APPL</string>
 </dict></plist>
@@ -124,7 +124,7 @@ describe.skipIf(process.platform !== 'darwin')('signMacApp', () => {
     });
 
     it('refuses a path that is not an app bundle', async () => {
-        tempDir = mkdtempSync(join(tmpdir(), 'danevan-sign-'));
+        tempDir = mkdtempSync(join(tmpdir(), 'electron-utils-sign-'));
 
         await expect(signMacApp(join(tempDir, 'Missing.app'))).rejects.toThrow('No app bundle to sign');
     });

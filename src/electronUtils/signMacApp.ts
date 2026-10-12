@@ -1,5 +1,5 @@
-// Packaging renames `Electron Helper*.app` to `Danevan Helper*.app` (and the main binary to
-// `Danevan`), which invalidates the signatures Electron ships with. Chromium gives every helper
+// Packaging renames `Electron Helper*.app` to `<Product> Helper*.app` (and the main binary to the
+// product name), which invalidates the signatures Electron ships with. Chromium gives every helper
 // process its own macOS sandbox, and a helper can only inherit that sandbox when its bundle is
 // signed with the `com.apple.security.inherit` entitlement — without it the GPU process crash-loops
 // and Chromium aborts the whole app (`FATAL:gpu_data_manager_impl_private.cc GPU process isn't
