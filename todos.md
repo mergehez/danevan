@@ -3,8 +3,8 @@
 **Status:** 30 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U6, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1043 unit tests (85 files) · 120 browser tests
-(36 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
+settings blob, T11, T12, T14's tree work) · suite: **1043 unit tests (85 files) · 122 browser tests
+(37 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
 file **46.3 % statements / 38.2 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
@@ -28,9 +28,11 @@ not (`## Open (blocked)`).
 - `vp run lint` reports **pre-existing** oxlint TS7026 errors in `src/datagrid/DataGrid.tsx` (untouched
   by this list); `vue-tsc --noEmit` is clean. Use oxlint on the files you changed plus vue-tsc for a
   full typecheck.
-- Sandbox/e2e quirk: run Playwright with `APP_DATA_DIR="$(pwd)/.e2e-data" bunx playwright test ...`
-  and delete `.e2e-data` afterwards. Without it the backend tries to write
-  `~/Library/Application Support/danevan` and fails with `SQLITE_READONLY` outside the workspace.
+- Sandbox/e2e quirk: `playwright.config.ts` picks `APP_DATA_DIR=.e2e-data` itself and deletes only the
+  app DB (`danevan.sqlite*`) before the run. **Omit the variable** so each run starts clean; setting it
+  yourself (`APP_DATA_DIR="$(pwd)/.e2e-data"`) skips that reset and lets stale sources accumulate, which
+  shows up as `unable to open database file` from long-dead `file:` sources. Do **not** `rm -rf
+  .e2e-data` — it also holds the provisioned SQLFluff and MS Access runtimes.
   `bun run dev` kills stale listeners on 3263/3264, so stop other dev servers first.
 - A full `bun run test:e2e` is green on a provisioned machine (verified at commit `6139b00`). The two
   specs this list used to flag as pre-existing failures now pass: `sql-editor-cursor.spec.ts` in the

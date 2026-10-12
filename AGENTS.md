@@ -1,6 +1,15 @@
 # Project Agents
 
-To efficiently build this compact email client;
+To efficiently build this compact database client;
+
+## Start here
+
+- **Read `HANDOFF.md` before scanning the tree.** It is the maintained map: what the app is, how a
+  request flows, which state is per-tab and which is global, the bug classes this codebase has already
+  hit (with the specs that guard them), the traps in the test suites, and the current health snapshot.
+- **Maintain it.** Update `HANDOFF.md` in the same session that changes the commands, the architecture,
+  a known environment failure or the health snapshot; keep it under ~200 lines and link files instead of
+  pasting code. Findings and tasks go to `todos.md`; new recurring patterns become a rule here.
 
 ## 🎨 The Frontend Specialist (Vue, Tailwind, Iconify)
 
