@@ -25,10 +25,18 @@ function resolvePort(override: string | undefined, fallback: number): number {
     return Number.isInteger(parsed) && parsed > 0 && parsed < 65_536 ? parsed : fallback;
 }
 
-/** The renderer has no `process`, so the overrides are read only where there is one. */
-const env = typeof process === 'undefined' ? {} : process.env;
-const vuePort = resolvePort(env[`${envPrefix}_VUE_PORT`], pkg.config.vuePort);
-const apiPort = resolvePort(env[`${envPrefix}_API_PORT`], pkg.config.apiPort);
+/**
+ * The renderer has no `process`, so it reads the `VITE_*` name instead: a bundler inlines that one,
+ * which is how a dev run on other ports keeps the served app pointing at its own backend.
+ */
+function readPortOverride(envName: string, viteName: string): string | undefined {
+    const fromProcess = typeof process === 'undefined' ? undefined : process.env[envName];
+
+    return fromProcess ?? (import.meta.env?.[viteName] as string | undefined);
+}
+
+const vuePort = resolvePort(readPortOverride(`${envPrefix}_VUE_PORT`, 'VITE_VUE_PORT'), pkg.config.vuePort);
+const apiPort = resolvePort(readPortOverride(`${envPrefix}_API_PORT`, 'VITE_API_PORT'), pkg.config.apiPort);
 
 export const appConfig = {
     ...(pkg.config as Config),
