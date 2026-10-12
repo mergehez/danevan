@@ -8,7 +8,7 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-12, after the stale-context audit (commits up to `7628966`)._
+_Last verified: 2026-10-12, after the window-lifecycle and packaging-signature fixes (§6.7)._
 
 ## 1. What this is
 
@@ -120,6 +120,12 @@ guards it are the reference.
 6. **Watcher echo loops.** Monaco → `queryText` → draft sync → `replaceTab` used to re-trigger
    activation on every keystroke (cursor jumps). Activation no longer copies text between tabs and
    `setActiveTabText` writes the tab's own state. *Guard:* `src/mainview/tests/composables/useNavState.spec.ts`.
+7. **The packaged app shipped unsigned, so macOS would not sandbox its helpers.** `mac.identity: null`
+   left the renamed `Danevan Helper*.app` bundles with Electron's stale signatures; the GPU process
+   crash-looped and Chromium aborted the app a second after launch, so the window stayed white and the
+   app vanished (and, once closing a window quit the app, it looked like an instant exit). *Rule:* sign
+   the bundle ad-hoc. *Guards:* `src/electronUtils/signMacApp.spec.ts`, `packaged.spec.ts` (the artifact
+   must carry a signature macOS accepts).
 
 ## 7. Testing — the traps
 
@@ -160,16 +166,20 @@ specs really ran.
   `withoutVolatileFields` (`src/mainview/tests/electron/helpers.ts`). The packaged smoke test launches the
   artifact with that helper's environment plus the `shellArgs` switches; without them it cannot start on a
   host that gives Chromium no sandbox.
+- **`electron-builder`'s dmg stage fails in a restricted shell** (`hdiutil` → `plistlib.InvalidFileException`)
+  while the `.app` in `build/mac-arm64` is already complete: verify it with `bunx electron-builder --dir` and
+  `bunx playwright test --config playwright.packaged.config.ts` rather than the full release command.
 - Unit specs: `vitest.config.js` counts **every** source file (including untested ones) and enforces
   aggregate and per-area floors; raise a floor when you close a gap.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1043 unit tests (85 files)**, **122 browser tests (37 files)**,
-**13 Electron shell tests** (dev ×12 + packaged), coverage **46.3 % statements / 38.2 % branches** with
+Snapshot at the last verification: **1046 unit tests (86 files)**, **122 browser tests (37 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.3 % statements / 38.2 % branches** with
 the floors green. The full browser suite is 120 passed + the 2 keychain failures above; that green run
 also assumes the local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine
-the precondition guards will fail loudly instead — read the message, it names what is missing.
+the precondition guards will fail loudly instead — read the message, it names what is missing. The
+browser suite was not re-run after the last two fixes (unit, dev-shell and packaged suites were).
 
 Open tasks live in `todos.md` (`## Open`): **T15** (release gate misses the Electron suites), **T19**
 (browser suite contributes no coverage; no `src/mainview` floor), **T25** (MySQL specs depend on local

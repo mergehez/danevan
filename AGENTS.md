@@ -160,4 +160,16 @@ Suggested from the 2026-10-12 stale-context audit:
   Adding a field to `AppBootstrapApi` means adding it to `buildBootstrap`; never apply a snapshot on
   arrival alone. Guarded by `src/mainview/tests/composables/dbCoreState.spec.ts`.
 
+Suggested from the 2026-10-12 "the app quits immediately" report:
+
+- **A packaged macOS app is signed, ad-hoc if need be — otherwise its helper processes cannot sandbox.**
+  `electronConfig` packs with `mac.identity: null`, so nothing signed the bundle, and packaging renames
+  `Electron Helper*.app` to `Danevan Helper*.app`, which invalidates the signatures Electron ships with.
+  macOS then refuses the helpers the `com.apple.security.inherit` sandbox, the GPU process crash-loops,
+  and Chromium aborts the whole app about a second after launch
+  (`FATAL:gpu_data_manager_impl_private.cc GPU process isn't usable. Goodbye.`): the window stays white
+  and the app disappears. A *white* window that then exits is a signing problem, not a lifecycle one —
+  `afterPack` calls `signMacApp.ts`, guarded by its spec and by `packaged.spec.ts`. Check this before
+  suspecting the window code when a user reports a Danevan that will not start.
+
 

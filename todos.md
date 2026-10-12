@@ -448,10 +448,9 @@ The three structural follow-ups from that audit are fixed too:
 
 Reported from the dock: closing the window left the process resident (the macOS branch of
 `window-all-closed` skipped `app.quit()`), and clicking the icon ran `activate`, which recreated a
-window whose renderer never drew — a white screen, with the backend still holding the API port. The
-shell now quits on the last window close on every platform and the recreate path is gone, so the dock
-icon starts the app afresh. Guarded by `src/mainview/tests/electron/shell-native.spec.ts` (closing the
-only window ends the process with code 0).
+window. The shell now quits on the last window close on every platform and the recreate path is gone,
+so the dock icon starts the app afresh. Guarded by `src/mainview/tests/electron/shell-native.spec.ts`
+(closing the only window ends the process with code 0).
 
 The Electron suite had also been red since `7713834` (the bootstrap `version`), which no run after that
 commit noticed:
@@ -463,6 +462,37 @@ commit noticed:
   `shellArgs` documents (`--no-sandbox --disable-gpu --user-data-dir=…`) and an `APP_DATA_DIR` of its
   own, so it starts on a host without a Chromium sandbox instead of failing to launch and leaving its
   DB and profile in the developer's `~/Library/Application Support`.
+
+### 2026-10-12 the packaged app could not start: it shipped unsigned
+
+After the quit-on-close change the user reported the app "quits immediately — I see a white screen" on
+a plain Dock launch, and it was reproducible: the same bundle opened and died about 1.5 s in. The
+window and the quit handler were innocent — the process was being aborted by Chromium, not by
+`window-all-closed` (`forcefullyCrashRenderer` leaves the window up, so a dead renderer cannot explain
+it). The real chain, read off a failing launch:
+
+```
+sandbox initialization failed: Operation not permitted
+GPU process exited unexpectedly: exit_code=6        (×5)
+FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc GPU process isn't usable. Goodbye.
+…/Danevan.app/Contents/MacOS/Danevan exited with signal SIGTRAP
+```
+
+`electronConfig` packs with `mac.identity: null`, so nothing signed the bundle, while packaging renames
+`Electron Helper*.app` to `Danevan Helper*.app` and leaves Electron's signatures stale. macOS refuses
+those helpers the `com.apple.security.inherit` sandbox, the GPU (and renderer) processes cannot start,
+the page never paints — **the white screen the user had reported from the start** — and Chromium
+aborts the app a second later. `activate`-recreated windows failed the same way, which is what made it
+look like a reopen-only bug, and once closing a window quit the app, every launch ended in a prompt
+exit. The 26 `Danevan Helper` crash reports on this machine are that GPU crash loop.
+
+`afterPack` now runs `src/electronUtils/signMacApp.ts`, which signs the renamed helpers and the app
+ad-hoc with the entitlements in `src/electronUtils/entitlements/` (`com.apple.security.inherit` for the
+helpers, the JIT/library ones for the app) and verifies the result. Proven on this machine before
+wiring it up: the unsigned bundle dies at ~1.5 s with GPU crash reports, the ad-hoc signed copy of the
+same bundle runs indefinitely with none. Guarded by `src/electronUtils/signMacApp.spec.ts` (a renamed
+Electron helper gets `inherit`) and by `packaged.spec.ts`, which now also asserts the artifact carries
+a signature macOS accepts.
 
 ### What a green suite already proves
 
