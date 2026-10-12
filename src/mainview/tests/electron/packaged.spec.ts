@@ -5,16 +5,10 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { closeShell, createAppDataDir, post, shellEnv, withoutVolatileFields, type ElectronBridgeGlobal } from './helpers';
 
 const APP_BUNDLE = join(process.cwd(), 'build', 'mac-arm64', 'Danevan.app');
 const APP_EXECUTABLE = join(APP_BUNDLE, 'Contents', 'MacOS', 'Danevan');
-const API_URL = 'http://127.0.0.1:3264/api';
-
-type ElectronBridge = {
-    electronAPI?: {
-        invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
-    };
-};
 
 test.beforeAll(() => {
     if (!existsSync(APP_EXECUTABLE)) {
@@ -22,45 +16,17 @@ test.beforeAll(() => {
     }
 });
 
-async function post(method: string): Promise<unknown> {
-    const response = await fetch(`${API_URL}/${method}`, { method: 'POST' });
-
-    if (!response.ok) {
-        throw new Error(`POST /api/${method} failed with ${response.status}: ${await response.text()}`);
-    }
-
-    const body = await response.text();
-    return body ? JSON.parse(body) : undefined;
-}
-
-/** Timestamps are rewritten by the bootstrap's own selection normalisation. */
-function withoutTimestamps(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value.map(withoutTimestamps);
-    }
-
-    if (value && typeof value === 'object') {
-        return Object.fromEntries(
-            Object.entries(value)
-                .filter(([key]) => !key.endsWith('_at'))
-                .map(([key, entry]) => [key, withoutTimestamps(entry)])
-        );
-    }
-
-    return value;
-}
-
 test('the packaged app boots its bundled backend and answers IPC', async () => {
-    const env: Record<string, string> = {};
+    const appDataDir = createAppDataDir('danevan-packaged-');
 
-    for (const [key, value] of Object.entries(process.env)) {
-        // As in the dev-shell spec: ELECTRON_RUN_AS_NODE makes Electron behave as plain Node.
-        if (value !== undefined && key !== 'ELECTRON_RUN_AS_NODE') {
-            env[key] = value;
-        }
-    }
-
-    const app = await electron.launch({ executablePath: APP_EXECUTABLE, env });
+    // The same harness switches as the dev shell (`shellArgs`): a host that cannot give Chromium a
+    // sandbox or a GPU process would fail to launch it, and this run must not open the developer's
+    // own app DB and Electron profile.
+    const app = await electron.launch({
+        executablePath: APP_EXECUTABLE,
+        args: ['--no-sandbox', '--disable-gpu', `--user-data-dir=${join(appDataDir, 'electron')}`],
+        env: shellEnv(appDataDir),
+    });
 
     try {
         // The app runs from the packaged asar, not from the working tree.
@@ -71,14 +37,14 @@ test('the packaged app boots its bundled backend and answers IPC', async () => {
         await expect(window.getByRole('heading', { name: 'Connections' })).toBeVisible();
         await expect(window.getByTestId('sidebar-settings')).toBeVisible();
 
-        const bridge = await window.evaluate(() => Object.keys((globalThis as ElectronBridge).electronAPI ?? {}));
+        const bridge = await window.evaluate(() => Object.keys((globalThis as ElectronBridgeGlobal).electronAPI ?? {}));
         expect(bridge).toEqual(['invoke', 'onNativeCommand', 'sendDiagnostic']);
 
-        const overIpc = (await window.evaluate(() => (globalThis as ElectronBridge).electronAPI!.invoke('getBootstrap'))) as Record<string, unknown>;
+        const overIpc = (await window.evaluate(() => (globalThis as ElectronBridgeGlobal).electronAPI!.invoke('getBootstrap'))) as Record<string, unknown>;
 
         // The bundled backend answered, over the same app database the HTTP API reads.
-        expect(withoutTimestamps(overIpc)).toEqual(withoutTimestamps(await post('getBootstrap')));
+        expect(withoutVolatileFields(overIpc)).toEqual(withoutVolatileFields(await post('getBootstrap')));
     } finally {
-        await app.close();
+        await closeShell(app, appDataDir);
     }
 });
