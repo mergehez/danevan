@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { installMacApp } from './installMacApp.ts';
+import { installMacApp } from '../../../electronUtils/installMacApp.ts';
 
 /** The relative symlinks a real bundle carries (`Versions/Current` and the framework's binary). */
 const frameworkLinkTarget = 'Versions/Current/Electron Framework';

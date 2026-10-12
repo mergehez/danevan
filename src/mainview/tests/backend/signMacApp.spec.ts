@@ -10,7 +10,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { signMacApp } from './signMacApp.ts';
+import { signMacApp } from '../../../electronUtils/signMacApp.ts';
 
 const electronFrameworksDir = join(process.cwd(), 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'Frameworks');
 const helperNames = ['Electron Helper.app', 'Electron Helper (GPU).app'];
