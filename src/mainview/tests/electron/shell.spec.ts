@@ -3,7 +3,7 @@
 // `window.electronAPI`, and loads the built frontend from `dist/`. Everything else runs in
 // browser-only dev mode, where none of that is exercised.
 import { expect, test } from '@playwright/test';
-import { closeShell, createAppDataDir, launchShell, post, requireShellBuild, withoutTimestamps, type ElectronBridgeGlobal } from './helpers';
+import { closeShell, createAppDataDir, launchShell, post, requireShellBuild, withoutVolatileFields, type ElectronBridgeGlobal } from './helpers';
 
 test.beforeAll(() => {
     requireShellBuild();
@@ -39,10 +39,11 @@ test('the shell opens its window and answers an IPC round trip', async () => {
         const overIpc = (await window.evaluate(() => (globalThis as ElectronBridgeGlobal).electronAPI!.invoke('getBootstrap'))) as Record<string, unknown>;
 
         // A fresh app DB has no source, so nothing is selected and the response carries no
-        // `selected*` keys; the shell answers the same bootstrap over IPC as over HTTP.
-        expect(Object.keys(overIpc).sort()).toEqual(['connections', 'scripts', 'servers']);
+        // `selected*` keys; it does carry the snapshot `version`; the shell answers the same
+        // bootstrap over IPC as over HTTP.
+        expect(Object.keys(overIpc).sort()).toEqual(['connections', 'scripts', 'servers', 'version']);
         // The renderer's answer is the backend's answer, not a stub.
-        expect(withoutTimestamps(overIpc)).toEqual(withoutTimestamps(bootstrap));
+        expect(withoutVolatileFields(overIpc)).toEqual(withoutVolatileFields(bootstrap));
     } finally {
         await closeShell(app, appDataDir);
     }

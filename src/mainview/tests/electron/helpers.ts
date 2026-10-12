@@ -108,18 +108,18 @@ export async function post(method: string, data?: unknown): Promise<unknown> {
     return body ? JSON.parse(body) : undefined;
 }
 
-/** `getBootstrap` re-normalises the stored selection, which rewrites `updated_at` on the rows
- *  it touches, so timestamps cannot be compared across two calls. */
-export function withoutTimestamps(value: unknown): unknown {
+/** Two `getBootstrap` answers are never identical field by field: the selection normalisation
+ *  rewrites `updated_at` on the rows it touches, and `version` is stamped per snapshot. */
+export function withoutVolatileFields(value: unknown): unknown {
     if (Array.isArray(value)) {
-        return value.map(withoutTimestamps);
+        return value.map(withoutVolatileFields);
     }
 
     if (value && typeof value === 'object') {
         return Object.fromEntries(
             Object.entries(value)
-                .filter(([key]) => !key.endsWith('_at'))
-                .map(([key, entry]) => [key, withoutTimestamps(entry)])
+                .filter(([key]) => !key.endsWith('_at') && key !== 'version')
+                .map(([key, entry]) => [key, withoutVolatileFields(entry)])
         );
     }
 
