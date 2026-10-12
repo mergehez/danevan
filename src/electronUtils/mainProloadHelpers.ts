@@ -61,8 +61,8 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
 
     function registerIpcHandlers(handlers: Record<string, any>) {
         for (const [name, handler] of Object.entries(handlers)) {
-            // A window can be recreated (`activate` after the last one closed): the handlers of the
-            // window that is gone must be replaced, not registered a second time, which throws.
+            // Registering the same name twice throws, so a handler of a window that is gone is
+            // replaced rather than added next to its predecessor.
             ipcMain.removeHandler(name);
             ipcMain.handle(name, async (_event, ps) => (handler as (ps?: unknown) => Promise<unknown>)(ps));
         }
@@ -172,15 +172,15 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
             })();
             console.log('Backend started. Creating window...');
             await createWindow();
-            app.on('activate', () => {
-                if (BrowserWindow.getAllWindows().length === 0) createWindow();
-            });
         });
 
         function stopBackend() {}
         app.on('window-all-closed', () => {
             stopBackend();
-            if (process.platform !== 'darwin') app.quit();
+            // Closing the last window ends the app on every platform, macOS included. Staying
+            // resident let a dock click run `activate`, which recreated a window on a renderer that
+            // no longer drew anything; a plain quit makes the dock icon start the app afresh.
+            app.quit();
         });
         app.on('will-quit', () => {
             stopBackend();

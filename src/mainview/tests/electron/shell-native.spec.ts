@@ -1,6 +1,6 @@
 // What `src/electron/main.ts` wires for the shell: the macOS menu and the native command it sends to
 // the renderer, the file/path helpers the preload exposes, the renderer diagnostics, and the window
-// lifecycle (`window-all-closed` on macOS, `activate`). Only the native dialogs and the shell calls
+// lifecycle (closing the last window quits the app). Only the native dialogs and the shell calls
 // are stubbed: they are the platform boundary and would otherwise open a real dialog or launch a
 // real app on the machine running the suite.
 import { expect, test, type ElectronApplication } from '@playwright/test';
@@ -44,23 +44,6 @@ async function stubNativeSurface(app: ElectronApplication, openPaths: string[], 
 
 function nativeCalls(app: ElectronApplication) {
     return app.evaluate(() => (globalThis as unknown as { __nativeCalls: NativeCalls }).__nativeCalls);
-}
-
-/** Whether the newest window's renderer has drawn the app's first heading. */
-function drawnHeading(app: ElectronApplication) {
-    return app.evaluate(async ({ BrowserWindow }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-
-        if (!window) {
-            return false;
-        }
-
-        const headings = (await window.webContents.executeJavaScript(
-            "Array.from(document.querySelectorAll('h1, h2, h3')).map((element) => element.textContent?.trim() ?? '')"
-        )) as string[];
-
-        return headings.includes('Connections');
-    });
 }
 
 /** Clicks a menu item by its label path, the way the menu bar does. */
@@ -162,26 +145,20 @@ test('a renderer diagnostic reaches the main process', async () => {
     }
 });
 
-test('closing the last window keeps the app alive until activate opens a new one', async () => {
-    const appDataDir = createAppDataDir('danevan-activate-');
+test('closing the last window quits the app instead of leaving it resident', async () => {
+    const appDataDir = createAppDataDir('danevan-quit-');
     const app = await launchShell(appDataDir);
 
     try {
         await openAppWindow(app);
 
-        // The window count is read in the main process: Playwright's own list keeps the page it saw.
-        const windowCount = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+        // Read the exit code from the handle: `app.process()` is gone once the shell is.
+        const shell = app.process();
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.close());
-        await expect.poll(windowCount, { message: 'closing the only window should leave none' }).toBe(0);
-        // macOS keeps the process: `window-all-closed` does not quit it.
-        expect(app.process().exitCode).toBeNull();
 
-        await app.evaluate(({ app: electronApp }) => electronApp.emit('activate'));
-        await expect.poll(windowCount, { message: 'activate should create a window again' }).toBe(1);
-
-        // Playwright's window list stays empty once the first window was closed, so what the
-        // recreated window drew is read from its `webContents` instead.
-        await expect.poll(() => drawnHeading(app), { message: 'the reopened window should draw the app shell' }).toBe(true);
+        // The process ends by itself, so the next dock click launches the app again instead of
+        // reopening a window on a renderer that was already gone (the white screen).
+        await expect.poll(() => shell.exitCode, { message: 'closing the last window should quit the app' }).toBe(0);
     } finally {
         await closeShell(app, appDataDir);
     }
