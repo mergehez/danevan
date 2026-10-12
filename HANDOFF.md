@@ -123,9 +123,13 @@ guards it are the reference.
 7. **The packaged app shipped unsigned, so macOS would not sandbox its helpers.** `mac.identity: null`
    left the renamed `Danevan Helper*.app` bundles with Electron's stale signatures; the GPU process
    crash-looped and Chromium aborted the app a second after launch, so the window stayed white and the
-   app vanished (and, once closing a window quit the app, it looked like an instant exit). *Rule:* sign
-   the bundle ad-hoc. *Guards:* `src/electronUtils/signMacApp.spec.ts`, `packaged.spec.ts` (the artifact
-   must carry a signature macOS accepts).
+   app vanished (and, once closing a window quit the app, it looked like an instant exit). The install
+   copy broke the fix once more: `fs.cp` rewrote the bundle's relative framework symlinks into absolute
+   paths into `build/`, which unseals the signature, so the *installed* app behaved exactly like the
+   unsigned one. *Rule:* sign the bundle ad-hoc and copy it with `ditto`. *Guards:*
+   `src/electronUtils/signMacApp.spec.ts`, `src/electronUtils/installMacApp.spec.ts`, `packaged.spec.ts`
+   (the artifact must carry a signature macOS accepts), plus the post-install signature check in
+   `releaseHelpers.ts`.
 
 ## 7. Testing — the traps
 
@@ -174,7 +178,7 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1046 unit tests (86 files)**, **122 browser tests (37 files)**,
+Snapshot at the last verification: **1049 unit tests (87 files)**, **122 browser tests (37 files)**,
 **14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.3 % statements / 38.2 % branches** with
 the floors green. The full browser suite is 120 passed + the 2 keychain failures above; that green run
 also assumes the local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine

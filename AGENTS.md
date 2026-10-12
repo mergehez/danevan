@@ -171,5 +171,11 @@ Suggested from the 2026-10-12 "the app quits immediately" report:
   and the app disappears. A *white* window that then exits is a signing problem, not a lifecycle one —
   `afterPack` calls `signMacApp.ts`, guarded by its spec and by `packaged.spec.ts`. Check this before
   suspecting the window code when a user reports a Danevan that will not start.
+- **Copy a signed bundle with `ditto`, never `fs.cp`.** A signature seals the bundle's layout and the
+  framework's symlinks are part of it: `fs.cp` resolves `Versions/Current/Electron Framework` into an
+  absolute path into the build directory, macOS then reports "unsealed contents present in the root
+  directory of an embedded framework", and the *installed* app fails exactly like an unsigned one even
+  though the build was signed. `installMacApp.ts` does the copy and `releaseHelpers.ts` re-checks the
+  installed signature, so a broken install fails the release instead of the user's next launch.
 
 

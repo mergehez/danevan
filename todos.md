@@ -494,6 +494,16 @@ same bundle runs indefinitely with none. Guarded by `src/electronUtils/signMacAp
 Electron helper gets `inherit`) and by `packaged.spec.ts`, which now also asserts the artifact carries
 a signature macOS accepts.
 
+It still failed after the first reinstall, because the release flow's copy broke the signature again:
+`fs.cp(builtAppPath, applicationsPath, { recursive: true })` resolved the bundle's relative framework
+symlinks (`Electron Framework -> Versions/Current/Electron Framework`) into absolute paths into
+`build/mac-arm64/Danevan.app/…`, so the installed app reported "unsealed contents present in the root
+directory of an embedded framework" and died exactly like an unsigned one. `installMacApp.ts` now
+copies with `ditto` (which preserves symlinks, xattrs and the signature) and `releaseHelpers.ts`
+re-checks the installed signature, so a copy that breaks the bundle fails the release instead of the
+user's next launch. Guarded by `src/electronUtils/installMacApp.spec.ts` (the installed framework
+symlink is still relative) and by the existing launch checks.
+
 ### What a green suite already proves
 
 Each item is work a green run already proves; do not redo it.
