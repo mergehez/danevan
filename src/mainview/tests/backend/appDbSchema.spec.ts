@@ -29,6 +29,7 @@ function createClient(path = databasePath): DatabaseClient {
                 all: <T>(...params: Parameters<typeof statement.all>) => statement.all(...params) as T[],
             };
         },
+        transaction: <T>(callback: () => T) => file.transaction(callback)(),
         close: () => {
             file.close();
         },

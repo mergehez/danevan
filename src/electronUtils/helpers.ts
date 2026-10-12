@@ -1,7 +1,7 @@
 import pkgObj from '../../package.json' with { type: 'json' };
-// electron-builder loads this file through Node's ESM loader (electron.config.js ->
-// electronConfig.ts -> helpers.ts), which needs the extension; a bundler would not.
-import { readApiErrorMessage } from '../shared/utils/errorMessage.ts';
+// electron-builder loads this file through Node's ESM loader (electron.config.js -> electronConfig.ts
+// -> helpers.ts), which needs the extension; a bundler would not.
+import { readApiErrorMessage } from './apiErrorMessage.ts';
 
 const pkg = JSON.parse(JSON.stringify(pkgObj));
 
@@ -14,25 +14,48 @@ type Config = {
     dbFileName: string;
 };
 
+/** `pkg.name` is the app's own name, so the port overrides stay app-specific without naming it here. */
+const envPrefix = String(pkg.name ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_');
+
+/** Ignores empty or invalid overrides so a typo'd env var cannot silently move the app to a random port. */
+function resolvePort(override: string | undefined, fallback: number): number {
+    const parsed = Number.parseInt(override ?? '', 10);
+    return Number.isInteger(parsed) && parsed > 0 && parsed < 65_536 ? parsed : fallback;
+}
+
+/** The renderer has no `process`, so the overrides are read only where there is one. */
+const env = typeof process === 'undefined' ? {} : process.env;
+const vuePort = resolvePort(env[`${envPrefix}_VUE_PORT`], pkg.config.vuePort);
+const apiPort = resolvePort(env[`${envPrefix}_API_PORT`], pkg.config.apiPort);
+
 export const appConfig = {
     ...(pkg.config as Config),
+    vuePort,
+    apiPort,
     projectName: pkg.name,
-    vueBaseUrl: `http://127.0.0.1:${pkg.config.vuePort}`,
-    apiBaseUrl: `http://127.0.0.1:${pkg.config.apiPort}`,
+    vueBaseUrl: `http://127.0.0.1:${vuePort}`,
+    apiBaseUrl: `http://127.0.0.1:${apiPort}`,
 };
+
+/** Backstop above the longest backend operation, so a lost answer never blocks the main process forever. */
+export const apiRequestTimeoutMs = 12 * 60_000;
 
 export async function callApiPost(method: string, params?: unknown): Promise<unknown> {
     const response = await fetch(`${appConfig.apiBaseUrl}/api/${method}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: params !== undefined ? JSON.stringify(params) : undefined,
+        signal: AbortSignal.timeout(apiRequestTimeoutMs),
     });
+    const body = await response.text();
+
     if (!response.ok) {
-        throw new Error(readApiErrorMessage(response.status, await response.text()));
+        throw new Error(readApiErrorMessage(response.status, body));
     }
 
-    // Endpoints that return nothing answer with an empty body, which `response.json()`
-    // rejects — over this bridge a void API method would look like a failure.
-    const body = await response.text();
+    // An endpoint that returns nothing answers with an empty body, which `JSON.parse` would reject —
+    // over this bridge a void method would look like a failure.
     return body ? JSON.parse(body) : undefined;
 }

@@ -19,6 +19,7 @@ type DatabaseStatement = {
 export type DatabaseClient = {
     exec: (sql: string) => void;
     prepare: (sql: string) => DatabaseStatement;
+    transaction: <T>(callback: () => T) => T;
     close: () => void;
 };
 
@@ -34,14 +35,25 @@ function createRuntimeDatabaseClient(databasePath: string, options?: { readOnly?
         timeout: 5000,
     });
 
+    // Statements are recompiled on every prepare, and the same handful of queries run on every
+    // request, so the wrappers are reused. Running arbitrary SQL clears the cache because the
+    // schema may have changed underneath the compiled statements.
+    const statementCache = new Map<string, DatabaseStatement>();
+
     const client: DatabaseClient = {
         exec: (sql: string) => {
             db.exec(sql);
+            statementCache.clear();
         },
         prepare: (sql: string): DatabaseStatement => {
+            const cached = statementCache.get(sql);
+            if (cached) {
+                return cached;
+            }
+
             const statement = db.prepare(sql);
 
-            return {
+            const prepared: DatabaseStatement = {
                 run: (...params: SQLInputValue[]) => {
                     const result = statement.run(...params);
                     return {
@@ -51,8 +63,13 @@ function createRuntimeDatabaseClient(databasePath: string, options?: { readOnly?
                 get: <T = Record<string, SQLOutputValue>>(...params: SQLInputValue[]) => (statement.get(...params) ?? undefined) as T | undefined,
                 all: <T = Record<string, SQLOutputValue>>(...params: SQLInputValue[]) => statement.all(...params) as T[],
             };
+
+            statementCache.set(sql, prepared);
+            return prepared;
         },
+        transaction: <T>(callback: () => T) => db.transaction(callback)(),
         close: () => {
+            statementCache.clear();
             db.close();
         },
     };
@@ -71,6 +88,7 @@ function createDbClient(userDataDir: string): DatabaseClient {
     return {
         exec: (sql: string) => db.exec(sql),
         prepare: (sql: string) => db.prepare(sql),
+        transaction: <T>(callback: () => T) => db.transaction(callback),
         close: () => db.close(),
     };
 }
@@ -94,16 +112,21 @@ export function useDatabase() {
     function normalizeSequence(tableName: string, additionalOrderBy: string = '') {
         const rows = db.prepare(`SELECT id FROM ${tableName} ORDER BY sequence ASC, ${additionalOrderBy} created_at ASC, id ASC`).all<{ id: number }>();
         const updateSequence = db.prepare(`UPDATE ${tableName} SET sequence = ? WHERE id = ?`);
-        rows.forEach((row, index) => {
-            updateSequence.run(index + 1, row.id);
+
+        db.transaction(() => {
+            rows.forEach((row, index) => {
+                updateSequence.run(index + 1, row.id);
+            });
         });
     }
 
     function applySequenceOrder(tableName: string, orderedIds: number[]) {
         const updateSequence = db.prepare(`UPDATE ${tableName} SET sequence = ? WHERE id = ?`);
 
-        orderedIds.forEach((entryId, index) => {
-            updateSequence.run(index + 1, entryId);
+        db.transaction(() => {
+            orderedIds.forEach((entryId, index) => {
+                updateSequence.run(index + 1, entryId);
+            });
         });
     }
 
@@ -159,47 +182,17 @@ export function useDatabase() {
             }
 
             db = createDbClient(userDataDir);
-            db.exec(`
-                PRAGMA journal_mode = WAL;
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS accounts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    label TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    auth_kind TEXT NOT NULL,
-                    username TEXT,
-                    host TEXT,
-                    sequence INTEGER NOT NULL DEFAULT 0,
-                    is_default INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
-                CREATE TABLE IF NOT EXISTS groups (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                    sequence INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
-                CREATE TABLE IF NOT EXISTS repositories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    path TEXT NOT NULL UNIQUE,
-                    sequence INTEGER NOT NULL DEFAULT 0,
-                    account_id INTEGER,
-                    terminal_path TEXT,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    last_opened_at TEXT,
-                    FOREIGN KEY (account_id) REFERENCES accounts(id)
-                );
-            `);
+            // The schema belongs to the app (`backend/services/database.ts`), which creates it in
+            // onDbCreated. Creating it here as well used to win the race with `CREATE TABLE IF NOT
+            // EXISTS` and left every brand-new database without the newer columns.
+            db.exec('PRAGMA journal_mode = WAL;');
 
             onDbCreated(db);
         },
         createRuntimeDatabaseClient: createRuntimeDatabaseClient,
         prepare: (sql: string) => db.prepare(sql),
         exec: (sql: string) => db.exec(sql),
+        transaction: <T>(callback: () => T) => db.transaction(callback),
         close: () => db.close(),
         toNumber: toNumber,
         getSetting<T>(key: string, fallbackValue: T) {
@@ -225,4 +218,4 @@ export function useDatabase() {
 
 // The data dir is resolved in its own module: the keychain needs it too, and it must not pull the
 // SQLite client in with it.
-export { resolveAppDataDir, resolveDefaultAppDataDir } from './appDataDir';
+export { resolveAppDataDir, resolveDefaultAppDataDir } from './appDataDir.ts';

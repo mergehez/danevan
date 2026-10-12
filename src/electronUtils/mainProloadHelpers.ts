@@ -13,11 +13,12 @@ const config = appConfig;
 
 /** The channel the renderer sends its console/window diagnostics on, both ends of it. */
 const RENDERER_DIAGNOSTIC_CHANNEL = 'renderer:diagnostic';
+/** Handlers are namespaced on the wire, so an app method cannot clash with an Electron channel. */
+const IPC_CHANNEL_PREFIX = 'api:';
 
 // __dirname: CJS provides it directly; ESM needs fileURLToPath(import.meta.url)
 const __dirname = typeof __filename !== 'undefined' ? dirname(__filename) : dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
-const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
 
 export type RendererDiagnosticPayload = {
     type: 'console-debug' | 'console-info' | 'console-log' | 'console-warn' | 'console-error' | 'window-error' | 'unhandled-rejection';
@@ -35,9 +36,14 @@ type Opts<AppServiceType extends Record<string, any>, NativeMethods extends Reco
     getNativeMethods: (mainWindow: BrowserWindow, apiPost: (method: string, params?: unknown) => Promise<unknown>) => NativeMethods;
     getMenu: (mainWindow: BrowserWindow) => Electron.MenuItemConstructorOptions[];
     windowSize?: (screen: Electron.Display['workAreaSize']) => { width: number; height: number; x: number; y: number };
+    /** Defaults to `fs.existsSync`; injected so a test can choose whether the built frontend exists. */
+    fileExists?: (path: string) => boolean;
 };
 export function createElectronHelpers<AppServiceType extends Record<string, any>, NativeMethods extends Record<string, any>>(opts: Opts<AppServiceType, NativeMethods>) {
     const { apiMethods, getNativeMethods, getMenu } = opts;
+    const fileExists = opts.fileExists ?? existsSync;
+    // Read at creation time rather than at module scope so a test (and a fork) can set it first.
+    const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
 
     function generateHandlers(mainWindow: BrowserWindow) {
         // type AppMethodKeys = { [K in keyof AppServiceType]: AppServiceType[K] extends (...args: any[]) => any ? K : never }[keyof AppServiceType];
@@ -63,8 +69,8 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
         for (const [name, handler] of Object.entries(handlers)) {
             // Registering the same name twice throws, so a handler of a window that is gone is
             // replaced rather than added next to its predecessor.
-            ipcMain.removeHandler(name);
-            ipcMain.handle(name, async (_event, ps) => (handler as (ps?: unknown) => Promise<unknown>)(ps));
+            ipcMain.removeHandler(`${IPC_CHANNEL_PREFIX}${name}`);
+            ipcMain.handle(`${IPC_CHANNEL_PREFIX}${name}`, async (_event, ps) => (handler as (ps?: unknown) => Promise<unknown>)(ps));
         }
 
         const ANSI_RESET = '\x1b[0m';
@@ -134,15 +140,17 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
         }
 
         const indexPath = join(projectRoot, 'dist', 'index.html');
-        if (existsSync(indexPath)) await mainWindow.loadFile(indexPath);
+        if (fileExists(indexPath)) await mainWindow.loadFile(indexPath);
         else throw new Error(`Frontend build not found at ${indexPath}. Run 'vp build' first.`);
 
         // final height
         console.log('final bounds: ', mainWindow.getBounds());
     }
 
-    function start() {
+    /** `loadBackend` is the sibling backend bundle by default; a test injects a stand-in that resolves at once. */
+    function start(loadBackend?: () => { ready?: Promise<void> }) {
         const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
+        const load = loadBackend ?? (() => _require('./backend.cjs') as { ready?: Promise<void> });
 
         // A second launch of the same app cannot take the API port the first one owns, and it never
         // reached `createWindow` — the EADDRINUSE had nowhere to go. The launch is handed to the
@@ -166,8 +174,8 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
 
         app.whenReady().then(async () => {
             console.log('Starting backend server...');
-            await ((): Promise<void> => {
-                const mod = _require('./backend.cjs') as { ready?: Promise<void> };
+            await (async (): Promise<void> => {
+                const mod = load();
                 return mod.ready ?? Promise.resolve();
             })();
             console.log('Backend started. Creating window...');
@@ -175,11 +183,11 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
         });
 
         function stopBackend() {}
+        // The app is single-window and has no dock-only mode: closing the window quits it, so a
+        // dock click starts the app afresh. Coming back would re-register every handler, and the
+        // second registration throws.
         app.on('window-all-closed', () => {
             stopBackend();
-            // Closing the last window ends the app on every platform, macOS included. Staying
-            // resident let a dock click run `activate`, which recreated a window on a renderer that
-            // no longer drew anything; a plain quit makes the dock icon start the app afresh.
             app.quit();
         });
         app.on('will-quit', () => {
@@ -194,15 +202,21 @@ export function createElectronHelpers<AppServiceType extends Record<string, any>
 }
 
 export function createPreloadApi<NativeCommand>(ipcRenderer: Electron.IpcRenderer, contextBridge: Electron.ContextBridge) {
+    const nativeCommandListeners = new Set<(command: NativeCommand) => void>();
+
+    // Listen for native commands from the main process
+    ipcRenderer.on('native-command', (_event, command: NativeCommand) => {
+        nativeCommandListeners.forEach((listener) => listener(command));
+    });
+
     const api = {
-        invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
+        invoke: (name: string, params?: unknown) => {
+            return ipcRenderer.invoke(`${IPC_CHANNEL_PREFIX}${name}`, params);
+        },
         onNativeCommand: (listener: (command: NativeCommand) => void) => {
-            const handler = (_event: Electron.IpcRendererEvent, command: NativeCommand) => {
-                listener(command);
-            };
-            ipcRenderer.on('native-command', handler);
+            nativeCommandListeners.add(listener);
             return () => {
-                ipcRenderer.removeListener('native-command', handler);
+                nativeCommandListeners.delete(listener);
             };
         },
         sendDiagnostic: (payload: unknown) => ipcRenderer.send(RENDERER_DIAGNOSTIC_CHANNEL, payload),

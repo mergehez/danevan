@@ -1,27 +1,6 @@
-type ApiErrorEnvelope = { error?: unknown };
-
-function readEnvelopeMessage(body: string) {
-    try {
-        const envelope = JSON.parse(body) as ApiErrorEnvelope;
-        const message = envelope?.error;
-
-        if (typeof message === 'string' && message.trim()) {
-            return message;
-        }
-    } catch {
-        // Not the JSON envelope: the raw body is all there is to report.
-    }
-
-    return undefined;
-}
-
-/**
- * A failed request carries the API's `{ "error": "..." }` envelope; the user should read the
- * message inside it, not the JSON (and escaped quotes) that wrap it.
- */
-export function readApiErrorMessage(status: number, body: string) {
-    return readEnvelopeMessage(body) ?? `Backend error (${status}): ${body.trim()}`;
-}
+// The envelope is the API's contract, so the reader lives with the code that posts to it and stays
+// copyable between apps; this module only re-exports it for the renderer's callers.
+export { readApiErrorMessage } from '../../electronUtils/apiErrorMessage.ts';
 
 /**
  * Electron rejects `ipcRenderer.invoke` with the channel and re-wraps the handler's error
