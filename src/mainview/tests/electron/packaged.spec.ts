@@ -5,6 +5,7 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isMacAppSigned } from '../../../electronUtils/signMacApp.ts';
 import { closeShell, createAppDataDir, post, shellEnv, withoutVolatileFields, type ElectronBridgeGlobal } from './helpers';
 
 const APP_BUNDLE = join(process.cwd(), 'build', 'mac-arm64', 'Danevan.app');
@@ -14,6 +15,13 @@ test.beforeAll(() => {
     if (!existsSync(APP_EXECUTABLE)) {
         throw new Error(`The packaged app is missing ${APP_EXECUTABLE}. Run "bun run test:e2e:packaged" (it builds first).`);
     }
+});
+
+test('ships a bundle macOS can sandbox, which is what its helper processes need', async () => {
+    // Unsigned, the renamed helper bundles cannot inherit a sandbox: Chromium's GPU process
+    // crash-loops and aborts the app a second after launch (the window stays white). `identity: null`
+    // means nothing but `signMacApp` signs this bundle, so the artifact is where to notice it.
+    expect(await isMacAppSigned(APP_BUNDLE)).toBe(true);
 });
 
 test('the packaged app boots its bundled backend and answers IPC', async () => {
