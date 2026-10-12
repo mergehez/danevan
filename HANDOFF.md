@@ -155,6 +155,11 @@ specs really ran.
 - **Bun cannot load `better-sqlite3` (NAPI)**; inspect the app DB with `node`/`npx tsx`.
 - **Ports are killed, not reused**: `bun run dev` kills whatever listens on 3263/3264, and the old
   `lsof -ti:PORT | kill -9` also matched *clients* (T31). Stop other dev servers before a spec run.
+- **Electron shell specs: two `getBootstrap` answers never match field by field** — the selection
+  normalisation rewrites `updated_at`, and every snapshot carries its own `version` — so compare through
+  `withoutVolatileFields` (`src/mainview/tests/electron/helpers.ts`). The packaged smoke test launches the
+  artifact with that helper's environment plus the `shellArgs` switches; without them it cannot start on a
+  host that gives Chromium no sandbox.
 - Unit specs: `vitest.config.js` counts **every** source file (including untested ones) and enforces
   aggregate and per-area floors; raise a floor when you close a gap.
 
