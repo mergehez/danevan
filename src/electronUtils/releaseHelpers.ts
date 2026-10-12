@@ -8,6 +8,8 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import pkg from '../../package.json' with { type: 'json' };
 import { appConfig } from './helpers';
+import { installMacApp } from './installMacApp.ts';
+import { isMacAppSigned } from './signMacApp.ts';
 
 type EnvMap = Record<string, string>;
 const appName = pkg.productName;
@@ -326,19 +328,13 @@ async function main() {
     if (shouldInstall) {
         const applicationsPath = join('/Applications', appBundleName);
 
-        if (await pathExists(applicationsPath)) {
-            console.log(`Removing existing application at ${applicationsPath}.`);
-            await rm(applicationsPath, { recursive: true, force: true });
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            if (!(await pathExists(applicationsPath))) {
-                console.log(`Removed existing application at ${applicationsPath}.`);
-            } else {
-                console.error(`Failed to remove existing application at ${applicationsPath}.`);
-            }
-        }
+        await installMacApp(builtAppPath, applicationsPath);
 
-        await cp(builtAppPath, applicationsPath, { recursive: true });
-        console.log(`Installed ${appBundleName} to /Applications.`);
+        // The copy has to leave the signature it was built with intact, or the installed app cannot
+        // start Chromium's helper processes (see `signMacApp.ts`).
+        if (!(await isMacAppSigned(applicationsPath))) {
+            throw new Error(`The app installed at ${applicationsPath} no longer carries a valid signature.`);
+        }
     }
 
     console.log(`App bundle: ${builtAppPath}`);
