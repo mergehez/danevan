@@ -195,7 +195,7 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1060 unit tests (87 files)**, **131 browser tests (40 files)**,
+Snapshot at the last verification: **1063 unit tests (87 files)**, **132 browser tests (40 files)**,
 **14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.5 % statements / 38.6 % branches** with
 the floors green. The full browser suite is 130 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition

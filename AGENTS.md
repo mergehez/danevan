@@ -200,7 +200,8 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   the grid still shows those rows — changed rows drop the stash, or an edit would attach to the
   wrong row. A switch that unmounts the panel (table to script or back) parks on scope dispose
   under the last-seen key instead, and a remount's viewport sync re-ensures the restored cell.
-  Guarded by `tab-grid-state.spec.ts` and
+  Pixel scroll is parked too (the cell alone cannot restore a wheel scroll), and a same-table
+  reload remaps the kept index to its row's primary key. Guarded by `tab-grid-state.spec.ts` and
   `src/mainview/tests/composables/useDbDataGrid.spec.ts`.
 - **Painted text state joins the render version.** The canvas caches formatted text per render
   version and redraws off it, so a layout change that alters no row (a display-type switch) must be
