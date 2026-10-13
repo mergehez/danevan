@@ -187,4 +187,26 @@ Suggested from the 2026-10-12 "the app quits immediately" report:
   though the build was signed. `installMacApp.ts` does the copy and `releaseHelpers.ts` re-checks the
   installed signature, so a broken install fails the release instead of the user's next launch.
 
+Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs losing state, dead display switch):
+
+- **A reload shows what the panel was showing.** A table load that restores an active custom query
+  re-runs that query instead of leaving the base rows under the custom text, and a save in custom
+  mode (or on a script result that is a plain select) refreshes from the same statement it displayed.
+  Showing other rows than the query names is how edits landed on rows the user never saw. Guarded by
+  `src/mainview/tests/e2e/tab-grid-state.spec.ts` and `result-save-target.spec.ts`.
+- **One shared grid parks per-tab view state; it never resets on a tab switch.** Pending edits,
+  inserted/deleted rows, the active cell and the selection are stashed under the leaving tab's key
+  (`useDbDataGrid`'s `stateKey`) with the row identity they were staged on, and restored only while
+  the grid still shows those rows — changed rows drop the stash, or an edit would attach to the
+  wrong row. Guarded by `tab-grid-state.spec.ts` and
+  `src/mainview/tests/composables/useDbDataGrid.spec.ts`.
+- **Painted text state joins the render version.** The canvas caches formatted text per render
+  version and redraws off it, so a layout change that alters no row (a display-type switch) must be
+  part of the version — otherwise the stored value updates, the search index rebuilds, and the
+  screen still shows the old text with no feedback. Guarded by
+  `src/mainview/tests/e2e/display-type-timestamp.spec.ts` (viewport pixels plus search).
+- **A resolver that matches against a lazily-loaded list ensures the list first.** `useResultSourceTable`
+  names the table against the connection's table list, which a script tab never loads on its own; it
+  now ensures the list instead of refusing a real table as unknown.
+
 

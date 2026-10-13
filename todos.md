@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 30 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U6, then the
+**Status:** 34 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U10, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1043 unit tests (85 files) · 122 browser tests
-(37 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **46.3 % statements / 38.2 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+settings blob, T11, T12, T14's tree work) · suite: **1055 unit tests (87 files) · 128 browser tests
+(39 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
+file **46.5 % statements / 38.5 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -280,6 +280,45 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
 
+### 2026-10-13 user-reported grid-state fixes (U7–U10)
+
+Four reports that made the grid feel unusable, all reproduced live before fixing (an isolated dev
+server on :3263/:3364, so the developer's app on :3264 was untouched):
+
+- **U7 — a custom-query edit was refused although the statement names one table.** The resolver
+  matches the parsed name against the connection's table list, which a script tab never loads on
+  its own — a result edited before the sidebar ever expanded that connection was refused as "not
+  a single known table". `useResultSourceTable` now ensures the table list (not just the details)
+  before concluding the table is unknown. The backticked `WHERE`/`ORDER BY` query from the report
+  is covered end to end by `tab-grid-state.spec.ts` (custom rows stay editable).
+- **U8 — navigating between tabs lost the grid state.** Two holes: (a) any reload (stale flag after
+  a script run, a save, the toolbar Reload) restored the custom-query *flag* but left the base
+  rows under the custom text — `loadSelectedTable` now re-runs the custom query when the restored
+  cache says custom mode (`useQuery.spec.ts`, `tab-grid-state.spec.ts`); (b) the one shared grid
+  instance reset pending edits, position and selection on every view change — they are now parked
+  per tab key (`useDbDataGrid`'s `stateKey`: the active tab's hash in `DbData`, the script tab's in
+  `DbScripts`) with the row identity they were staged on, and restored only while the grid still
+  shows those rows (changed rows drop the stash, or an edit would attach to the wrong row — found
+  live when the stash captured the incoming view's empty rows instead of the leaving view's).
+  Guarded by `tab-grid-state.spec.ts` (custom rows, pending edit, active cell) and
+  `useDbDataGrid.spec.ts` (park/restore/drop), with `restorePendingChanges` pinned in
+  `DataGrid.spec.ts`. The same-key/same-rows watcher fire no longer resets at all.
+- **U9 — after a save the custom query no longer applied.** The post-save table reload is what
+  implements the refresh, so with U8 it re-runs the custom query and the filter stays on
+  (`tab-grid-state.spec.ts`). A script result instead reloaded an unrelated table state and kept
+  showing the pre-save snapshot: `saveChanges` now calls the grid's `onSaved` hook when one is
+  passed, and `DbScripts` refreshes by re-running the result's own statement — but only a plain
+  single-table select (anything else could repeat a side effect). Guarded by the new
+  `result-save-target.spec.ts` case.
+- **U10 — "change display type" did nothing with no feedback.** The switch persisted to the layout
+  storage (and the search index rebuilt), but the canvas caches formatted text per render version
+  and redraws off it — and the version never included display types. The db grid's `renderVersion`
+  now carries the display-type signature, so the switch repaints immediately. Proven live on a
+  `bigint` unix-timestamp column (the report's `moves.created_at` shape): the raw integer matched
+  before, the ISO rendering after. Guarded by `display-type-timestamp.spec.ts` (viewport pixels for
+  the repaint, search for the content) and a render-version unit test in
+  `useDbDataGrid.spec.ts`. Each new spec was verified to fail with its fix reverted.
+
 ### 2026-10-11 stability-audit fixes
 
 - **T16 — the unit gate failed at random on an uncleaned `ListBox` timer.** `onFocus` scheduled a 100 ms
@@ -445,7 +484,6 @@ The three structural follow-ups from that audit are fixed too:
   `src/mainview/tests/composables/dbCoreState.spec.ts`.
 
 ### 2026-10-12 quit the app when the last window closes
-
 Reported from the dock: closing the window left the process resident (the macOS branch of
 `window-all-closed` skipped `app.quit()`), and clicking the icon ran `activate`, which recreated a
 window. The shell now quits on the last window close on every platform and the recreate path is gone,

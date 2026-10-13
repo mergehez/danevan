@@ -8,7 +8,8 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-12, after the window-lifecycle and packaging-signature fixes (§6.7)._
+_Last verified: 2026-10-13, after the grid-state fixes (custom-query reload, per-tab grid stash,
+display-type repaint, script-result refresh)._
 
 ## 1. What this is
 
@@ -76,18 +77,20 @@ live in one of them unless it is keyed by the tab.
 | `_dbCoreState` (`dbCoreState.ts`) | servers, connections, scripts, `selectedServerId/ConnectionId/ScriptId`, `bootstrapVersion` | The only writer of the snapshot; `applyBootstrap` drops older versions |
 | `useSettings` (`useSettings.ts`) | `tabs`, `activeTabHash`, UI prefs | Persisted in `localStorage` via `useCache` under `settings` |
 | `useNavState` (`useNavState.ts`) | Tab activation (serialized), per-script-tab runtime state (result panel, problems, history), the selection→tab watcher, closed-tab stack | Tab actions call `activateActiveTab()`; activation retries up to 5× and coalesces |
-| `useQuery` (`useQuery.ts`) | **Per tab**: rows, table metadata, selected table, grid SQL, custom query + its source SQL, editor text, result, running flag. **Shared**: `isTableDataStale` | `useQueryForTab(hash)` creates/returns a tab's state; `useQuery()` is a proxy that resolves the active tab on every read/write. Never capture it at setup and assume it is one tab. |
+| `useQuery` (`useQuery.ts`) | **Per tab**: rows, table metadata, selected table, grid SQL, custom query + its source SQL, editor text, result, running flag. **Shared**: `isTableDataStale` | `useQueryForTab(hash)` creates/returns a tab's state; `useQuery()` is a proxy that resolves the active tab on every read/write. Never capture it at setup and assume it is one tab. `loadSelectedTable` re-runs the custom query when the restored cache says custom mode, so a reload/save/reactivation shows the custom rows, not the base table. |
 | `useConnections` (`useConnections.ts`) | Per-connection table list, per-table details cache, selection actions | Loaders are keyed and guarded; `ensureTableDetailsBatch` is the batched sweep |
 | `useServers`, `useScriptsDb`, `useDbCaches` | Server schemas, script CRUD/selection, persisted tree collapse state | All by explicit id |
 | `useGridFormatters` | Custom formatter templates + the **current context** (connection+table) | Context loads are sequence-guarded; the grid loads the context of its own table |
 | `useForeignKeyPeek` / `useForeignKeyPeekViews` | The FK peek popover and the peek-view stack | Peek lookups carry a token; views are keyed by id |
-| `useComparison`, `useModifyTable`, `useDbDataGrid`, `useResultSourceTable` | Comparison state, Modify Table draft, the grid's behavior/target, the edited table's resolution | `useResultSourceTable` is what names the table an edit is written to |
+| `useComparison`, `useModifyTable`, `useDbDataGrid`, `useResultSourceTable` | Comparison state, Modify Table draft, the grid's behavior/target, the edited table's resolution | `useResultSourceTable` is what names the table an edit is written to (it ensures the connection's table list first — a script tab never loads one). `useDbDataGrid` is one shared instance whose pending edits/position/selection are parked per tab key (`stateKey`: active tab hash) and restored only while the rows match; its `renderVersion` carries the display-type signature so a switch repaints. |
 
 Panels: `App.tsx` renders `DbData` or `DbScripts` for the active tab's type. `DbData`'s grid target is
 `query.loadedConnectionId`; `DbScripts`'s result grid targets
 `queryResult.sourceConnectionId` with the table named by `queryResult.sourceSql` through
 `src/shared/utils/sqlSourceTable.ts` (which refuses joins, derived tables, set operations and unknown
-qualifiers).
+qualifiers). After a save the data grid reloads its table (re-running an active custom query);
+a script grid instead refreshes via its `onSaved` hook, which re-runs only a plain single-table
+select — anything else keeps its rows until the toolbar Reload.
 
 ## 6. Bug classes this repo has actually hit
 
@@ -109,7 +112,10 @@ guards it are the reference.
 3. **One shared object held every tab's panel state.** `useQuery` was a singleton whose fields were
    copied in and out as tabs activated, so a background run needed hand-rolled routing and a value
    could surface in the wrong tab. *Rule:* per-tab state is keyed by the tab. *Guard:*
-   `tab-query-state.spec.ts`.
+   `tab-query-state.spec.ts`. The grid is still one shared instance, so its *view* state (pending
+   edits, inserted/deleted rows, active cell, selection) is parked per tab key and restored only
+   while the row set matches; a same-key/same-rows fire no longer resets at all. *Guards:*
+   `tab-grid-state.spec.ts`, `useDbDataGrid.spec.ts`.
 4. **A whole-state snapshot was trusted on arrival.** Any bootstrap could revert a newer selection.
    *Rule:* the backend versions every snapshot; the renderer applies only a newer one. *Guard:*
    `dbCoreState.spec.ts`.
@@ -130,6 +136,11 @@ guards it are the reference.
    `src/mainview/tests/backend/signMacApp.spec.ts`, `src/mainview/tests/backend/installMacApp.spec.ts`, `packaged.spec.ts`
    (the artifact must carry a signature macOS accepts), plus the post-install signature check in
    `releaseHelpers.ts`.
+8. **A paint-affecting change that touches no row never repainted.** The canvas caches formatted text
+   per render version and redraws off it; a display-type switch updated the stored layout (and the
+   search index rebuilt) but the version never included display types, so the screen kept the old
+   text with no feedback. *Rule:* painted-text state joins the render version. *Guard:*
+   `display-type-timestamp.spec.ts` (viewport pixels plus search).
 
 ## 7. Testing — the traps
 
@@ -151,6 +162,8 @@ specs really ran.
   (`textarea[data-editor-key="<row>:<col>"]`, opened with `Enter`). `data-grid-viewport` can match
   several grids (FK peek) — use `.first()`. `Meta+ArrowLeft` / `Meta+ArrowUp` jump to the row's first
   cell / the column's first row, which is how a test reaches a known cell after an earlier edit.
+  The editor shows the *raw* value by design (`formatEditingValue`), so formatted text is proven
+  through the grid search counter or viewport pixels, never the editor.
 - **A fresh script tab opens on the Problems panel.** Click the `Result` tab before asserting a result.
 - **`openSidebarTable` returns before the rows land.** When a test edits right after opening a table,
   wait for the `/api/getTableData` response and/or the `Loading table data...` overlay to clear.
@@ -178,12 +191,13 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1049 unit tests (87 files)**, **122 browser tests (37 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.3 % statements / 38.2 % branches** with
-the floors green. The full browser suite is 120 passed + the 2 keychain failures above; that green run
-also assumes the local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine
-the precondition guards will fail loudly instead — read the message, it names what is missing. The
-browser suite was not re-run after the last two fixes (unit, dev-shell and packaged suites were).
+Snapshot at the last verification: **1055 unit tests (87 files)**, **128 browser tests (39 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.5 % statements / 38.5 % branches** with
+the floors green. The full browser suite is 128 passed + 0 failed (run against an isolated dev server on
+alternate ports so the developer's app on :3264 was untouched); that green run also assumes the local
+MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
+guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
+packaged suites were not re-run after these fixes (renderer-only changes).
 
 Open tasks live in `todos.md` (`## Open`): **T15** (release gate misses the Electron suites), **T19**
 (browser suite contributes no coverage; no `src/mainview` floor), **T25** (MySQL specs depend on local
