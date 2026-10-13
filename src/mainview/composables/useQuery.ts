@@ -85,6 +85,47 @@ export function _useQuery() {
         rememberCustomQuery();
     }
 
+    async function runCustomQuery() {
+        // The panel's own connection, not the sidebar's selection: the rows on screen and the
+        // query that replaces them must belong to the same database.
+        const connectionId = loadedConnectionId.value;
+
+        if (!connectionId || !customQueryText.value.trim()) {
+            return;
+        }
+
+        isRunningQuery.value = true;
+
+        try {
+            const result = await runSqlBatch(connectionId, customQueryText.value);
+
+            if (result?.kind === 'rows') {
+                const isSameAsGrid = customQueryText.value.trim() === gridQueryText.value.trim();
+                tableData.value = {
+                    columns: result.columns,
+                    rows: result.rows,
+                    columnStats: result.columnStats,
+                    rowCount: result.rows.length,
+                    limit: settings.state.queryRowLimit,
+                    offset: 0,
+                };
+                isCustomQueryMode.value = !isSameAsGrid;
+                customQuerySourceSql.value = result.sourceSql;
+            } else {
+                tableData.value = getEmptyTableData();
+                isCustomQueryMode.value = false;
+                customQuerySourceSql.value = undefined;
+            }
+        } catch {
+            tableData.value = getEmptyTableData();
+            isCustomQueryMode.value = false;
+            customQuerySourceSql.value = undefined;
+        } finally {
+            isRunningQuery.value = false;
+            rememberCustomQuery();
+        }
+    }
+
     async function loadSelectedTable(connectionId: number, tableName: string, options?: LoadSelectedTableOptions) {
         // Only the newest load may write: an older table's slow response used to land after a newer
         // one and show the previous table's rows under the new table's name.
@@ -137,6 +178,13 @@ export function _useQuery() {
             console.log(
                 `[perf][ui] loadSelectedTable ${Math.round(performance.now() - startedAt)}ms ${JSON.stringify({ connectionId, tableName, getTableInfo: infoDurationMs, getTableData: dataDurationMs })}`
             );
+
+            // The restored custom mode names a filter the base rows do not apply: leaving them
+            // on screen shows another row set under the custom query's text (and its edit
+            // target), so the custom query is re-run and its rows take the grid back.
+            if (loadId === loadSequence && isCustomQueryMode.value && customQueryText.value.trim() && customQueryText.value.trim() !== gridQueryText.value.trim()) {
+                await runCustomQuery();
+            }
         } catch {
             if (loadId !== loadSequence) {
                 return;
@@ -340,46 +388,7 @@ export function _useQuery() {
                 isRunningQuery.value = false;
             }
         },
-        async runCustomQuery() {
-            // The panel's own connection, not the sidebar's selection: the rows on screen and the
-            // query that replaces them must belong to the same database.
-            const connectionId = loadedConnectionId.value;
-
-            if (!connectionId || !customQueryText.value.trim()) {
-                return;
-            }
-
-            isRunningQuery.value = true;
-
-            try {
-                const result = await runSqlBatch(connectionId, customQueryText.value);
-
-                if (result?.kind === 'rows') {
-                    const isSameAsGrid = customQueryText.value.trim() === gridQueryText.value.trim();
-                    tableData.value = {
-                        columns: result.columns,
-                        rows: result.rows,
-                        columnStats: result.columnStats,
-                        rowCount: result.rows.length,
-                        limit: settings.state.queryRowLimit,
-                        offset: 0,
-                    };
-                    isCustomQueryMode.value = !isSameAsGrid;
-                    customQuerySourceSql.value = result.sourceSql;
-                } else {
-                    tableData.value = getEmptyTableData();
-                    isCustomQueryMode.value = false;
-                    customQuerySourceSql.value = undefined;
-                }
-            } catch {
-                tableData.value = getEmptyTableData();
-                isCustomQueryMode.value = false;
-                customQuerySourceSql.value = undefined;
-            } finally {
-                isRunningQuery.value = false;
-                rememberCustomQuery();
-            }
-        },
+        runCustomQuery: runCustomQuery,
         setCustomQueryText: setCustomQueryText,
         clearCustomQuery() {
             const connId = loadedConnectionId.value;

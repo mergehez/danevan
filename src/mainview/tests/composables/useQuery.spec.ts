@@ -141,4 +141,52 @@ describe('loadSelectedTable order by', () => {
         await query.loadSelectedTable(1, 'logins');
         expect(query.customQueryText).toBe('SELECT 1');
     });
+
+    it('re-runs the custom query when a reload restores custom mode', async () => {
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
+        holders.getTableData = {
+            run: vi.fn(async () => ({ ...tableDataResult([{ id: 1 }, { id: 2 }]), sql: 'SELECT * FROM "logins" LIMIT 100 OFFSET 0' })),
+        };
+        const runQuery = vi.fn(async () => ({ kind: 'rows', columns: ['id'], rows: [{ id: 2 }], columnStats: {} }));
+        const { tasks } = await import('../../composables/useTasks');
+        (tasks.runQuery as { run: unknown }).run = runQuery;
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+        expect(query.tableData.rows).toEqual([{ id: 1 }, { id: 2 }]);
+
+        query.setCustomQueryText('select * from logins where id = 2');
+        await query.runCustomQuery();
+        expect(query.isCustomQueryMode).toBe(true);
+        expect(query.tableData.rows).toEqual([{ id: 2 }]);
+
+        // A stale reload (tab switch, save, manual refresh) must bring the custom rows back,
+        // not leave the base rows under the custom query's text.
+        runQuery.mockClear();
+        await query.loadSelectedTable(1, 'logins');
+
+        expect(runQuery).toHaveBeenCalledTimes(1);
+        expect(query.isCustomQueryMode).toBe(true);
+        expect(query.customQuerySourceSql).toBe('select * from logins where id = 2');
+        expect(query.tableData.rows).toEqual([{ id: 2 }]);
+    });
+
+    it('does not re-run when the restored text matches the generated query', async () => {
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
+        holders.getTableData = {
+            run: vi.fn(async () => ({ ...tableDataResult([{ id: 1 }]), sql: 'SELECT * FROM "logins" LIMIT 100 OFFSET 0' })),
+        };
+        const runQuery = vi.fn();
+        const { tasks } = await import('../../composables/useTasks');
+        (tasks.runQuery as { run: unknown }).run = runQuery;
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        expect(query.isCustomQueryMode).toBe(false);
+        expect(runQuery).not.toHaveBeenCalled();
+        expect(query.tableData.rows).toEqual([{ id: 1 }]);
+    });
 });
