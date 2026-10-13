@@ -210,5 +210,10 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
 - **A resolver that matches against a lazily-loaded list ensures the list first.** `useResultSourceTable`
   names the table against the connection's table list, which a script tab never loads on its own; it
   now ensures the list instead of refusing a real table as unknown.
+- **Client-side ordering matches the database's NULL semantics.** The grid re-sorts the loaded page
+  for its sort indicator, and flipping the value comparison for DESC put NULLs first on databases
+  that sort them last. NULL placement is now an explicit per-dialect rule (`sortNullOrdering`:
+  `nulls-low` everywhere except PostgreSQL), so the grid agrees with the server order it just
+  loaded. Guarded by `grid-sort-nulls.spec.ts`.
 
 

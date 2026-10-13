@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 34 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U10, then the
+**Status:** 35 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U11, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1057 unit tests (87 files) · 130 browser tests
-(39 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **46.5 % statements / 38.5 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+settings blob, T11, T12, T14's tree work) · suite: **1060 unit tests (87 files) · 131 browser tests
+(40 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
+file **46.5 % statements / 38.6 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -324,6 +324,15 @@ server on :3263/:3364, so the developer's app on :3264 was untouched):
   before, the ISO rendering after. Guarded by `display-type-timestamp.spec.ts` (viewport pixels for
   the repaint, search for the content) and a render-version unit test in
   `useDbDataGrid.spec.ts`. Each new spec was verified to fail with its fix reverted.
+- **U11 — `ORDER BY x DESC` listed NULLs first on MySQL.** Answer: on MySQL (and SQLite, SQL
+  Server, Access) NULL is the smallest value, so the server sorts it last on DESC and first on
+  ASC; only PostgreSQL sorts it largest. The grid's client-side sort treated NULL as largest for
+  every dialect and flipped it on DESC, so a header sort contradicted the server order the grid
+  had just loaded. `useDataGrid` takes a `sortNullOrdering` (`useDbDataGrid` maps every dialect
+  except `postgresql` to `nulls-low`), verified live against MySQL (`DESC 1,5,3 + NULLs`,
+  `ASC NULLs + 3,5,1`). Guarded by `grid-sort-nulls.spec.ts` (header DESC/ASC on a nullable
+  SQLite column, values read back in visual order) and `DataGrid.spec.ts` null-ordering cases
+  for both rules, plus a `useDbDataGrid.spec.ts` mapping case.
 
 ### 2026-10-11 stability-audit fixes
 

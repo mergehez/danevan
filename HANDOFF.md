@@ -141,6 +141,10 @@ guards it are the reference.
    search index rebuilt) but the version never included display types, so the screen kept the old
    text with no feedback. *Rule:* painted-text state joins the render version. *Guard:*
    `display-type-timestamp.spec.ts` (viewport pixels plus search).
+9. **The client-side sort contradicted the server on NULLs.** The grid re-sorts the loaded page for
+   its sort indicator by flipping the value comparison on DESC, which puts NULLs first on dialects
+   that sort them last. *Rule:* NULL placement is an explicit per-dialect rule (`sortNullOrdering`).
+   *Guard:* `grid-sort-nulls.spec.ts`.
 
 ## 7. Testing — the traps
 
@@ -191,8 +195,8 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1057 unit tests (87 files)**, **130 browser tests (39 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.5 % statements / 38.5 % branches** with
+Snapshot at the last verification: **1060 unit tests (87 files)**, **131 browser tests (40 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.5 % statements / 38.6 % branches** with
 the floors green. The full browser suite is 130 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
