@@ -235,7 +235,7 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
 
         const columnIndex = findFirstColumnStartingAfter(contentX) - 1;
 
-        if (columnIndex < 0 || columnIndex >= shared.columns.length - 1) {
+        if (columnIndex < 0 || columnIndex >= shared.columns.length) {
             return undefined;
         }
 

@@ -1251,4 +1251,19 @@ describe('DataGrid', () => {
         state.toggleSort('v');
         expect(state.sortedRowIndexes.map((rowIndex) => state.getRow(rowIndex)?.id)).toEqual([3, 1, 2, 4]);
     });
+
+    it('offers a resize handle on the last column edge, but not past the grid', async () => {
+        const { state } = createGridState({ columns: ['id', 'name'] });
+        const { vm, wrapper } = await mountGridViewHarness(state);
+        const gutter = Number(vm.vs.gutterColumnWidth);
+        const total = Number(vm.vs.totalMeasuredWidth);
+
+        // At the last column's right edge: the handle of the last column.
+        expect(vm.vs.viewportHelpers.getResizeHandleAtViewportX(gutter + total - 2)).toMatchObject({ columnIndex: 1 });
+
+        // Past the grid entirely: empty space, not a handle.
+        expect(vm.vs.viewportHelpers.getResizeHandleAtViewportX(gutter + total + 50)).toBeUndefined();
+
+        wrapper.unmount();
+    });
 });
