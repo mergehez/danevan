@@ -16,6 +16,15 @@ const SCHEMA = `
 // The user's report shaped this query: quoted identifiers, a WHERE filter and an ORDER BY.
 const FILTERED_QUERY = 'SELECT * FROM `people` WHERE `id` = 2 ORDER BY `name` DESC';
 
+// Enough rows to scroll: pixel scroll must survive a tab switch, not just the active cell.
+const BIG_SCHEMA = `
+    CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE big (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+    INSERT INTO accounts (id, name) VALUES (1, 'Account One'), (2, 'Account Two');
+    WITH RECURSIVE counter(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM counter WHERE n < 30)
+    INSERT INTO big (id, name) SELECT n, 'row ' || n FROM counter;
+`;
+
 type Source = Awaited<ReturnType<typeof createFileSource>>;
 
 async function openApp(page: Page) {
@@ -273,6 +282,31 @@ test.describe('A table tab keeps its grid state', () => {
             const editor = page.locator('textarea[data-editor-key="1:0"]');
             await expect(editor).toBeVisible();
             await editor.press('Escape');
+        } finally {
+            await source.cleanup();
+        }
+    });
+
+    test('keeps the pixel scroll across tab switches', async ({ page, request }) => {
+        const source: Source = await createFileSource(request, { label: 'tab-pixel-scroll', schema: BIG_SCHEMA });
+
+        try {
+            await openApp(page);
+            await openTable(page, source, 'big');
+
+            // Scrolled deep with the active cell untouched (as a mouse wheel would: the
+            // assignment fires a genuine scroll event, so the grid cannot tell the difference).
+            const viewport = page.getByTestId('data-grid-viewport').first();
+            await viewport.evaluate((element) => {
+                element.scrollTop = 300;
+            });
+            const scrolled = await viewport.evaluate((element) => element.scrollTop);
+            expect(scrolled).toBeGreaterThan(0);
+
+            await openTable(page, source, 'accounts');
+            await openSidebarTable(page, source.connectionId, 'big');
+
+            await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(scrolled);
         } finally {
             await source.cleanup();
         }

@@ -1,4 +1,4 @@
-import { computed, getCurrentScope, onScopeDispose, reactive, ref, watch } from 'vue';
+import { computed, getCurrentScope, nextTick, onScopeDispose, reactive, ref, watch } from 'vue';
 import { useDataGrid, type DataGridCellValue, type DataGridPendingChange, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
 import { getDataGridLayoutStorageKey } from '../../datagrid/dataGridLayoutStorage';
 import type { ApplyTableChangesParams, DbType, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
@@ -75,6 +75,9 @@ type StashedTabGridState = {
     deletedBaseRowIndexes: number[];
     activeCell: { rowIndex: number; columnIndex: number };
     selectedRowIndexes: number[];
+    /** Pixel scroll of the viewport. The active cell alone cannot restore it: mouse-wheel
+     *  scrolling moves no cell, and re-showing the cell only scrolls it barely into view. */
+    scroll: { top: number; left: number } | undefined;
 };
 
 /**
@@ -679,14 +682,31 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     }
 
     function hasStashableGridState() {
+        const viewport = gridState.gridElement;
+        const scrolled = (viewport?.scrollTop ?? 0) !== 0 || (viewport?.scrollLeft ?? 0) !== 0;
+
         return (
             Object.keys(gridState.pendingChanges).length > 0 ||
             pendingInsertedRows.value.length > 0 ||
             pendingDeletedBaseRowIndexes.value.length > 0 ||
             gridState.selectedRowIndexes.length > 0 ||
             gridState.activeCell.rowIndex !== 0 ||
-            gridState.activeCell.columnIndex !== 0
+            gridState.activeCell.columnIndex !== 0 ||
+            scrolled
         );
+    }
+
+    /** The viewport's pixel scroll. `gridElement` is the scroll container itself (the view layer
+     *  syncs it there), so this is exact — unlike the active cell, which mouse-wheel scrolling
+     *  never moves and which only scrolls barely back into view. */
+    function currentViewportScroll() {
+        const viewport = gridState.gridElement;
+
+        if (!viewport) {
+            return lastKnownScroll;
+        }
+
+        return { top: viewport.scrollTop, left: viewport.scrollLeft };
     }
 
     function stashTabGridState(key: string, rowsIdentity: ReturnType<typeof currentRowsIdentity>) {
@@ -701,6 +721,7 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             deletedBaseRowIndexes: [...pendingDeletedBaseRowIndexes.value],
             activeCell: { rowIndex: gridState.activeCell.rowIndex, columnIndex: gridState.activeCell.columnIndex },
             selectedRowIndexes: [...gridState.selectedRowIndexes],
+            scroll: currentViewportScroll() ?? lastKnownScroll,
         });
 
         while (tabGridStash.size > MAX_STASHED_TAB_GRIDS) {
@@ -758,6 +779,68 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
         }
 
         gridState.setActiveCell(stash.activeCell.rowIndex, stash.activeCell.columnIndex);
+        lastActiveRowPk = readActiveRowPk();
+
+        // The element does not exist yet when this runs during setup (a remount): apply the
+        // pixels once the DOM is there. The programmatic write fires a scroll event, so the
+        // view layer re-syncs and redraws from the restored offset by itself.
+        if (stash.scroll && (stash.scroll.top !== 0 || stash.scroll.left !== 0)) {
+            pendingScrollRestore = stash.scroll;
+            void nextTick(() => {
+                const viewport = gridState.gridElement;
+                const pending = pendingScrollRestore;
+                pendingScrollRestore = undefined;
+
+                if (viewport && pending) {
+                    viewport.scrollTop = pending.top;
+                    viewport.scrollLeft = pending.left;
+                }
+            });
+        }
+    }
+
+    /** The primary-key value of the active row, tracked while the rows are current. A reload
+     *  replaces the rows under a kept index, so the position is remapped by identity below
+     *  instead of pointing at whatever row slid into the old index. */
+    function readActiveRowPk() {
+        const matchColumn = primaryKeyColumns.value[0];
+        const row = sourceTableData.value.rows[gridState.activeCell.rowIndex];
+
+        if (!matchColumn || !row) {
+            return undefined;
+        }
+
+        try {
+            return JSON.stringify(row[matchColumn] ?? null);
+        } catch {
+            return undefined;
+        }
+    }
+
+    function remapActiveCellByPk() {
+        if (lastActiveRowPk === undefined) {
+            return;
+        }
+
+        const matchColumn = primaryKeyColumns.value[0];
+
+        if (!matchColumn) {
+            return;
+        }
+
+        const nextRowIndex = sourceTableData.value.rows.findIndex((row) => {
+            try {
+                return JSON.stringify(row[matchColumn] ?? null) === lastActiveRowPk;
+            } catch {
+                return false;
+            }
+        });
+
+        if (nextRowIndex >= 0 && nextRowIndex !== gridState.activeCell.rowIndex) {
+            gridState.setActiveCell(nextRowIndex, gridState.activeCell.columnIndex);
+        }
+
+        lastActiveRowPk = readActiveRowPk();
     }
 
     // A fire with the same key and the same rows (late metadata, a layout-only change) must not
@@ -772,6 +855,13 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     // panel, which can take the watcher above with it before it parks the leaving view — the
     // dispose handler below parks under this key instead.
     let lastSeenStateKey: string | undefined;
+    // Last pixel scroll seen while the viewport existed: fallback for a dispose that runs after
+    // the element is already gone.
+    let lastKnownScroll: { top: number; left: number } | undefined;
+    // Pixels a restore still has to apply once the viewport exists (a remount).
+    let pendingScrollRestore: { top: number; left: number } | undefined;
+    // Primary-key value of the active row, tracked while the rows are current (see below).
+    let lastActiveRowPk: string | undefined;
 
     if (getCurrentScope()) {
         onScopeDispose(() => {
@@ -782,6 +872,16 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             }
         });
     }
+
+    // Tracks the active row's identity while the rows it points at are current. A reload swaps
+    // the rows under a kept index, so the main watcher remaps the position by this key instead
+    // of leaving it on whatever row slid into the old index.
+    watch(
+        () => [tableName.value, gridState.activeCell.rowIndex, gridState.activeCell.columnIndex] as const,
+        () => {
+            lastActiveRowPk = readActiveRowPk();
+        }
+    );
 
     watch(
         () => [
@@ -825,6 +925,18 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
 
             lastGridDataIdentity = identity;
             lastKnownRowsIdentity = rowsIdentity;
+
+            const viewportNow = gridState.gridElement;
+
+            if (viewportNow) {
+                lastKnownScroll = { top: viewportNow.scrollTop, left: viewportNow.scrollLeft };
+            }
+
+            // Same table, new rows (reload, save, fresh run): the kept index may address another
+            // row now, so the position follows its row instead of sliding onto whatever is there.
+            if (!tableChanged) {
+                remapActiveCellByPk();
+            }
 
             disableForeignKeyChecks.value = false;
             pendingInsertedRows.value = [];

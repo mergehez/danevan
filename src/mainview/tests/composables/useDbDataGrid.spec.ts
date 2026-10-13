@@ -472,6 +472,44 @@ describe('useDbDataGrid tab state', () => {
         expect(grid.pendingChangeCount).toBe(1);
         expect(grid.activeCell).toMatchObject({ rowIndex: 0, columnIndex: 2 });
     });
+
+    it('parks pixel scroll and restores it exactly', async () => {
+        const keyRef = ref('tab-a-pixel-park');
+        const { grid } = createGrid({ stateKey: () => keyRef.value });
+        await nextTick();
+
+        // Mouse-wheel scrolling moves no cell: only the pixel offset records it.
+        const viewport = document.createElement('div');
+        viewport.scrollTop = 500;
+        grid.setGridElement(viewport);
+
+        keyRef.value = 'tab-b-pixel-park';
+        await nextTick();
+
+        // The app zeroes the viewport on a view change; the parked pixels bring it back.
+        viewport.scrollTop = 0;
+        keyRef.value = 'tab-a-pixel-park';
+        await nextTick();
+        await nextTick();
+
+        expect(viewport.scrollTop).toBe(500);
+    });
+
+    it('remaps the active cell by primary key when the rows change', async () => {
+        const liveTable = reactive({ ...tableData, rows: tableData.rows.map((row) => ({ ...row })) });
+        const { grid } = createGrid({ tableData: () => liveTable });
+        await nextTick();
+
+        grid.setActiveCell(1, 0);
+        await nextTick();
+
+        // A row inserted above shifts every index down: the position follows its row (id 2).
+        liveTable.rows = [{ id: 0, owner_id: 0, note: 'zeroth' }, ...liveTable.rows.map((row) => ({ ...row }))];
+        liveTable.rowCount = 3;
+        await nextTick();
+
+        expect(grid.activeCell).toMatchObject({ rowIndex: 2, columnIndex: 0 });
+    });
 });
 
 // NULL is the smallest value on every supported dialect except PostgreSQL, so the client-side
