@@ -3,7 +3,7 @@
 // canvas consumes them. Capture that hand-off so the wiring can be asserted without the canvas.
 // Only the process boundary (the app client) is stubbed; the grid itself is the real one.
 import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, nextTick, reactive, ref } from 'vue';
+import { defineComponent, nextTick, reactive, ref, unref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataGridCellContext, DataGridHeaderContext, DataGridRowContext } from '../../../datagrid';
 import type { ContextMenuEntry, ContextMenuItem } from '../../../directives/contextMenuTypes';
@@ -471,5 +471,18 @@ describe('useDbDataGrid tab state', () => {
 
         expect(grid.pendingChangeCount).toBe(1);
         expect(grid.activeCell).toMatchObject({ rowIndex: 0, columnIndex: 2 });
+    });
+});
+
+// NULL is the smallest value on every supported dialect except PostgreSQL, so the client-side
+// sort has to place it first on ASC and last on DESC everywhere else.
+describe('useDbDataGrid null ordering', () => {
+    it('sorts nulls low for the default sqlite-flavoured dialect', async () => {
+        createGrid();
+        await nextTick();
+
+        const options = holders.gridOptions as unknown as { sortNullOrdering?: unknown };
+
+        expect(unref(options.sortNullOrdering as never)).toBe('nulls-low');
     });
 });

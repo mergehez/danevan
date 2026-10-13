@@ -416,6 +416,9 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             ),
         canUseTimestampDisplayTypes: isColumnIntegerLike,
         getColumnDisplayType: getColumnDisplayType,
+        // NULLs are the smallest value on every supported dialect except PostgreSQL: without
+        // this the client-side re-sort puts them first on DESC where the server put them last.
+        sortNullOrdering: computed(() => (sqlDialect.value === 'postgresql' ? ('nulls-high' as const) : ('nulls-low' as const))),
         headerContextMenuCustomItems: (context) =>
             getDbGridHeaderMenuItems(
                 {

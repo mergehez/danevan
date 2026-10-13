@@ -435,11 +435,29 @@ function createTransposedState(options: UseDataGridFinalOptions, _state: DataGri
                 return rowIndexes;
             }
 
+            // NULLs are ordered by the dialect's rule, not by the value comparator: flipping the
+            // comparison for DESC would put them first on databases that sort them last (MySQL,
+            // SQLite, SQL Server), contradicting the server order the grid just loaded.
+            const nullsLow = unref(options.sortNullOrdering) === 'nulls-low';
+            const nullFirst = nullsLow === (currentSort.direction === 'asc');
+
             return [...rowIndexes].sort((leftRowIndex, rightRowIndex) => {
-                const comparison = compareGridValues(
-                    state.getDisplayedCellValue(leftRowIndex, currentSort.columnName),
-                    state.getDisplayedCellValue(rightRowIndex, currentSort.columnName)
-                );
+                const left = state.getDisplayedCellValue(leftRowIndex, currentSort.columnName);
+                const right = state.getDisplayedCellValue(rightRowIndex, currentSort.columnName);
+
+                if (left == null || right == null) {
+                    if (left == null && right == null) {
+                        return leftRowIndex - rightRowIndex;
+                    }
+
+                    if (left == null) {
+                        return nullFirst ? -1 : 1;
+                    }
+
+                    return nullFirst ? 1 : -1;
+                }
+
+                const comparison = compareGridValues(left, right);
                 return comparison === 0 ? leftRowIndex - rightRowIndex : currentSort.direction === 'asc' ? comparison : comparison * -1;
             });
         },

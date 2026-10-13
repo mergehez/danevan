@@ -41,6 +41,7 @@ type GridStateOptions = {
     parseEditingValue?: (draftValue: string, originalValue: DataGridCellValue) => DataGridCellValue;
     createPendingChange?: (change: DataGridPendingChangeContext) => DataGridPendingChange;
     getFormattedCellValue?: (rowIndex: number, columnName: string) => string;
+    sortNullOrdering?: 'nulls-low' | 'nulls-high';
 };
 
 type MockCanvasContext = CanvasRenderingContext2D & {
@@ -186,6 +187,7 @@ function createGridState(options: GridStateOptions = {}) {
         parseEditingValue: options.parseEditingValue,
         createPendingChange: options.createPendingChange,
         getFormattedCellValue: options.getFormattedCellValue,
+        sortNullOrdering: options.sortNullOrdering,
     });
 
     return { columns, rows, state };
@@ -1209,5 +1211,44 @@ describe('DataGrid', () => {
         expect(viewport.scrollTop).toBe(scrolledTop);
 
         wrapper.unmount();
+    });
+
+    it('orders nulls like a nulls-low database: first on ASC, last on DESC', () => {
+        const { state } = createGridState({
+            columns: ['id', 'v'],
+            rows: [
+                { id: 1, v: 30 },
+                { id: 2, v: null },
+                { id: 3, v: 10 },
+                { id: 4, v: null },
+            ],
+            sortNullOrdering: 'nulls-low',
+        });
+
+        state.toggleSort('v');
+        expect(state.sortState).toEqual({ columnName: 'v', direction: 'desc' });
+        expect(state.sortedRowIndexes.map((rowIndex) => state.getRow(rowIndex)?.id)).toEqual([1, 3, 2, 4]);
+
+        state.toggleSort('v');
+        expect(state.sortState).toEqual({ columnName: 'v', direction: 'asc' });
+        expect(state.sortedRowIndexes.map((rowIndex) => state.getRow(rowIndex)?.id)).toEqual([2, 4, 3, 1]);
+    });
+
+    it('orders nulls like a nulls-high database by default: last on ASC, first on DESC', () => {
+        const { state } = createGridState({
+            columns: ['id', 'v'],
+            rows: [
+                { id: 1, v: 30 },
+                { id: 2, v: null },
+                { id: 3, v: 10 },
+                { id: 4, v: null },
+            ],
+        });
+
+        state.toggleSort('v');
+        expect(state.sortedRowIndexes.map((rowIndex) => state.getRow(rowIndex)?.id)).toEqual([2, 4, 1, 3]);
+
+        state.toggleSort('v');
+        expect(state.sortedRowIndexes.map((rowIndex) => state.getRow(rowIndex)?.id)).toEqual([3, 1, 2, 4]);
     });
 });

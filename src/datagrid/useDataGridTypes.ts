@@ -163,6 +163,13 @@ export type UseDataGridOptions = {
     canUseTimestampDisplayTypes?: (columnName: string) => boolean;
     getColumnDisplayType?: (columnName: string) => GridDisplayType;
     setColumnDisplayType?: (columnName: string, displayType: BuiltinGridDisplayType) => void;
+    /**
+     * How the data source orders NULLs, so a client-side sort agrees with the database instead
+     * of contradicting it: dialects that treat NULL as the smallest value (`mysql`, `sqlite`,
+     * `sqlserver`, `msaccess`) sort it first on ASC and last on DESC; dialects that treat it as
+     * the largest (`postgresql`) do the opposite. Defaults to `nulls-high`.
+     */
+    sortNullOrdering?: MaybeReactiveValue<'nulls-low' | 'nulls-high' | undefined>;
     formatEditingValue?: (value: DataGridCellValue) => string;
     parseEditingValue?: (draftValue: string, currentValue: DataGridCellValue) => DataGridCellValue;
     /** Builds the pending change for a committed edit. Returning nothing refuses the edit, which
