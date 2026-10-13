@@ -198,7 +198,9 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   inserted/deleted rows, the active cell and the selection are stashed under the leaving tab's key
   (`useDbDataGrid`'s `stateKey`) with the row identity they were staged on, and restored only while
   the grid still shows those rows — changed rows drop the stash, or an edit would attach to the
-  wrong row. Guarded by `tab-grid-state.spec.ts` and
+  wrong row. A switch that unmounts the panel (table to script or back) parks on scope dispose
+  under the last-seen key instead, and a remount's viewport sync re-ensures the restored cell.
+  Guarded by `tab-grid-state.spec.ts` and
   `src/mainview/tests/composables/useDbDataGrid.spec.ts`.
 - **Painted text state joins the render version.** The canvas caches formatted text per render
   version and redraws off it, so a layout change that alters no row (a display-type switch) must be

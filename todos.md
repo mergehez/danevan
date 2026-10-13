@@ -3,7 +3,7 @@
 **Status:** 34 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U10, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1055 unit tests (87 files) · 128 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1057 unit tests (87 files) · 130 browser tests
 (39 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
 file **46.5 % statements / 38.5 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
@@ -303,6 +303,12 @@ server on :3263/:3364, so the developer's app on :3264 was untouched):
   Guarded by `tab-grid-state.spec.ts` (custom rows, pending edit, active cell) and
   `useDbDataGrid.spec.ts` (park/restore/drop), with `restorePendingChanges` pinned in
   `DataGrid.spec.ts`. The same-key/same-rows watcher fire no longer resets at all.
+  Follow-up (still reported after reinstall): a table-to-script switch unmounts the data panel,
+  which can take the watcher with it before it parks — the panel now also parks on scope dispose
+  under its last-seen key, a remount's viewport sync re-ensures the restored active cell (the
+  ensure skips zero-size viewports, which a fresh sync would otherwise misread as off-grid
+  scroll), guarded by `tab-grid-state.spec.ts` table-to-script cases, the `useDbDataGrid.spec.ts`
+  unmount case and a `DataGrid.spec.ts` viewport case.
 - **U9 — after a save the custom query no longer applied.** The post-save table reload is what
   implements the refresh, so with U8 it re-runs the custom query and the filter stays on
   (`tab-grid-state.spec.ts`). A script result instead reloaded an unrelated table state and kept
