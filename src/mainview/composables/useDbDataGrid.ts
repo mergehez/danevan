@@ -1,5 +1,5 @@
 import { computed, reactive, ref, watch } from 'vue';
-import { useDataGrid, type DataGridCellValue, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
+import { useDataGrid, type DataGridCellValue, type DataGridPendingChange, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
 import { getDataGridLayoutStorageKey } from '../../datagrid/dataGridLayoutStorage';
 import type { ApplyTableChangesParams, DbType, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
@@ -40,7 +40,19 @@ type UseDbDataGridOptions = {
     emptyText?: () => string | undefined;
     onPeekRelation?: (params: DbGridPeekRelationParams) => void | Promise<void>;
     onPeekUsages?: (params: DbGridPeekUsagesParams) => void | Promise<void>;
-    onSaved?: () => void;
+    /**
+     * Replaces the default post-save reload of the panel's table. A script result grid passes its
+     * own refresh (its rows are a query result, not a loaded table); every other grid reloads the
+     * table the save went to, which also re-applies an active custom query.
+     */
+    onSaved?: () => void | Promise<void>;
+    /**
+     * Names the view this grid instance is currently showing (usually the active tab's hash).
+     * Pending edits, inserted/deleted rows, the active cell and the row selection are parked
+     * under that key when the view changes and restored on return, so navigating between tabs
+     * keeps each tab's grid state instead of resetting the shared grid.
+     */
+    stateKey?: () => string | undefined;
     ignoreDisplayFilters?: () => boolean | undefined;
     disabledFiltersMessage?: string;
     onSortChange?: (columnName: string) => void;
@@ -48,6 +60,30 @@ type UseDbDataGridOptions = {
     tableInfo: () => TableInfo | undefined;
     tableName: () => string | undefined;
 };
+
+type StashedTabGridState = {
+    connectionId: number | undefined;
+    tableName: string | undefined;
+    rowCount: number;
+    offset: number;
+    limit: number | undefined;
+    /** First row's primary-key value, when the table has one: row indexes are only trustworthy
+     *  while the row set still starts at the same row. */
+    firstRowFingerprint: string | undefined;
+    cellChanges: Record<string, DataGridPendingChange>;
+    insertedRows: PendingInsertedRow[];
+    deletedBaseRowIndexes: number[];
+    activeCell: { rowIndex: number; columnIndex: number };
+    selectedRowIndexes: number[];
+};
+
+/**
+ * Pending grid state parked per view key (see `stateKey`). The grid itself is one shared
+ * instance, so without this every tab switch resets pending edits, the position and the
+ * selection of the tab being left. Bounded: closed tabs must not accumulate entries forever.
+ */
+const tabGridStash = new Map<string, StashedTabGridState>();
+const MAX_STASHED_TAB_GRIDS = 30;
 
 export type TDbDataGridState = ReturnType<typeof useDbDataGrid>;
 
@@ -492,6 +528,12 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
                 Object.entries(gridFormatters.columnFormatterIds ?? {})
                     .map(([columnName, formatterId]) => `${columnName}:${formatterId ?? ''}`)
                     .join(','),
+                // A display-type switch changes no row and no formatter, so without its
+                // signature here the canvas keeps painting the cached text and the
+                // switch looks like it did nothing.
+                Object.entries(gridState.layoutState.displayTypes ?? {})
+                    .map(([columnName, displayType]) => `${columnName}:${displayType ?? ''}`)
+                    .join(','),
                 gridState.dirtyChanges.length,
                 gridState.savedCellKeys.join(','),
                 gridState.savedRowIndexes.join(','),
@@ -605,19 +647,163 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     );
     const hasPendingGridChanges = computed(() => pendingUpdateChanges.value.length > 0 || pendingRowChangeCount.value > 0);
 
+    /** The row set the staged row indexes address: restoring them is only valid while the grid
+     *  still shows these rows. */
+    function currentRowsIdentity() {
+        return {
+            connectionId: options.connectionId(),
+            tableName: tableName.value,
+            rowCount: sourceTableData.value.rowCount ?? sourceTableData.value.rows.length,
+            offset: sourceTableData.value.offset ?? 0,
+            limit: sourceTableData.value.limit,
+            firstRowFingerprint: fingerprintFirstRow(),
+        };
+    }
+
+    function fingerprintFirstRow() {
+        const matchColumn = primaryKeyColumns.value[0];
+        const firstRow = sourceTableData.value.rows[0];
+
+        if (!matchColumn || !firstRow) {
+            return undefined;
+        }
+
+        try {
+            return JSON.stringify(firstRow[matchColumn] ?? null);
+        } catch {
+            return undefined;
+        }
+    }
+
+    function hasStashableGridState() {
+        return (
+            Object.keys(gridState.pendingChanges).length > 0 ||
+            pendingInsertedRows.value.length > 0 ||
+            pendingDeletedBaseRowIndexes.value.length > 0 ||
+            gridState.selectedRowIndexes.length > 0 ||
+            gridState.activeCell.rowIndex !== 0 ||
+            gridState.activeCell.columnIndex !== 0
+        );
+    }
+
+    function stashTabGridState(key: string, rowsIdentity: ReturnType<typeof currentRowsIdentity>) {
+        if (!hasStashableGridState()) {
+            return;
+        }
+
+        tabGridStash.set(key, {
+            ...rowsIdentity,
+            cellChanges: { ...gridState.pendingChanges },
+            insertedRows: pendingInsertedRows.value.map((row) => ({ ...row, values: { ...row.values } })),
+            deletedBaseRowIndexes: [...pendingDeletedBaseRowIndexes.value],
+            activeCell: { rowIndex: gridState.activeCell.rowIndex, columnIndex: gridState.activeCell.columnIndex },
+            selectedRowIndexes: [...gridState.selectedRowIndexes],
+        });
+
+        while (tabGridStash.size > MAX_STASHED_TAB_GRIDS) {
+            const oldest = tabGridStash.keys().next().value;
+
+            if (oldest === undefined || oldest === key) {
+                break;
+            }
+
+            tabGridStash.delete(oldest);
+        }
+    }
+
+    /**
+     * Brings back the state parked under `key` when the grid still shows the rows it was staged
+     * on. A changed row set (reload, save, fresh run) drops the stash instead: row indexes from
+     * another row set would stage edits onto the wrong rows. When the key just changed the rows
+     * are still in flight, so the stash is kept for the fire that brings them.
+     */
+    function restoreTabGridState(key: string, keyChanged: boolean) {
+        const stash = tabGridStash.get(key);
+
+        if (!stash) {
+            return;
+        }
+
+        const identity = currentRowsIdentity();
+        const rowsMatch =
+            stash.connectionId === identity.connectionId &&
+            stash.tableName === identity.tableName &&
+            stash.rowCount === identity.rowCount &&
+            stash.offset === identity.offset &&
+            stash.limit === identity.limit &&
+            (stash.firstRowFingerprint === undefined || identity.firstRowFingerprint === undefined || stash.firstRowFingerprint === identity.firstRowFingerprint);
+
+        if (!rowsMatch) {
+            if (!keyChanged) {
+                tabGridStash.delete(key);
+            }
+
+            return;
+        }
+
+        tabGridStash.delete(key);
+        pendingInsertedRows.value = stash.insertedRows.map((row) => ({ ...row, values: { ...row.values } }));
+        pendingDeletedBaseRowIndexes.value = [...stash.deletedBaseRowIndexes];
+        gridState.restorePendingChanges(stash.cellChanges);
+
+        for (const [index, rowIndex] of stash.selectedRowIndexes.entries()) {
+            if (index === 0) {
+                gridState.selectRow(rowIndex);
+            } else {
+                gridState.selectRow(rowIndex, { mode: 'toggle' });
+            }
+        }
+
+        gridState.setActiveCell(stash.activeCell.rowIndex, stash.activeCell.columnIndex);
+    }
+
+    // A fire with the same key and the same rows (late metadata, a layout-only change) must not
+    // reset the view: that is what used to wipe staged edits and the scroll position without the
+    // user leaving the tab.
+    let lastGridDataIdentity: string | undefined;
+    // The rows on screen before this fire: a key change parks the leaving view's state, which
+    // belongs to these rows — not to the incoming view's rows, which is all the live state
+    // already shows by the time the watcher runs.
+    let lastKnownRowsIdentity: ReturnType<typeof currentRowsIdentity> | undefined;
+
     watch(
-        () => [options.connectionId(), tableName.value, sourceTableData.value.rowCount, sourceTableData.value.offset, sourceTableData.value.limit, tableInfo.value?.name],
+        () => [
+            options.stateKey?.(),
+            options.connectionId(),
+            tableName.value,
+            sourceTableData.value.rowCount,
+            sourceTableData.value.offset,
+            sourceTableData.value.limit,
+            tableInfo.value?.name,
+        ],
         (current, previous) => {
             if (!gridState) {
                 return;
             }
 
-            const [connectionId, currentTableName] = current;
-            const [previousConnectionId, previousTableName] = previous ?? [];
+            const [stateKey, connectionId, currentTableName] = current;
+            const [previousStateKey, previousConnectionId, previousTableName] = previous ?? [];
+            const keyChanged = stateKey !== previousStateKey;
             // Only reset the active cell (which scrolls the grid back to the top-left)
             // when a different table/connection is loaded. Reloads of the same table
             // (sorting, paging, refresh) must keep the active cell / scroll position.
             const tableChanged = connectionId !== previousConnectionId || currentTableName !== previousTableName;
+
+            // Park this view's pending state under the tab being left, so coming back
+            // restores its edits and position instead of a reset grid.
+            if (keyChanged && typeof previousStateKey === 'string' && lastKnownRowsIdentity) {
+                stashTabGridState(previousStateKey, lastKnownRowsIdentity);
+            }
+
+            const rowsIdentity = currentRowsIdentity();
+            const identity = JSON.stringify(rowsIdentity);
+
+            if (!keyChanged && identity === lastGridDataIdentity) {
+                return;
+            }
+
+            lastGridDataIdentity = identity;
+            lastKnownRowsIdentity = rowsIdentity;
 
             disableForeignKeyChecks.value = false;
             pendingInsertedRows.value = [];
@@ -630,6 +816,10 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             if (tableChanged) {
                 foreignKeyViolations.value = [];
                 isForeignKeyViolationsOpen.value = false;
+            }
+
+            if (typeof stateKey === 'string') {
+                restoreTabGridState(stateKey, keyChanged);
             }
         },
         { immediate: true }
@@ -862,8 +1052,12 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             pendingInsertedRows.value = [];
             pendingDeletedBaseRowIndexes.value = [];
             isPreviewOpen.value = false;
-            await query.loadSelectedTable(connectionId, tableName.value);
-            options.onSaved?.();
+
+            if (options.onSaved) {
+                await options.onSaved();
+            } else {
+                await query.loadSelectedTable(connectionId, tableName.value);
+            }
         } catch (error) {
             // The pending changes stay staged (they are only cleared on success), so the save bar
             // is the place the user finds out why the save did not happen.

@@ -37,10 +37,7 @@ export function useResultSourceTable(options: UseResultSourceTableOptions): {
         const server = servers.servers.find((entry) => entry.id === connection?.server_id);
         // A qualifier may only be read as this connection's own schema: `otherdb.people` must not
         // resolve to a `people` table of the database being edited.
-        const allowedQualifiers = [
-            ...(connection?.database_name ? [connection.database_name] : []),
-            ...(server?.driver === 'sqlite' ? ['main', 'temp'] : []),
-        ];
+        const allowedQualifiers = [...(connection?.database_name ? [connection.database_name] : []), ...(server?.driver === 'sqlite' ? ['main', 'temp'] : [])];
         const parsed = findSingleSourceTable(sql, { allowedQualifiers: allowedQualifiers });
 
         if (!parsed) {
@@ -60,6 +57,19 @@ export function useResultSourceTable(options: UseResultSourceTableOptions): {
         ([connectionId, tableName]) => {
             if (connectionId && tableName) {
                 void connections.ensureTableDetails(connectionId, tableName);
+            }
+        },
+        { immediate: true }
+    );
+
+    // The name above is matched against the connection's table list, which a script tab never
+    // loads on its own: without this a result edit in a tab that never opened the sidebar is
+    // refused as "not a single known table" although the statement names a real table.
+    watch(
+        () => options.connectionId(),
+        (connectionId) => {
+            if (connectionId && !connections.getConnectionTablesState(connectionId).loaded) {
+                void connections.ensureConnectionTables(connectionId);
             }
         },
         { immediate: true }

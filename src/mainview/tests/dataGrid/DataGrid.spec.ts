@@ -1163,4 +1163,25 @@ describe('DataGrid', () => {
 
         wrapper.unmount();
     });
+
+    it('restores parked pending changes verbatim', () => {
+        const { state } = createGridState({
+            createPendingChange: ({ rowIndex, columnName, nextValue, rawValue }) => ({ rowIndex, columnName, previousValue: rawValue, nextValue, rawValue }),
+        });
+
+        state.startEditingCell(0, 1);
+        state.setEditingValue('Parked');
+        state.commitEditingCell();
+        expect(state.dirtyChanges).toHaveLength(1);
+
+        // Parking is a wholesale handoff: the record leaves the grid and comes back verbatim.
+        const parked = { ...state.pendingChanges };
+        state.clearPendingChanges();
+        expect(state.dirtyChanges).toHaveLength(0);
+
+        state.restorePendingChanges(parked);
+
+        expect(state.dirtyChanges).toHaveLength(1);
+        expect(state.dirtyChanges[0]).toMatchObject({ rowIndex: 0, columnName: 'name', nextValue: 'Parked' });
+    });
 });

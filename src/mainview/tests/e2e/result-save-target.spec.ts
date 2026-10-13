@@ -24,9 +24,7 @@ async function openApp(page: Page) {
 async function openTable(page: Page, source: Source, tableName: string) {
     // The metadata read may be answered from the sidebar's schema sweep instead of its own request,
     // so the rows request and the panel's loading overlay are what say the table is really loaded.
-    const dataLoaded = page.waitForResponse(
-        (response) => response.url().endsWith('/api/getTableData') && (response.request().postData() ?? '').includes(`"${tableName}"`)
-    );
+    const dataLoaded = page.waitForResponse((response) => response.url().endsWith('/api/getTableData') && (response.request().postData() ?? '').includes(`"${tableName}"`));
 
     await openSidebarTable(page, source.connectionId, tableName);
     await dataLoaded;
@@ -163,6 +161,38 @@ test.describe('Saving an edited result', () => {
             await page.getByTestId('save-bar-save').click();
 
             await expectOnlyPeopleChanged(request, source.connectionId);
+        } finally {
+            await source.cleanup();
+        }
+    });
+
+    test('shows the saved value in a script result without a manual reload', async ({ page, request }) => {
+        const source: Source = await createFileSource(request, { label: 'script-save-refresh', schema: SHARED_SHAPE_SCHEMA });
+
+        try {
+            await openApp(page);
+            await reloadSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
+            await openTable(page, source, 'people');
+
+            await page.getByTestId('new-scratch-tab').click();
+            await writeScript(page, 'select * from people;');
+            await runScript(page);
+
+            await commitResultCell(await openResultCellEditor(page, 1), 'Ada Lovelace');
+            await page.getByTestId('save-bar-save').click();
+
+            // The save finished and the result refreshed itself: the grid shows what the
+            // database holds now, not the pre-save snapshot. (The save button cannot sync
+            // this: with nothing pending it is disabled by design.)
+            await expectOnlyPeopleChanged(request, source.connectionId);
+            await expect
+                .poll(async () => {
+                    const editor = await openResultCellEditor(page, 1);
+                    const value = await editor.inputValue();
+                    await editor.press('Escape');
+                    return value;
+                })
+                .toBe('Ada Lovelace');
         } finally {
             await source.cleanup();
         }

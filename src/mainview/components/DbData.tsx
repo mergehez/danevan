@@ -29,6 +29,8 @@ export const DbData = component(
         const connections = useConnections();
         const query = useQuery();
         const servers = useServers();
+        // Declared with the other state: the grid below reads the active tab in its own setup.
+        const navState = useNavState();
 
         const PAGE_SIZE_OPTIONS = [10, 100, 250, 500, 1000, 2000, -1] as const;
         const DEFAULT_PAGE_SIZE = 500;
@@ -121,6 +123,8 @@ export const DbData = component(
             // The connection whose table the panel is showing, not the sidebar's selection: a
             // selection change must not retarget the read, the reload or the save of this grid.
             connectionId: () => query.loadedConnectionId,
+            // Parked per tab, so each tab keeps its pending edits, position and selection.
+            stateKey: () => navState.activeTab?.hash,
             // A result set with columns means a table is loaded: only an empty
             // grid needs the "select a table" hint.
             emptyText: () => (hasResultColumns.value ? 'No rows' : `Select a table to preview${isUnlimitedDataLimit.value ? '' : ` up to ${settings.state.queryRowLimit} rows`}.`),
@@ -375,7 +379,6 @@ export const DbData = component(
         // Activating a table tab first hydrates its connection's table list, and that
         // phase used to leave the panel looking idle while the only hint was the
         // global busy indicator in the corner of the window.
-        const navState = useNavState();
         const isLoading = computed(() => query.isLoadingTables || query.isLoadingSelectedTable || navState.isActivatingTab);
 
         onBeforeUnmount(() => {

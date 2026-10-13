@@ -6,6 +6,7 @@ import { CenteredModal } from '../../shared/components/CenteredModal.tsx';
 import { SplitterVertical } from '../../shared/components/SplitterVertical.tsx';
 import type { SqlDiagnosticMarker, SqlDiagnosticsResult, TableData } from '../../shared/types';
 import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
+import { findSingleSourceTable } from '../../shared/utils/sqlSourceTable';
 import { useConnections } from '../composables/useConnections';
 import { useDbDataGrid } from '../composables/useDbDataGrid';
 import { useDbSettings } from '../composables/useDbSettings';
@@ -14,6 +15,7 @@ import { useQuery, useQueryForTab } from '../composables/useQuery';
 import { useResultSourceTable } from '../composables/useResultSourceTable';
 import { useScriptsDb } from '../composables/useScriptsDb';
 import { useServers } from '../composables/useServers';
+import { tasks } from '../composables/useTasks';
 import type { SqlHistoryEntry } from '../composables/useSqlHistory';
 import { DbGridToolbar } from './DbGridToolbar.tsx';
 import { DbSaveBar } from './DbSaveBar.tsx';
@@ -151,11 +153,49 @@ export const DbScripts = component(
 
         const resultDbGridState = useDbDataGrid({
             connectionId: () => resultConnectionId.value!,
+            // Parked per script tab, like the data grid parks per table tab.
+            stateKey: () => activeScriptTab.value?.hash,
             tableData: () => (query.queryResult?.kind === 'rows' ? query.queryResult : getEmptyTableData()) as TableData,
             tableInfo: () => resultSourceTable.tableInfo.value,
             tableName: () => resultSourceTable.tableName.value,
             emptyText: () => 'Query returned no rows.',
+            onSaved: () => refreshScriptResultAfterSave(),
         });
+
+        /**
+         * Shows the rows the save wrote: a plain single-table select is safe to re-run, so the
+         * grid reflects the database instead of the pre-save snapshot. Anything else (a script
+         * with mutations, a join) is left alone — re-running it could repeat a side effect —
+         * and the toolbar's Reload stays the explicit refresh.
+         */
+        async function refreshScriptResultAfterSave() {
+            const tabHash = activeScriptTab.value?.hash;
+
+            if (!tabHash) {
+                return;
+            }
+
+            const tabQuery = useQueryForTab(tabHash);
+            const result = tabQuery.queryResult;
+
+            if (result?.kind !== 'rows' || !result.sourceSql || typeof result.sourceConnectionId !== 'number') {
+                return;
+            }
+
+            if (!findSingleSourceTable(result.sourceSql)) {
+                return;
+            }
+
+            try {
+                const fresh = await tasks.runQuery.run({ connectionId: result.sourceConnectionId, sql: result.sourceSql });
+
+                if (fresh.kind === 'rows') {
+                    tabQuery.queryResult = { ...fresh, sourceSql: result.sourceSql, sourceConnectionId: result.sourceConnectionId };
+                }
+            } catch {
+                // The save itself succeeded; keep the rows on screen rather than blanking them.
+            }
+        }
 
         /**
          * Runs the open script against the connection its tab is bound to (never the sidebar's

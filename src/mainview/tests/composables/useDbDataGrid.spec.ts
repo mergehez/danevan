@@ -3,7 +3,7 @@
 // canvas consumes them. Capture that hand-off so the wiring can be asserted without the canvas.
 // Only the process boundary (the app client) is stubbed; the grid itself is the real one.
 import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent } from 'vue';
+import { defineComponent, nextTick, reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataGridCellContext, DataGridHeaderContext, DataGridRowContext } from '../../../datagrid';
 import type { ContextMenuEntry, ContextMenuItem } from '../../../directives/contextMenuTypes';
@@ -349,5 +349,74 @@ describe('useDbDataGrid pending changes', () => {
 
         expect(pendingChange('note', 'changed', 2)).toMatchObject({ rowIndex: 2, columnName: 'note', nextValue: 'changed' });
         expect(toast.message).toBeUndefined();
+    });
+});
+
+// A display-type switch changes no row and no formatter: the canvas repaints off the render
+// version, so the switch has to be part of it or the grid keeps showing the cached text.
+describe('useDbDataGrid display types', () => {
+    it('bumps the render version when a column display type changes', () => {
+        const { grid } = createGrid();
+        const before = grid.renderVersion;
+
+        (holders.gridOptions as unknown as { setColumnDisplayType: (columnName: string, displayType: string) => void }).setColumnDisplayType('owner_id', 'timestamp-seconds');
+
+        expect(grid.renderVersion).not.toBe(before);
+    });
+});
+
+// The grid is one shared instance behind every tab: leaving a tab parks its pending edits,
+// position and selection under the tab's key, and coming back restores them.
+describe('useDbDataGrid tab state', () => {
+    it("keeps a tab's pending edit and position across a tab switch", async () => {
+        const keyRef = ref('tab-a-stash-display');
+        const { grid } = createGrid({ stateKey: () => keyRef.value });
+        await nextTick();
+
+        grid.startEditingCell(0, 2);
+        grid.setEditingValue('changed');
+        grid.commitEditingCell();
+        expect(grid.pendingChangeCount).toBe(1);
+
+        keyRef.value = 'tab-b-stash-display';
+        await nextTick();
+        expect(grid.pendingChangeCount).toBe(0);
+
+        keyRef.value = 'tab-a-stash-display';
+        await nextTick();
+        expect(grid.pendingChangeCount).toBe(1);
+        expect(grid.activeCell).toMatchObject({ rowIndex: 0, columnIndex: 2 });
+    });
+
+    it('drops the parked edit when the rows changed while away', async () => {
+        const liveTable = reactive({ ...tableData, rows: tableData.rows.map((row) => ({ ...row })) });
+        const keyRef = ref('tab-a-stash-drop');
+        const { grid } = createGrid({ stateKey: () => keyRef.value, tableData: () => liveTable });
+        await nextTick();
+
+        grid.startEditingCell(0, 2);
+        grid.setEditingValue('changed');
+        grid.commitEditingCell();
+        expect(grid.pendingChangeCount).toBe(1);
+
+        // Leaving parks the edit; the rows then change (a save, a refresh), so the staged row
+        // indexes no longer address the rows on screen and the edit must not come back.
+        keyRef.value = 'tab-b-stash-drop';
+        await nextTick();
+
+        liveTable.rows = [...liveTable.rows, { id: 3, owner_id: 33, note: 'third' }];
+        liveTable.rowCount = 3;
+        await nextTick();
+
+        keyRef.value = 'tab-a-stash-drop';
+        await nextTick();
+        expect(grid.pendingChangeCount).toBe(0);
+
+        // And it stays gone on later visits: the stash is not waiting to reappear.
+        keyRef.value = 'tab-b-stash-drop';
+        await nextTick();
+        keyRef.value = 'tab-a-stash-drop';
+        await nextTick();
+        expect(grid.pendingChangeCount).toBe(0);
     });
 });

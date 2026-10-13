@@ -588,6 +588,15 @@ export function useDataGrid(_options: UseDataGridOptions) {
         baseState.pendingChanges = {};
     }
 
+    /**
+     * Puts back a pending-changes record captured earlier (a tab switch parks its grid state
+     * and restores it on return). The values are re-applied as staged edits; the undo stack
+     * is not carried across — only the pending state itself survives the switch.
+     */
+    function restorePendingChanges(changes: Record<string, DataGridPendingChange>) {
+        baseState.pendingChanges = { ...changes };
+    }
+
     function clearSavedChanges() {
         baseState.savedCellKeys = [];
         baseState.savedRowIndexes = [];
@@ -821,6 +830,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         redoChanges: redoChanges,
         clearHistory: clearHistory,
         clearPendingChanges: clearPendingChanges,
+        restorePendingChanges: restorePendingChanges,
         clearSavedChanges: clearSavedChanges,
         setSavingChanges: setSavingChanges,
         markSavedChanges: markSavedChanges,
