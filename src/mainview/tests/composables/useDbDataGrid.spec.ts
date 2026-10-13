@@ -419,4 +419,57 @@ describe('useDbDataGrid tab state', () => {
         await nextTick();
         expect(grid.pendingChangeCount).toBe(0);
     });
+
+    it('parks the leaving tab when the panel unmounts before the watcher runs', async () => {
+        const keyRef = ref('tab-a-unmount-park');
+        let grid!: ReturnType<typeof useDbDataGrid>;
+
+        const wrapper = mount(
+            defineComponent({
+                setup() {
+                    grid = useDbDataGrid({
+                        connectionId: () => 7,
+                        tableData: () => tableData,
+                        tableInfo: () => tableInfo,
+                        tableName: () => 'orders',
+                        stateKey: () => keyRef.value,
+                    });
+
+                    return () => null;
+                },
+            })
+        );
+        await nextTick();
+
+        grid.startEditingCell(0, 2);
+        grid.setEditingValue('changed');
+        grid.commitEditingCell();
+        expect(grid.pendingChangeCount).toBe(1);
+
+        // A table-to-script switch unmounts the panel in the same tick the key changes, taking
+        // the watcher with it before it can park the leaving view.
+        keyRef.value = 'tab-b-unmount-park';
+        wrapper.unmount();
+        await nextTick();
+
+        mount(
+            defineComponent({
+                setup() {
+                    grid = useDbDataGrid({
+                        connectionId: () => 7,
+                        tableData: () => tableData,
+                        tableInfo: () => tableInfo,
+                        tableName: () => 'orders',
+                        stateKey: () => 'tab-a-unmount-park',
+                    });
+
+                    return () => null;
+                },
+            })
+        );
+        await nextTick();
+
+        expect(grid.pendingChangeCount).toBe(1);
+        expect(grid.activeCell).toMatchObject({ rowIndex: 0, columnIndex: 2 });
+    });
 });

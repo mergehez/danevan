@@ -641,6 +641,10 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         () => _state.viewportElement,
         (element) => {
             viewportHelpers.syncViewportElement(element);
+            // A remount syncs a fresh viewport whose scroll starts at the top: bring back the
+            // restored active cell (a tab switch parks it), the way the active-cell watcher does
+            // once the grid is running. A fresh grid sits at 0,0, so this is a no-op for it.
+            viewportHelpers.ensureActiveCellVisible();
         },
         { immediate: true }
     );

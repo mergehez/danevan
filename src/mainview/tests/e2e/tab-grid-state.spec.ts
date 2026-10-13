@@ -225,4 +225,56 @@ test.describe('A table tab keeps its grid state', () => {
             await source.cleanup();
         }
     });
+
+    test('keeps a pending edit across a table-to-script switch', async ({ page, request }) => {
+        const source: Source = await createFileSource(request, { label: 'tab-script-pending', schema: SCHEMA });
+
+        try {
+            await openApp(page);
+            await openTable(page, source, 'people');
+
+            await commitCellEdit(page, 1, 'Ada Lovelace');
+            await expect(page.getByText('1 pending change')).toBeVisible();
+
+            // Leaving for a script tab unmounts the data panel; coming back remounts it.
+            await runScratchScript(page, 'select * from people;');
+            await openSidebarTable(page, source.connectionId, 'people');
+            await expect(page.getByText('Loading table data...')).toHaveCount(0);
+
+            await expect(page.getByText('1 pending change')).toBeVisible();
+            expect(await displayedCellValue(page, 1)).toBe('Ada Lovelace');
+        } finally {
+            await source.cleanup();
+        }
+    });
+
+    test('keeps the active cell across a table-to-script switch', async ({ page, request }) => {
+        const source: Source = await createFileSource(request, { label: 'tab-script-cell', schema: SCHEMA });
+
+        try {
+            await openApp(page);
+            await openTable(page, source, 'people');
+
+            // Second row, first column.
+            const viewport = page.getByTestId('data-grid-viewport').first();
+            await viewport.focus();
+            await page.keyboard.press('Meta+ArrowLeft');
+            await page.keyboard.press('Meta+ArrowUp');
+            await page.keyboard.press('ArrowDown');
+
+            await runScratchScript(page, 'select * from people;');
+            await openSidebarTable(page, source.connectionId, 'people');
+            await expect(page.getByText('Loading table data...')).toHaveCount(0);
+            await viewport.focus();
+            await expect(viewport).toBeVisible();
+
+            await page.keyboard.press('Enter');
+
+            const editor = page.locator('textarea[data-editor-key="1:0"]');
+            await expect(editor).toBeVisible();
+            await editor.press('Escape');
+        } finally {
+            await source.cleanup();
+        }
+    });
 });

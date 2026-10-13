@@ -73,7 +73,9 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
         const activeRowIndex = args.gridState.value.activeCell.rowIndex;
         const scrollAlign = args.gridState.value.activeCellScrollAlign ?? 'nearest';
 
-        if (!element || activeColumnIndex < 0 || activeRowIndex < 0) {
+        // A viewport that was just synced has no size yet: every edge comparison below would
+        // misfire against zero widths and park the scroll offsets off-grid.
+        if (!element || activeColumnIndex < 0 || activeRowIndex < 0 || element.clientWidth <= 0 || element.clientHeight <= 0) {
             return;
         }
 

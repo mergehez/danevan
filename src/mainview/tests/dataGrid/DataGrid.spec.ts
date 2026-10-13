@@ -1184,4 +1184,30 @@ describe('DataGrid', () => {
         expect(state.dirtyChanges).toHaveLength(1);
         expect(state.dirtyChanges[0]).toMatchObject({ rowIndex: 0, columnName: 'name', nextValue: 'Parked' });
     });
+
+    it('brings the active cell back into view when a fresh viewport arrives', async () => {
+        const { state } = createGridState({
+            rows: Array.from({ length: 30 }, (_, index) => ({ id: index + 1, name: `Row ${index}`, city: `City ${index}` })),
+        });
+        const { vm, wrapper } = await mountGridViewHarness(state);
+        const viewport = wrapper.find('[tabindex="0"]').element as HTMLElement;
+
+        state.setActiveCell(20, 0);
+        await nextTick();
+
+        const scrolledTop = viewport.scrollTop;
+        expect(scrolledTop).toBeGreaterThan(0);
+
+        // A remount syncs a fresh viewport whose scroll starts at the top; the restored
+        // active cell has to pull it back down. A fresh grid sits at 0,0, which is a no-op.
+        viewport.scrollTop = 0;
+        vm.vs.viewportElement = undefined;
+        await nextTick();
+        vm.vs.viewportElement = viewport;
+        await nextTick();
+
+        expect(viewport.scrollTop).toBe(scrolledTop);
+
+        wrapper.unmount();
+    });
 });

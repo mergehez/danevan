@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, getCurrentScope, onScopeDispose, reactive, ref, watch } from 'vue';
 import { useDataGrid, type DataGridCellValue, type DataGridPendingChange, type GridDisplayType, type PendingRowState, type TableData } from '../../datagrid';
 import { getDataGridLayoutStorageKey } from '../../datagrid/dataGridLayoutStorage';
 import type { ApplyTableChangesParams, DbType, GridCustomFormatter, SqlValue, TableInfo } from '../../shared/types';
@@ -765,6 +765,20 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
     // belongs to these rows — not to the incoming view's rows, which is all the live state
     // already shows by the time the watcher runs.
     let lastKnownRowsIdentity: ReturnType<typeof currentRowsIdentity> | undefined;
+    // The view most recently shown. A switch between a table tab and a script tab unmounts this
+    // panel, which can take the watcher above with it before it parks the leaving view — the
+    // dispose handler below parks under this key instead.
+    let lastSeenStateKey: string | undefined;
+
+    if (getCurrentScope()) {
+        onScopeDispose(() => {
+            // When the watcher already handled the switch it moved on to the new key, so there
+            // is nothing left to park; otherwise the leaving view's state would be lost entirely.
+            if (lastSeenStateKey && options.stateKey?.() !== lastSeenStateKey && lastKnownRowsIdentity) {
+                stashTabGridState(lastSeenStateKey, lastKnownRowsIdentity);
+            }
+        });
+    }
 
     watch(
         () => [
@@ -784,6 +798,10 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             const [stateKey, connectionId, currentTableName] = current;
             const [previousStateKey, previousConnectionId, previousTableName] = previous ?? [];
             const keyChanged = stateKey !== previousStateKey;
+
+            if (typeof stateKey === 'string') {
+                lastSeenStateKey = stateKey;
+            }
             // Only reset the active cell (which scrolls the grid back to the top-left)
             // when a different table/connection is loaded. Reloads of the same table
             // (sorting, paging, refresh) must keep the active cell / scroll position.
