@@ -191,11 +191,7 @@ describe('buildPostgresModifyTableStatements', () => {
                     columnInfo({ name: 'name', type: 'text' }),
                     columnInfo({ name: 'legacy', type: 'text' }),
                 ],
-                indexes: [
-                    indexInfo({ name: 'PRIMARY', columns: ['id'], isUnique: true }),
-                    indexInfo({ name: 'uq_name', columns: ['name'], isUnique: true }),
-                    indexInfo({ name: 'ix_created', columns: ['created'] }),
-                ],
+                indexes: [indexInfo({ name: 'uq_name', columns: ['name'], isUnique: true, origin: 'unique' }), indexInfo({ name: 'ix_created', columns: ['created'] })],
                 foreignKeys: [foreignKeyInfo()],
             }),
             plan({
@@ -304,6 +300,49 @@ describe('buildPostgresModifyTableStatements', () => {
         expect(statements).toEqual(["COMMENT ON TABLE \"orders\" IS 'owner''s table';", 'ALTER TABLE "orders" RENAME TO "orders_v2";']);
     });
 
+    it('treats a unique index as an index: dropped with DROP INDEX, not as a constraint', () => {
+        const statements = buildPostgresModifyTableStatements(
+            deps,
+            'orders',
+            tableInfo({
+                columns: [columnInfo({ name: 'email', type: 'text' })],
+                // TypeORM reports a unique constraint as `unique` and a unique index as an index.
+                indexes: [indexInfo({ name: 'ix_email', columns: ['email'], isUnique: true, origin: 'index' })],
+            }),
+            plan({ columns: [keptColumn({ name: 'email', type: 'text' })] })
+        );
+
+        expect(statements).toEqual(['DROP INDEX "ix_email";']);
+    });
+
+    it('recreates a unique index whose columns change', () => {
+        const statements = buildPostgresModifyTableStatements(
+            deps,
+            'orders',
+            tableInfo({
+                columns: [columnInfo({ name: 'email', type: 'text' }), columnInfo({ name: 'tenant', type: 'integer' })],
+                indexes: [indexInfo({ name: 'ix_email', columns: ['email'], isUnique: true, origin: 'index' })],
+            }),
+            plan({
+                columns: [keptColumn({ name: 'email', type: 'text' }), keptColumn({ name: 'tenant', type: 'integer' })],
+                indexes: [
+                    {
+                        name: 'ix_email',
+                        comment: null,
+                        isUnique: true,
+                        type: null,
+                        columns: [
+                            { columnName: 'email', order: null },
+                            { columnName: 'tenant', order: null },
+                        ],
+                    },
+                ],
+            })
+        );
+
+        expect(statements).toEqual(['DROP INDEX "ix_email";', 'CREATE UNIQUE INDEX "ix_email" ON "orders" ("email", "tenant");']);
+    });
+
     it('emits nothing when the plan already matches the table', () => {
         const statements = buildPostgresModifyTableStatements(
             deps,
@@ -316,8 +355,7 @@ describe('buildPostgresModifyTableStatements', () => {
                     columnInfo({ name: 'created', type: 'timestamp' }),
                 ],
                 indexes: [
-                    indexInfo({ name: 'PRIMARY', columns: ['id'], isUnique: true }),
-                    indexInfo({ name: 'uq_email', columns: ['email'], isUnique: true }),
+                    indexInfo({ name: 'uq_email', columns: ['email'], isUnique: true, origin: 'unique' }),
                     indexInfo({ name: 'ix_created', columns: ['created'], orders: ['DESC'] }),
                 ],
                 foreignKeys: [foreignKeyInfo()],

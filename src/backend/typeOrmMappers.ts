@@ -151,7 +151,9 @@ export function mapTypeOrmIndexesWithoutMetadata(indexes: TableIndex[], uniques:
                 columns: [...unique.columnNames],
                 comment: null,
                 isUnique: true,
-                origin: 'index',
+                // A unique *constraint*: the dialog edits it as a key, and dropping it needs
+                // ALTER TABLE ... DROP CONSTRAINT rather than DROP INDEX.
+                origin: 'unique',
                 isPartial: false,
                 type: null,
             }) satisfies TableIndexInfo

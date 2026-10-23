@@ -313,8 +313,8 @@ describe('mapTypeOrmIndexesWithoutMetadata', () => {
             { name: 'b_c', columns: ['b', 'c'], comment: null, isUnique: false, origin: 'index', isPartial: true, type: null },
             { name: 'idx_blank_where', columns: ['d'], comment: null, isUnique: false, origin: 'index', isPartial: false, type: null },
             { name: 'ft_body', columns: ['body'], comment: null, isUnique: false, origin: 'index', isPartial: false, type: 'FULLTEXT' },
-            { name: 'uq_a', columns: ['a'], comment: null, isUnique: true, origin: 'index', isPartial: false, type: null },
-            { name: 'b', columns: ['b'], comment: null, isUnique: true, origin: 'index', isPartial: false, type: null },
+            { name: 'uq_a', columns: ['a'], comment: null, isUnique: true, origin: 'unique', isPartial: false, type: null },
+            { name: 'b', columns: ['b'], comment: null, isUnique: true, origin: 'unique', isPartial: false, type: null },
         ]);
     });
 
@@ -333,7 +333,14 @@ describe('mapTypeOrmIndexesWithoutMetadata', () => {
 describe('mapTypeOrmForeignKeys', () => {
     it('flattens composite keys with per-column sequences', () => {
         const foreignKeys = [
-            new TableForeignKey({ name: 'fk_orders_user', columnNames: ['user_id'], referencedTableName: 'users', referencedColumnNames: ['id'], onUpdate: 'CASCADE', onDelete: 'SET NULL' }),
+            new TableForeignKey({
+                name: 'fk_orders_user',
+                columnNames: ['user_id'],
+                referencedTableName: 'users',
+                referencedColumnNames: ['id'],
+                onUpdate: 'CASCADE',
+                onDelete: 'SET NULL',
+            }),
             new TableForeignKey({ columnNames: ['a', 'b'], referencedTableName: 'composite', referencedColumnNames: ['x'] }),
         ];
 

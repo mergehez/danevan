@@ -90,11 +90,11 @@ function readFile<T>(databasePath: string, callback: (database: Database.Databas
 }
 
 test.describe('SQLite modify table', () => {
-    test('the dialog detects a deleted index and applies it to the file', async ({ page, request }) => {
+    test('the dialog detects a deleted index and keeps the named unique index beside it', async ({ page, request }) => {
         const source = await createFileSource(request, {
             label: 'sqlite-index-dialog',
             schema: `
-                CREATE TABLE caps (id integer primary key, path text not null, created_by integer);
+                CREATE TABLE caps (id integer primary key, path text not null, created_by integer, UNIQUE (created_by));
                 CREATE INDEX caps_created_by_idx ON caps(created_by);
                 CREATE UNIQUE INDEX caps_path_unique ON caps(path);
                 INSERT INTO caps (id, path, created_by) VALUES (1, 'a', 7);
@@ -104,11 +104,18 @@ test.describe('SQLite modify table', () => {
         try {
             await openModifyTablePopup(page, source, 'caps');
 
-            // The plain index is an index; the unique one is edited as a key.
             const navItem = (kind: string, title: string) => page.locator(`[data-testid="modify-nav-item"][data-nav-kind="${kind}"][data-nav-title="${title}"]`);
+
+            // The UNIQUE constraint is a key; a unique *index* the user created is an index like any
+            // other, and the rebuild keeps its name.
+            await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="keys"]').click();
+            const keyItems = page.locator('[data-testid="modify-nav-item"][data-nav-kind="key"]');
+            await expect(keyItems).toHaveCount(2);
+            await expect(keyItems.filter({ hasText: 'PRIMARY' })).toHaveCount(1);
+
             await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
             await expect(navItem('index', 'caps_created_by_idx')).toBeVisible();
-            await expect(navItem('index', 'caps_path_unique')).toHaveCount(0);
+            await expect(navItem('index', 'caps_path_unique')).toBeVisible();
 
             await navItem('index', 'caps_created_by_idx').click();
             await page.locator('[data-testid="modify-delete"]').click();
@@ -122,11 +129,19 @@ test.describe('SQLite modify table', () => {
 
             const info = await tableInfo(request, source.connectionId, 'caps');
             expect(info.indexes.some((index: any) => index.name === 'caps_created_by_idx')).toBe(false);
+            // The named unique index survives the rebuild under its own name; the constraint stays
+            // as the inline UNIQUE it was.
+            expect(info.indexes.find((index: any) => index.name === 'caps_path_unique')?.isUnique).toBe(true);
+            // The UNIQUE constraint survives as a unique index the catalog reports.
+            expect(info.indexes.some((index: any) => index.isUnique && index.columns.join() === 'created_by')).toBe(true);
 
             // The rebuild kept the data and the uniqueness the other index enforced.
             const rows = await post(request, 'runQuery', { connectionId: source.connectionId, sql: 'SELECT path FROM caps WHERE id = 1' });
             expect(rows.rows).toEqual([{ path: 'a' }]);
             await expect(post(request, 'runQuery', { connectionId: source.connectionId, sql: "INSERT INTO caps (id, path) VALUES (2, 'a')" })).rejects.toThrow(/UNIQUE/);
+            await expect(post(request, 'runQuery', { connectionId: source.connectionId, sql: "INSERT INTO caps (id, path, created_by) VALUES (3, 'b', 7)" })).rejects.toThrow(
+                /UNIQUE/
+            );
         } finally {
             await source.cleanup();
         }

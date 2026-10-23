@@ -3,16 +3,16 @@
  * text (no TypeORM memory-sql fallback), so the complete builder is pure and runs without a server.
  */
 import type { TableInfo } from '../shared/types';
-import type { ModifySchemaIndex, ModifySchemaPlan } from './useSqliteDriver.ts';
+import type { ModifySchemaIndex, ModifySchemaKey, ModifySchemaPlan } from './useSqliteDriver.ts';
 import {
     buildDropColumnStatements,
     buildIndexColumns,
     foreignKeySignature,
     getCurrentPrimaryKey,
-    getCurrentUniqueKeys,
     getDesiredPrimaryKey,
     groupCurrentForeignKeys,
     keySignature,
+    serializeColumns,
     serializeIndexColumns,
 } from './remoteTableDdl.ts';
 
@@ -27,9 +27,26 @@ export function indexSignature(index: ModifySchemaIndex) {
     return [serializeIndexColumns(index.columns), index.isUnique ? '1' : '0', (index.type ?? '').toLowerCase()].join('::');
 }
 
+/**
+ * Unique constraints are keys here, not indexes: PostgreSQL drops them with
+ * `ALTER TABLE ... DROP CONSTRAINT`, while a unique index (TypeORM's `indices`, origin `index`) is
+ * its own object and needs `DROP INDEX`. MySQL has no such split, hence the shared helper.
+ */
+function getCurrentUniqueConstraints(currentInfo: TableInfo) {
+    const primarySignature = keySignature(getCurrentPrimaryKey(currentInfo));
+
+    return currentInfo.indexes
+        .filter((index) => index.isUnique && index.origin === 'unique' && serializeColumns(index.columns) !== primarySignature)
+        .map((index) => ({
+            name: index.name,
+            isPrimary: false,
+            columns: index.columns.map((columnName) => ({ columnName })),
+        })) satisfies ModifySchemaKey[];
+}
+
 function getCurrentStandaloneIndexes(currentInfo: TableInfo) {
     return currentInfo.indexes
-        .filter((index) => !index.isUnique)
+        .filter((index) => index.origin !== 'unique')
         .map((index) => ({
             name: index.name,
             comment: null,
@@ -53,7 +70,7 @@ export function buildPostgresModifyTableStatements(deps: PostgresTableDdlDeps, t
     const statements: string[] = [];
     const currentPrimaryKey = getCurrentPrimaryKey(currentInfo);
     const desiredPrimaryKey = getDesiredPrimaryKey(nextPlan);
-    const currentUniqueKeys = getCurrentUniqueKeys(currentInfo);
+    const currentUniqueKeys = getCurrentUniqueConstraints(currentInfo);
     const currentForeignKeys = groupCurrentForeignKeys(currentInfo);
     const desiredUniqueKeys = nextPlan.keys.filter((key) => !key.isPrimary);
     const desiredStandaloneIndexes = getDesiredStandaloneIndexes(nextPlan);

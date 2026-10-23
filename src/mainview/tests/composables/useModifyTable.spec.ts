@@ -146,7 +146,6 @@ function mysqlState(): ModifyTablePreviewState {
                 isUnique: false,
                 type: 'BTREE',
                 status: 'existing',
-                isPrimaryKey: false,
                 columns: [{ id: 'index-column:2', columnName: 'created_by', order: 'ASC' }],
             },
         ],
@@ -163,7 +162,6 @@ function indexOverPrimaryKey() {
         isUnique: false,
         type: 'BTREE',
         status: 'existing' as const,
-        isPrimaryKey: false,
         columns: [{ id: 'index-column:5', columnName: 'id', order: 'ASC' }],
     };
 }
@@ -192,7 +190,6 @@ function addedIndex() {
         isUnique: false,
         type: 'btree',
         status: 'new' as const,
-        isPrimaryKey: false,
         // "Add index" starts on the first column, which is also the primary key on most tables.
         columns: [{ id: 'index-column:4', columnName: 'id', order: 'NONE' }],
     };
@@ -218,7 +215,10 @@ describe('hasExtendedSchemaChanges', () => {
     });
 });
 
-/** A SQLite table with a standalone index, as `getTableInfo` reports it. */
+/**
+ * A SQLite table as `getTableInfo` reports it: TypeORM lists the `UNIQUE` constraint under `uniques`
+ * (origin `unique`, with a generated name) and the user's indexes under `indices` (origin `index`).
+ */
 function sqliteState(): ModifyTablePreviewState {
     const state = mysqlState();
     state.driver = 'sqlite';
@@ -231,33 +231,44 @@ function sqliteState(): ModifyTablePreviewState {
             { name: 'created_by', type: 'integer', isPrimaryKey: false, primaryKeyOrdinal: null },
         ],
         indexes: [
-            { name: 'caps_created_by_idx', columns: ['created_by'], isUnique: false, type: null, comment: null, origin: 'c', isPartial: false },
-            { name: 'caps_path_unique', columns: ['path'], isUnique: true, type: null, comment: null, origin: 'u', isPartial: false },
+            { name: 'UQ_2371ce3ffc7b688946d7500e689', columns: ['created_by'], isUnique: true, type: null, comment: null, origin: 'unique', isPartial: false },
+            { name: 'caps_path_idx', columns: ['path'], isUnique: false, type: null, comment: null, origin: 'index', isPartial: false },
+            { name: 'caps_path_unique', columns: ['path'], isUnique: true, type: null, comment: null, origin: 'index', isPartial: false },
         ],
         foreignKeys: [],
     } as unknown as ModifyTablePreviewState['currentTableInfo'];
+    // The unique constraint (an autoindex) is a key; the named unique index is a plain index.
     state.keys = [
         { id: 'primary', originalName: 'PRIMARY', name: 'PRIMARY', isPrimary: true, status: 'existing', columns: [{ id: 'key-column:1', columnName: 'id' }] },
         {
-            id: 'existing:caps_path_unique',
-            originalName: 'caps_path_unique',
-            name: 'caps_path_unique',
+            id: 'existing:UQ_2371ce3ffc7b688946d7500e689',
+            originalName: 'UQ_2371ce3ffc7b688946d7500e689',
+            name: 'UQ_2371ce3ffc7b688946d7500e689',
             isPrimary: false,
             status: 'existing',
-            columns: [{ id: 'key-column:2', columnName: 'path' }],
+            columns: [{ id: 'key-column:2', columnName: 'created_by' }],
         },
     ];
     state.indexes = [
         {
-            id: 'existing:caps_created_by_idx',
-            originalName: 'caps_created_by_idx',
-            name: 'caps_created_by_idx',
+            id: 'existing:caps_path_idx',
+            originalName: 'caps_path_idx',
+            name: 'caps_path_idx',
             comment: '',
             isUnique: false,
             type: 'btree',
             status: 'existing',
-            isPrimaryKey: false,
-            columns: [{ id: 'index-column:5', columnName: 'created_by', order: 'NONE' }],
+            columns: [{ id: 'index-column:5', columnName: 'path', order: 'NONE' }],
+        },
+        {
+            id: 'existing:caps_path_unique',
+            originalName: 'caps_path_unique',
+            name: 'caps_path_unique',
+            comment: '',
+            isUnique: true,
+            type: 'btree',
+            status: 'existing',
+            columns: [{ id: 'index-column:6', columnName: 'path', order: 'NONE' }],
         },
     ];
     return state;
@@ -289,9 +300,14 @@ describe('buildPreviewStatements', () => {
 
     it('shows a deleted SQLite index gone from the rebuilt table', () => {
         const state = sqliteState();
-        state.indexes = [];
+        state.indexes = state.indexes.filter((index) => index.name !== 'caps_path_idx');
 
-        expect(buildPreviewStatements(state).join('\n')).not.toContain('caps_created_by_idx');
+        const sql = buildPreviewStatements(state).join('\n');
+        expect(sql).not.toContain('caps_path_idx');
+        // A named unique index is not a constraint: the rebuild keeps its name.
+        expect(sql).toContain('CREATE UNIQUE INDEX "caps_path_unique"');
+        // The unique constraint is rebuilt inline, under no user name.
+        expect(sql).toContain('UNIQUE ("created_by")');
     });
 
     it('plans a new SQLite index in the rebuilt table', () => {
@@ -303,11 +319,49 @@ describe('buildPreviewStatements', () => {
             isUnique: false,
             type: 'btree',
             status: 'new',
-            isPrimaryKey: false,
-            columns: [{ id: 'index-column:6', columnName: 'path', order: 'NONE' }],
+            columns: [{ id: 'index-column:7', columnName: 'path', order: 'NONE' }],
         });
 
         expect(buildPreviewStatements(state).join('\n')).toContain('CREATE INDEX "caps_size_idx"');
+    });
+
+    it('treats a PostgreSQL unique constraint as a key and a unique index as an index', () => {
+        const state = mysqlState();
+        state.driver = 'postgresql';
+        state.currentTableInfo!.indexes = [
+            // TypeORM's `uniques`, which the mapper marks `unique`.
+            { name: 'caps_path_key', columns: ['path'], orders: [], isUnique: true, type: null, comment: null, origin: 'unique', isPartial: false },
+            // A plain unique index (`indices`), which is not a constraint.
+            { name: 'ix_created', columns: ['created_by'], orders: [], isUnique: true, type: 'BTREE', comment: null, origin: 'index', isPartial: false },
+        ];
+        state.keys = [
+            { id: 'primary', originalName: 'PRIMARY', name: 'PRIMARY', isPrimary: true, status: 'existing', columns: [{ id: 'key-column:1', columnName: 'id' }] },
+            {
+                id: 'existing:caps_path_key',
+                originalName: 'caps_path_key',
+                name: 'caps_path_key',
+                isPrimary: false,
+                status: 'existing',
+                columns: [{ id: 'key-column:2', columnName: 'path' }],
+            },
+        ];
+        state.indexes = [
+            {
+                id: 'existing:ix_created',
+                originalName: 'ix_created',
+                name: 'ix_created',
+                comment: '',
+                isUnique: true,
+                type: 'BTREE',
+                status: 'existing',
+                columns: [{ id: 'index-column:1', columnName: 'created_by', order: 'NONE' }],
+            },
+        ];
+
+        // Neither one is a pending change, and the unique index is an index: deleting it drops it.
+        expect(buildPreviewStatements(state)).toEqual([]);
+        state.indexes = [];
+        expect(buildPreviewStatements(state)).toEqual(['DROP INDEX "ix_created";']);
     });
 
     it('plans an index over the primary-key column of a table being created', () => {
