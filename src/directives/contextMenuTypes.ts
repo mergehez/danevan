@@ -15,6 +15,8 @@ export type ContextMenuItem = {
     checked?: boolean;
     disabled?: boolean;
     danger?: boolean;
+    /** Shortcut hint shown on the right (the key handling itself belongs to the caller). */
+    shortcut?: string;
     children?: ContextMenuEntry[];
     action?: () => void | Promise<void>;
 };

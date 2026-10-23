@@ -245,6 +245,20 @@ describe('vContextMenu', () => {
         expect(menuLabels()).toEqual(['Starred', 'More', 'Unavailable']);
     });
 
+    it('shows a shortcut hint on the item it belongs to', async () => {
+        const { host } = mountMenu('', [
+            { id: 'duplicate', label: 'Duplicate', shortcut: '⌘D' },
+            { id: 'delete', label: 'Delete', danger: true },
+        ]);
+
+        dispatchContextMenu(host);
+        await expect.poll(menuLabels).toEqual(['Duplicate', 'Delete']);
+
+        const hints = Array.from(document.querySelectorAll<HTMLElement>('.v-menu-item-shortcut')).map((entry) => entry.textContent);
+        expect(hints).toEqual(['⌘D']);
+        expect(document.querySelector<HTMLElement>('.v-menu-item-shortcut')!.closest('.v-menu-item')!.textContent).toContain('Duplicate');
+    });
+
     it('toggles a checkbox item without closing, then runs an item action and closes', async () => {
         const toggleStar = vi.fn();
         const rename = vi.fn();

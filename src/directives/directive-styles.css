@@ -256,6 +256,14 @@ body {
     white-space: nowrap;
 }
 
+.v-menu-item-shortcut {
+    margin-left: 1.25rem;
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    opacity: 0.45;
+    letter-spacing: 0.02em;
+}
+
 .v-menu-children {
     pointer-events: none;
     position: absolute;

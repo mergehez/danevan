@@ -432,6 +432,104 @@ test.describe('Modify table popup (e2e)', () => {
         expect([index?.isUnique, index?.columns]).toEqual([true, ['id']]);
     });
 
+    test('offers the item menu on a right click: new, duplicate, edit, delete and revert', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        const columnItem = page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="name"]');
+        await columnItem.click({ button: 'right' });
+
+        const menu = page.locator('.v-menu-panel').first();
+        await expect(menu.getByRole('menuitem', { name: 'New' })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Duplicate' })).toBeVisible();
+        await expect(menu.getByText('⌘D')).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Edit' })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Delete' })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Revert' })).toBeDisabled();
+
+        // New is a submenu with the four entity kinds.
+        await menu.getByRole('menuitem', { name: 'New' }).hover();
+        const newMenu = page.locator('.v-menu-children .v-menu-panel').first();
+        for (const label of ['Column', 'Unique Key', 'Foreign Key', 'Index']) {
+            await expect(newMenu.getByRole('menuitem', { name: label })).toBeVisible();
+        }
+
+        // Picking one adds it to the draft, like the toolbar's + does.
+        await newMenu.getByRole('menuitem', { name: 'Index' }).click();
+        await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="new_index"]')).toBeVisible();
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+    });
+
+    test('duplicates, edits and reverts the right-clicked item from its menu', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        const columnItem = page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="name"]');
+        await columnItem.click({ button: 'right' });
+        await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'Duplicate' }).click();
+
+        const copyItem = page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="name_copy"]');
+        await expect(copyItem).toBeVisible();
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+
+        // Edit selects the item and puts the caret in its first field.
+        await copyItem.click({ button: 'right' });
+        await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'Edit' }).click();
+        await expect(page.locator('[data-testid="modify-column-name"]')).toBeFocused();
+        await expect(page.locator('[data-testid="modify-column-name"]')).toHaveValue('name_copy');
+
+        // Revert (the menu's undo) takes the duplicate back out.
+        await copyItem.click({ button: 'right' });
+        await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'Revert' }).click();
+        await expect(copyItem).toHaveCount(0);
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+    });
+
+    test('deletes the right-clicked item from its menu', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="description"]').click({ button: 'right' });
+        await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'Delete' }).click();
+        await page.locator('[data-testid="centered-modal-surface"]').getByRole('button', { name: 'Delete' }).click();
+
+        // The row is struck through and labelled removed; the plan carries the drop.
+        await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="description"]')).toContainText('removed');
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+    });
+
+    test('honours the item menu shortcuts: duplicate, edit, revert and delete', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="name"]').click();
+        await page.keyboard.press('Control+d');
+
+        const copyItem = page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="name_copy"]');
+        await expect(copyItem).toBeVisible();
+
+        await page.keyboard.press('Control+z');
+        await expect(copyItem).toHaveCount(0);
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+
+        await page.keyboard.press('Control+ArrowDown');
+        await expect(page.locator('[data-testid="modify-column-name"]')).toBeFocused();
+
+        // Backspace is the menu's delete, with the same confirmation.
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="description"]').click();
+        await page.keyboard.press('Backspace');
+        await page.locator('[data-testid="centered-modal-surface"]').getByRole('button', { name: 'Delete' }).click();
+        await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="description"]')).toContainText('removed');
+    });
+
     test('deletes a column through the popup', async ({ page }) => {
         // Seed the table with a column to delete.
         await post(page.request, 'runQuery', {

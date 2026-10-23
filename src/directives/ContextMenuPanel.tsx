@@ -246,6 +246,7 @@ export const ContextMenuPanel = component(
                                     </span>
                                 ) : null}
                                 <span class="v-menu-item-label">{entry.label}</span>
+                                {entry.shortcut ? <span class="v-menu-item-shortcut">{entry.shortcut}</span> : null}
                                 {hasChildren(entry) ? <span class="v-arg-icon v-menu-item-chevron" /> : null}
                             </button>
                             {hasChildren(entry) ? (
