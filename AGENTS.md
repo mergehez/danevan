@@ -217,4 +217,15 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   `nulls-low` everywhere except PostgreSQL), so the grid agrees with the server order it just
   loaded. Guarded by `grid-sort-nulls.spec.ts`.
 
+Suggested from the 2026-10-23 "index changes are not detected" report:
+
+- **Identify an entity by its identity, not by a property another entity can share.** The Modify
+  Table dialog treated any index draft that covered the primary-key columns as *the* primary index,
+  and "Add index" starts on the first column — usually the primary key — so the new index vanished
+  from the plan: the preview said `No change yet` and OK stayed disabled. The draft that stands for
+  the primary key now carries the flag itself (`isPrimaryKey`), so any other index over those columns
+  is a real index. Guarded by `useModifyTable.spec.ts` (the preview statements for an added index
+  over the primary-key column) and `modify-table-popup.spec.ts` (detect, apply, and the catalog lists
+  it).
+
 

@@ -8,8 +8,8 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-13, after the grid-state fixes (custom-query reload, per-tab grid stash,
-display-type repaint, script-result refresh)._
+_Last verified: 2026-10-23, after the modify-table index-detection fix (an added index over the
+primary-key column is a change). Before that, 2026-10-13: the grid-state fixes._
 
 ## 1. What this is
 
@@ -145,6 +145,11 @@ guards it are the reference.
    its sort indicator by flipping the value comparison on DESC, which puts NULLs first on dialects
    that sort them last. *Rule:* NULL placement is an explicit per-dialect rule (`sortNullOrdering`).
    *Guard:* `grid-sort-nulls.spec.ts`.
+10. **An entity was matched by a property another entity can share.** The Modify Table dialog called
+    any index draft over the primary-key columns "the primary index", so an added index on the first
+    column (usually the primary key) was dropped from the plan and the dialog said `No change yet`.
+    *Rule:* identify an entity by its own identity. *Guards:* `useModifyTable.spec.ts`,
+    `modify-table-popup.spec.ts`.
 
 ## 7. Testing — the traps
 
@@ -195,9 +200,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1063 unit tests (87 files)**, **132 browser tests (40 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **46.5 % statements / 38.6 % branches** with
-the floors green. The full browser suite is 132 passed + 0 failed; that green run also assumes the local
+Snapshot at the last verification: **1071 unit tests (87 files)**, **136 browser tests (40 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **48.3 % statements / 40.6 % branches** with
+the floors green. The full browser suite is 136 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
 packaged suites were not re-run after these fixes (renderer-only changes).
