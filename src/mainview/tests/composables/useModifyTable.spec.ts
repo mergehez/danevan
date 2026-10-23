@@ -139,17 +139,6 @@ function mysqlState(): ModifyTablePreviewState {
         foreignKeys: [],
         indexes: [
             {
-                id: 'existing:PRIMARY',
-                originalName: 'PRIMARY',
-                name: 'PRIMARY',
-                comment: '',
-                isUnique: true,
-                type: '',
-                status: 'existing',
-                isPrimaryKey: true,
-                columns: [{ id: 'index-column:1', columnName: 'id', order: 'NONE' }],
-            },
-            {
                 id: 'existing:caps_created_by_foreign',
                 originalName: 'caps_created_by_foreign',
                 name: 'caps_created_by_foreign',
@@ -159,17 +148,6 @@ function mysqlState(): ModifyTablePreviewState {
                 status: 'existing',
                 isPrimaryKey: false,
                 columns: [{ id: 'index-column:2', columnName: 'created_by', order: 'ASC' }],
-            },
-            {
-                id: 'existing:caps_path_unique',
-                originalName: 'caps_path_unique',
-                name: 'caps_path_unique',
-                comment: '',
-                isUnique: true,
-                type: 'BTREE',
-                status: 'existing',
-                isPrimaryKey: false,
-                columns: [{ id: 'index-column:3', columnName: 'path', order: 'ASC' }],
             },
         ],
     };
@@ -240,6 +218,51 @@ describe('hasExtendedSchemaChanges', () => {
     });
 });
 
+/** A SQLite table with a standalone index, as `getTableInfo` reports it. */
+function sqliteState(): ModifyTablePreviewState {
+    const state = mysqlState();
+    state.driver = 'sqlite';
+    state.table = { name: 'caps', comment: '', engine: '', collation: '', options: '' };
+    state.currentTableInfo = {
+        name: 'caps',
+        columns: [
+            { name: 'id', type: 'integer', isPrimaryKey: true, primaryKeyOrdinal: 1 },
+            { name: 'path', type: 'text', isPrimaryKey: false, primaryKeyOrdinal: null },
+            { name: 'created_by', type: 'integer', isPrimaryKey: false, primaryKeyOrdinal: null },
+        ],
+        indexes: [
+            { name: 'caps_created_by_idx', columns: ['created_by'], isUnique: false, type: null, comment: null, origin: 'c', isPartial: false },
+            { name: 'caps_path_unique', columns: ['path'], isUnique: true, type: null, comment: null, origin: 'u', isPartial: false },
+        ],
+        foreignKeys: [],
+    } as unknown as ModifyTablePreviewState['currentTableInfo'];
+    state.keys = [
+        { id: 'primary', originalName: 'PRIMARY', name: 'PRIMARY', isPrimary: true, status: 'existing', columns: [{ id: 'key-column:1', columnName: 'id' }] },
+        {
+            id: 'existing:caps_path_unique',
+            originalName: 'caps_path_unique',
+            name: 'caps_path_unique',
+            isPrimary: false,
+            status: 'existing',
+            columns: [{ id: 'key-column:2', columnName: 'path' }],
+        },
+    ];
+    state.indexes = [
+        {
+            id: 'existing:caps_created_by_idx',
+            originalName: 'caps_created_by_idx',
+            name: 'caps_created_by_idx',
+            comment: '',
+            isUnique: false,
+            type: 'btree',
+            status: 'existing',
+            isPrimaryKey: false,
+            columns: [{ id: 'index-column:5', columnName: 'created_by', order: 'NONE' }],
+        },
+    ];
+    return state;
+}
+
 describe('buildPreviewStatements', () => {
     it('plans nothing for the untouched draft', () => {
         expect(buildPreviewStatements(mysqlState())).toEqual([]);
@@ -262,6 +285,29 @@ describe('buildPreviewStatements', () => {
         state.indexes = state.indexes.filter((index) => index.name !== 'caps_id_idx');
 
         expect(buildPreviewStatements(state)).toEqual(['ALTER TABLE `caps` DROP INDEX `caps_id_idx`;']);
+    });
+
+    it('shows a deleted SQLite index gone from the rebuilt table', () => {
+        const state = sqliteState();
+        state.indexes = [];
+
+        expect(buildPreviewStatements(state).join('\n')).not.toContain('caps_created_by_idx');
+    });
+
+    it('plans a new SQLite index in the rebuilt table', () => {
+        const state = sqliteState();
+        state.indexes.push({
+            id: 'new:1',
+            name: 'caps_size_idx',
+            comment: '',
+            isUnique: false,
+            type: 'btree',
+            status: 'new',
+            isPrimaryKey: false,
+            columns: [{ id: 'index-column:6', columnName: 'path', order: 'NONE' }],
+        });
+
+        expect(buildPreviewStatements(state).join('\n')).toContain('CREATE INDEX "caps_size_idx"');
     });
 
     it('plans an index over the primary-key column of a table being created', () => {

@@ -269,6 +269,7 @@ export const ModifyTableModal = component(
                     isUnique: true,
                     type: '',
                     columns,
+                    orders: [] as string[],
                 };
             }
 
@@ -284,6 +285,7 @@ export const ModifyTableModal = component(
                 isUnique: index.isUnique,
                 type: index.type ?? 'btree',
                 columns: index.columns,
+                orders: index.orders ?? [],
             };
         }
 
@@ -359,6 +361,40 @@ export const ModifyTableModal = component(
             }
 
             return normalizeOptionalText(String(selectedForeignKey.value[field] ?? '')) !== normalizeOptionalText(String(originalForeignKey[field] ?? ''));
+        }
+
+        function isIndexColumnFieldDirty(column: { id: string; columnName: string; order: string }, field: 'columnName' | 'order') {
+            const position = selectedIndex.value?.columns.findIndex((entry) => entry.id === column.id) ?? -1;
+            const originalIndex = getOriginalSelectedIndex();
+
+            if (!originalIndex) {
+                return field === 'columnName' ? column.columnName.trim().length > 0 : column.order !== 'NONE';
+            }
+
+            const originalColumnName = originalIndex.columns[position];
+
+            if (originalColumnName === undefined) {
+                return true;
+            }
+
+            return field === 'columnName' ? column.columnName.trim() !== originalColumnName.trim() : column.order !== (originalIndex.orders[position] ?? 'NONE');
+        }
+
+        function isKeyColumnFieldDirty(column: { id: string; columnName: string }) {
+            const position = selectedKey.value?.columns.findIndex((entry) => entry.id === column.id) ?? -1;
+            const originalKey = getOriginalSelectedKey();
+
+            if (!originalKey) {
+                return column.columnName.trim().length > 0;
+            }
+
+            const originalColumnName = originalKey.columns[position];
+
+            if (originalColumnName === undefined) {
+                return true;
+            }
+
+            return column.columnName.trim() !== originalColumnName.trim();
         }
 
         function isIndexFieldDirty(field: 'name' | 'comment' | 'isUnique' | 'type') {
@@ -724,7 +760,7 @@ export const ModifyTableModal = component(
                                 </div>
                             </div>
                             <div class={[formGridClass, 'px-1 py-2']}>
-                                <span class={rowLabelClass}>Column Name</span>
+                                <span class={getLabelClass(!!selectedIndexColumn.value && isIndexColumnFieldDirty(selectedIndexColumn.value, 'columnName'))}>Column Name</span>
                                 {selectedIndexColumn.value ? (
                                     <Select
                                         {...vModel(selectedIndexColumn.value, 'columnName')}
@@ -734,7 +770,7 @@ export const ModifyTableModal = component(
                                         small={true}
                                     />
                                 ) : null}
-                                <span class={rowLabelClass}>Order</span>
+                                <span class={getLabelClass(!!selectedIndexColumn.value && isIndexColumnFieldDirty(selectedIndexColumn.value, 'order'))}>Order</span>
                                 {selectedIndexColumn.value ? (
                                     <Select
                                         {...vModel(selectedIndexColumn.value, 'order')}
@@ -905,9 +941,10 @@ export const ModifyTableModal = component(
                                     </div>
                                     {selectedKeyColumn.value ? (
                                         <div class={[formGridClass, 'px-1 py-2']}>
-                                            <span class={rowLabelClass}>Column Name</span>
+                                            <span class={getLabelClass(isKeyColumnFieldDirty(selectedKeyColumn.value))}>Column Name</span>
                                             <Select
                                                 {...vModel(selectedKeyColumn.value, 'columnName')}
+                                                data-testid="modify-key-column-name"
                                                 options={modifyTable.activeColumnNames}
                                                 disabled={selKey.status === 'deleted'}
                                                 small={true}

@@ -315,6 +315,40 @@ export async function openSidebarTable(page: Page, connectionId: number, tableNa
     await expect(page.getByTestId('data-grid-viewport').first()).toBeVisible();
 }
 
+/** Opens the Modify Table dialog for a sidebar table and waits for its metadata. */
+export async function openModifyTablePopup(page: Page, source: { serverId: number; connectionId: number }, tableName: string) {
+    await page.goto('/');
+    await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+    await expandSidebarRow(page.locator(`[data-node-id="server:${source.serverId}"]`));
+
+    // A server source keeps its connections under the server row; a file source *is* the connection.
+    const connectionRow = page.locator(`[data-node-id="connection:${source.connectionId}"]`);
+
+    if ((await connectionRow.count()) > 0) {
+        await expandSidebarRow(connectionRow);
+    }
+
+    // In grouped mode tables sit behind a "tables" collection; in flat mode they are direct children.
+    const tablesCollection = page.locator('[data-testid="modify-collection"][data-collection-kind="tables"]');
+    const tableRow = page.locator(`[data-node-id="table:${source.connectionId}:${tableName}"]`);
+
+    // The table list arrives asynchronously once the connection expands.
+    await expect(tablesCollection.or(tableRow).first()).toBeVisible({ timeout: 10_000 });
+
+    if ((await tablesCollection.count()) > 0) {
+        await expandSidebarRow(tablesCollection);
+    }
+
+    await expect(tableRow).toBeVisible();
+    await openSidebarRowMenu(tableRow);
+    await menuItem(page, 'Modify Table...').click();
+
+    // Wait for the modal to finish loading the table metadata (columns become visible).
+    await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"]').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="modify-apply"]')).toBeVisible();
+}
+
 /** Boots the app and opens one table of a file source. */
 export async function openFileTable(page: Page, source: { serverId: number; connectionId: number }, tableName: string) {
     await page.goto('/');

@@ -270,7 +270,14 @@ function buildSqliteColumnDefinition(column: ModifyTableColumnDraft, inlinePrima
     return parts.join(' ');
 }
 
-function buildSqlitePreviewSql(tableName: string, tableInfo: TableInfo, nextColumns: ModifyTableColumnDraft[]) {
+function buildSqlitePreviewSql(
+    tableName: string,
+    tableInfo: TableInfo,
+    nextColumns: ModifyTableColumnDraft[],
+    keys: ModifyTableKeyDraft[],
+    foreignKeys: ModifyTableForeignKeyDraft[],
+    indexes: ModifyTableIndexDraft[]
+) {
     const renamedColumns = new Map(nextColumns.filter((column) => column.originalName).map((column) => [column.originalName!, column.name]));
     const nextColumnNames = new Set(nextColumns.map((column) => column.name));
     const primaryKeyColumns = nextColumns
@@ -283,44 +290,39 @@ function buildSqlitePreviewSql(tableName: string, tableInfo: TableInfo, nextColu
         createParts.push(`PRIMARY KEY (${primaryKeyColumns.map((column) => quoteSqlIdentifier(column.name, 'sqlite')).join(', ')})`);
     }
 
-    tableInfo.indexes
-        .filter((index) => index.origin === 'u' && !index.isPartial)
-        .map((index) => index.columns.map((columnName) => renamedColumns.get(columnName) ?? columnName))
-        .filter((columnNames) => columnNames.every((columnName) => nextColumnNames.has(columnName)))
+    // The rebuild is driven by the drafts, not by the catalog: a key or index the user deleted must
+    // disappear from the table being created, and an added one must appear in it.
+    getUniqueKeyDrafts(keys)
+        .map((key) => key.columns.map((column) => renamedColumns.get(column.columnName) ?? column.columnName))
+        .filter((columnNames) => columnNames.length > 0 && columnNames.every((columnName) => nextColumnNames.has(columnName)))
         .forEach((columnNames) => {
             createParts.push(`UNIQUE (${columnNames.map((columnName) => quoteSqlIdentifier(columnName, 'sqlite')).join(', ')})`);
         });
 
-    const foreignKeysById = new Map<number, typeof tableInfo.foreignKeys>();
-
-    tableInfo.foreignKeys.forEach((foreignKey) => {
-        const group = foreignKeysById.get(foreignKey.id) ?? [];
-        group.push(foreignKey);
-        foreignKeysById.set(foreignKey.id, group);
-    });
-
-    for (const group of foreignKeysById.values()) {
-        const mappedFromColumns = group.map((foreignKey) => renamedColumns.get(foreignKey.from) ?? foreignKey.from);
+    getActiveForeignKeys(foreignKeys).forEach((foreignKey) => {
+        const mappedFromColumns = foreignKey.columns.map((column) => renamedColumns.get(column.columnName) ?? column.columnName);
 
         if (!mappedFromColumns.every((columnName) => nextColumnNames.has(columnName))) {
-            continue;
+            return;
         }
 
         const parts = [
             `FOREIGN KEY (${mappedFromColumns.map((columnName) => quoteSqlIdentifier(columnName, 'sqlite')).join(', ')})`,
-            `REFERENCES ${quoteSqlIdentifier(group[0]!.table, 'sqlite')} (${group.map((foreignKey) => quoteSqlIdentifier(foreignKey.to, 'sqlite')).join(', ')})`,
+            `REFERENCES ${quoteSqlIdentifier(foreignKey.targetTable, 'sqlite')} (${foreignKey.columns.map((column) => quoteSqlIdentifier(column.targetName, 'sqlite')).join(', ')})`,
         ];
+        const onUpdate = normalizeOptionalText(foreignKey.onUpdate)?.replaceAll('_', ' ').toUpperCase();
+        const onDelete = normalizeOptionalText(foreignKey.onDelete)?.replaceAll('_', ' ').toUpperCase();
 
-        if (group[0]!.onUpdate && group[0]!.onUpdate !== 'NO ACTION') {
-            parts.push(`ON UPDATE ${group[0]!.onUpdate}`);
+        if (onUpdate && onUpdate !== 'NO ACTION') {
+            parts.push(`ON UPDATE ${onUpdate}`);
         }
 
-        if (group[0]!.onDelete && group[0]!.onDelete !== 'NO ACTION') {
-            parts.push(`ON DELETE ${group[0]!.onDelete}`);
+        if (onDelete && onDelete !== 'NO ACTION') {
+            parts.push(`ON DELETE ${onDelete}`);
         }
 
         createParts.push(parts.join(' '));
-    }
+    });
 
     const tempTableName = `${tableName}__modified`;
     const transferableColumns = nextColumns.filter((column) => column.originalName && tableInfo.columns.some((entry) => entry.name === column.originalName));
@@ -347,21 +349,19 @@ function buildSqlitePreviewSql(tableName: string, tableInfo: TableInfo, nextColu
     statements.push(`DROP TABLE ${quoteSqlIdentifier(tableName, 'sqlite')};`);
     statements.push(`ALTER TABLE ${quoteSqlIdentifier(tempTableName, 'sqlite')} RENAME TO ${quoteSqlIdentifier(tableName, 'sqlite')};`);
 
-    tableInfo.indexes
-        .filter((index) => index.origin === 'c' && !index.isPartial)
-        .forEach((index) => {
-            const mappedColumns = index.columns.map((columnName) => renamedColumns.get(columnName) ?? columnName);
+    getStandaloneIndexDrafts(indexes, keys).forEach((index) => {
+        const mappedColumns = index.columns.map((column) => renamedColumns.get(column.columnName) ?? column.columnName);
 
-            if (!mappedColumns.every((columnName) => nextColumnNames.has(columnName))) {
-                return;
-            }
+        if (!mappedColumns.every((columnName) => nextColumnNames.has(columnName))) {
+            return;
+        }
 
-            statements.push(
-                `CREATE ${index.isUnique ? 'UNIQUE ' : ''}INDEX ${quoteSqlIdentifier(index.name, 'sqlite')} ON ${quoteSqlIdentifier(tableName, 'sqlite')} (${mappedColumns
-                    .map((columnName) => quoteSqlIdentifier(columnName, 'sqlite'))
-                    .join(', ')});`
-            );
-        });
+        statements.push(
+            `CREATE ${index.isUnique ? 'UNIQUE ' : ''}INDEX ${quoteSqlIdentifier(index.name, 'sqlite')} ON ${quoteSqlIdentifier(tableName, 'sqlite')} (${mappedColumns
+                .map((columnName) => quoteSqlIdentifier(columnName, 'sqlite'))
+                .join(', ')});`
+        );
+    });
 
     statements.push('COMMIT;');
     statements.push('PRAGMA foreign_keys = ON;');
@@ -1713,7 +1713,7 @@ export function buildPreviewStatements(state: ModifyTablePreviewState) {
     }
 
     if (state.driver === 'sqlite') {
-        const sqliteStatements = buildSqlitePreviewSql(state.tableName, state.currentTableInfo, activeColumns);
+        const sqliteStatements = buildSqlitePreviewSql(state.tableName, state.currentTableInfo, activeColumns, state.keys, state.foreignKeys, state.indexes);
 
         if (hasExtendedSchemaChanges(state)) {
             sqliteStatements.unshift('-- Additional table, key, foreign key, or index changes are included in the SQLite table rebuild.');
@@ -2066,7 +2066,9 @@ function createIndexDrafts(tableInfo: TableInfo, driver: DbType | undefined): Mo
         });
     }
 
-    return indexes;
+    // The primary key and the unique indexes are edited as keys. A second entry under "indexes"
+    // would be a copy the plan ignores: it excludes indexes whose name a key already carries.
+    return getStandaloneIndexDrafts(indexes, createKeyDrafts(tableInfo));
 }
 
 function createNewKey(keys: ModifyTableKeyDraft[], columnNames: string[]) {

@@ -3,7 +3,7 @@
 // view over the table could pass the suite. These drive the real endpoint and read the file back.
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import Database from 'better-sqlite3';
-import { createFileSource, post } from './helpers';
+import { createFileSource, openModifyTablePopup, post } from './helpers';
 
 function tableInfo(request: APIRequestContext, connectionId: number, tableName: string) {
     return post(request, 'getTableInfo', { connectionId, tableName });
@@ -90,6 +90,48 @@ function readFile<T>(databasePath: string, callback: (database: Database.Databas
 }
 
 test.describe('SQLite modify table', () => {
+    test('the dialog detects a deleted index and applies it to the file', async ({ page, request }) => {
+        const source = await createFileSource(request, {
+            label: 'sqlite-index-dialog',
+            schema: `
+                CREATE TABLE caps (id integer primary key, path text not null, created_by integer);
+                CREATE INDEX caps_created_by_idx ON caps(created_by);
+                CREATE UNIQUE INDEX caps_path_unique ON caps(path);
+                INSERT INTO caps (id, path, created_by) VALUES (1, 'a', 7);
+            `,
+        });
+
+        try {
+            await openModifyTablePopup(page, source, 'caps');
+
+            // The plain index is an index; the unique one is edited as a key.
+            const navItem = (kind: string, title: string) => page.locator(`[data-testid="modify-nav-item"][data-nav-kind="${kind}"][data-nav-title="${title}"]`);
+            await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+            await expect(navItem('index', 'caps_created_by_idx')).toBeVisible();
+            await expect(navItem('index', 'caps_path_unique')).toHaveCount(0);
+
+            await navItem('index', 'caps_created_by_idx').click();
+            await page.locator('[data-testid="modify-delete"]').click();
+            await page.locator('[data-testid="centered-modal-surface"]').getByRole('button', { name: 'Delete' }).click();
+
+            // A rebuild is planned, and the preview names the change (`No change yet` would hide it).
+            await expect(page.getByText('No change yet', { exact: true })).toHaveCount(0);
+
+            await page.locator('[data-testid="modify-apply"]').click();
+            await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+            const info = await tableInfo(request, source.connectionId, 'caps');
+            expect(info.indexes.some((index: any) => index.name === 'caps_created_by_idx')).toBe(false);
+
+            // The rebuild kept the data and the uniqueness the other index enforced.
+            const rows = await post(request, 'runQuery', { connectionId: source.connectionId, sql: 'SELECT path FROM caps WHERE id = 1' });
+            expect(rows.rows).toEqual([{ path: 'a' }]);
+            await expect(post(request, 'runQuery', { connectionId: source.connectionId, sql: "INSERT INTO caps (id, path) VALUES (2, 'a')" })).rejects.toThrow(/UNIQUE/);
+        } finally {
+            await source.cleanup();
+        }
+    });
+
     test('a table rename keeps the child foreign keys and the views that pointed at it', async ({ request }) => {
         const source = await createFileSource(request, {
             label: 'sqlite-rename',

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { API, MYSQL, post } from './helpers';
+import { API, MYSQL, openModifyTablePopup, post } from './helpers';
 
 function tableDdl(tableName: string) {
     return `CREATE TABLE \`${tableName}\` (
@@ -18,40 +18,6 @@ function tableDdl(tableName: string) {
   UNIQUE KEY \`caps_path_unique\` (\`path\`),
   KEY \`caps_created_by_foreign\` (\`created_by\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`;
-}
-
-async function expand(locator: ReturnType<Page['locator']>) {
-    await expect(locator).toBeVisible();
-    if ((await locator.getAttribute('data-sidebar-collapsed')) === 'true') {
-        await locator.click();
-    }
-}
-
-async function openTableModifyPopup(page: Page, connectionId: number, tableName: string, serverId: number) {
-    await expand(page.locator(`[data-node-id="server:${serverId}"]`));
-    await expand(page.locator(`[data-node-id="connection:${connectionId}"]`));
-
-    // In grouped mode tables sit behind a "tables" collection; in flat mode they are direct children.
-    const tablesCollection = page.locator(`[data-testid="modify-collection"][data-collection-kind="tables"]`);
-    const tableRow = page.locator(`[data-node-id="table:${connectionId}:${tableName}"]`);
-
-    // The table list arrives asynchronously once the connection expands.
-    await expect(tablesCollection.or(tableRow).first()).toBeVisible({ timeout: 10_000 });
-
-    if ((await tablesCollection.count()) > 0) {
-        await expand(tablesCollection);
-    }
-
-    await expect(tableRow).toBeVisible();
-    await tableRow.click({ button: 'right' });
-
-    const menuItem = page.locator('.v-menu-item', { hasText: 'Modify Table...' });
-    await expect(menuItem).toBeVisible();
-    await menuItem.click();
-
-    // Wait for the modal to finish loading the table metadata (columns become visible).
-    await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"]').first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('[data-testid="modify-apply"]')).toBeVisible();
 }
 
 async function setColumnType(page: Page, value: string) {
@@ -137,7 +103,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await expect(columnItem(page, 'id')).toBeVisible();
         await expect(columnItem(page, 'name')).toBeVisible();
@@ -148,7 +114,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         // Select the "columns" group, then add a new column.
         await columnsGroup(page).click();
@@ -168,7 +134,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await columnsGroup(page).click();
         await columnItem(page, 'name').click();
@@ -186,7 +152,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await columnsGroup(page).click();
         await columnItem(page, 'name').click();
@@ -222,7 +188,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         // Select the "columns" group, then the "name" column and move it down once.
         await columnsGroup(page).click();
@@ -241,7 +207,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         // Drag `size`, then `height`, above `id`. The second move has to be applied
         // against the order the first one leaves behind.
@@ -278,7 +244,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
         await page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="caps_created_by_foreign"]').click();
@@ -300,7 +266,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
         await page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="caps_created_by_foreign"]').click();
@@ -321,7 +287,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
         await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
@@ -340,7 +306,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
         await page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="caps_created_by_foreign"]').click();
@@ -356,6 +322,116 @@ test.describe('Modify table popup (e2e)', () => {
         expect(info.indexes.some((index: any) => index.name === 'caps_created_by_foreign')).toBe(false);
     });
 
+    test('detects a column change on an index', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="caps_created_by_foreign"]').click();
+
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-index-column-name"] select').selectOption('size');
+
+        // The field the change came from is marked, like every other edited field in the form.
+        await expect(page.getByText('Column Name', { exact: true })).toHaveClass(/text-amber-300/);
+        await expect(page.getByText('2 statements', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.find((index: any) => index.name === 'caps_created_by_foreign').columns).toEqual(['size']);
+    });
+
+    test('lists a unique index only under keys, where editing and deleting it works', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        // A unique index is a key; a copy under "indexes" would silently ignore every edit.
+        const navItem = (kind: string, title: string) => page.locator(`[data-testid="modify-nav-item"][data-nav-kind="${kind}"][data-nav-title="${title}"]`);
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await expect(navItem('index', 'caps_created_by_foreign')).toBeVisible();
+        await expect(navItem('index', 'caps_path_unique')).toHaveCount(0);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="keys"]').click();
+        await expect(navItem('key', 'caps_path_unique')).toBeVisible();
+
+        await navItem('key', 'caps_path_unique').click();
+        await page.locator('[data-testid="modify-key-column-name"] select').selectOption('name');
+        await expect(page.getByText('Column Name', { exact: true })).toHaveClass(/text-amber-300/);
+        await expect(page.getByText('2 statements', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.find((index: any) => index.name === 'caps_path_unique').columns).toEqual(['name']);
+    });
+
+    test('detects deleting a unique index from the keys group', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="keys"]').click();
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="key"][data-nav-title="caps_path_unique"]').click();
+        await page.locator('[data-testid="modify-delete"]').click();
+        await page.locator('[data-testid="centered-modal-surface"]').getByRole('button', { name: 'Delete' }).click();
+
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.some((index: any) => index.name === 'caps_path_unique')).toBe(false);
+    });
+
+    test('detects an added unique key', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="keys"]').click();
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+        await page.locator('[data-testid="modify-add"]').click();
+
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        const key = info.indexes.find((index: any) => index.name === 'new_key');
+        expect([key?.isUnique, key?.columns]).toEqual([true, ['id']]);
+    });
+
+    test('detects a new index made unique from the indexes group', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await page.locator('[data-testid="modify-add"]').click();
+        await page.locator('[data-testid="centered-modal-surface"] label').filter({ hasText: 'Unique' }).click();
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        const index = info.indexes.find((entry: any) => entry.name === 'new_index');
+        expect([index?.isUnique, index?.columns]).toEqual([true, ['id']]);
+    });
+
     test('deletes a column through the popup', async ({ page }) => {
         // Seed the table with a column to delete.
         await post(page.request, 'runQuery', {
@@ -366,7 +442,7 @@ test.describe('Modify table popup (e2e)', () => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
 
-        await openTableModifyPopup(page, connectionId, tableName, serverId);
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
 
         await columnsGroup(page).click();
         await columnItem(page, 'test_column').click();
