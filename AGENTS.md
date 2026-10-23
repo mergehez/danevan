@@ -227,5 +227,13 @@ Suggested from the 2026-10-23 "index changes are not detected" report:
   is a real index. Guarded by `useModifyTable.spec.ts` (the preview statements for an added index
   over the primary-key column) and `modify-table-popup.spec.ts` (detect, apply, and the catalog lists
   it).
+- **List an entity once, and let the list the plan writes be the one the user edits.** The dialog
+  listed the primary key and every unique index under both `keys` and `indexes`; the plan only reads
+  the key, so editing or deleting the `indexes` copy did nothing at all. Standalone indexes now live
+  under `indexes`, the primary and unique ones under `keys` (`createIndexDrafts` returns
+  `getStandaloneIndexDrafts`), and a preview built from the catalog instead of the drafts
+  (`buildSqlitePreviewSql`) is considered broken: it shows a deleted index recreated and a new one
+  missing. Guarded by the index/key cases in `modify-table-popup.spec.ts` and
+  `sqlite-modify-table.spec.ts`.
 
 

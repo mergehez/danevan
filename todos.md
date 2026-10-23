@@ -3,9 +3,9 @@
 **Status:** 36 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1071 unit tests (87 files) · 136 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1073 unit tests (87 files) · 142 browser tests
 (40 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **48.3 % statements / 40.6 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+file **48.6 % statements / 40.7 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -280,22 +280,39 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
 
-### 2026-10-23 user-reported: an added index was never detected
+### 2026-10-23 user-reported: index changes in Modify Table
 
-- **U12 — "changes to indexes in modify table dialog are not detected!"** The dialog decided an index
-  draft *was* the primary index when it covered the primary-key columns, and "Add index" starts on the
-  first column — usually the primary key — so the new index was dropped from the plan: the preview said
-  `No change yet` and OK stayed disabled. It also dropped a user index over those columns from a
-  `CREATE TABLE` plan, and hid such an existing index from deletion. The draft that stands for the
-  primary key now says so itself (`isPrimaryKey`, set on the catalog's primary index or the one
-  synthesized for it — MySQL's `statistics` query never lists `PRIMARY`), so any other index over those
-  columns is an index the user asked for. `hasExtendedSchemaChanges` compares indexes against
-  `createIndexDrafts`, not the raw catalog, so that synthesized primary draft no longer reads as a
-  pending change on every MySQL table. Guarded by `useModifyTable.spec.ts` (preview statements for an
-  added index over the primary-key column in edit and create mode; an existing one stays a no-op until
-  it is deleted; the untouched draft produces nothing) and `modify-table-popup.spec.ts` (the dialog
-  detects, applies and the catalog lists the index; editing an index comment or column order and
-  deleting an index are covered too).
+- **U12 — "changes to indexes in modify table dialog are not detected!"** Three separate holes, all in
+  how the draft was read back:
+  1. *Shape was used as identity.* An index draft that covered the primary-key columns was treated as
+     *the* primary index. "Add index" starts on the first column — usually the primary key — so the new
+     index was dropped from the plan: the preview said `No change yet` and OK stayed disabled. It also
+     dropped such an index from a `CREATE TABLE` plan and hid an existing one from deletion. The draft
+     that stands for the primary key now carries `isPrimaryKey` (set on the catalog's primary index or
+     the one synthesized for it — MySQL's `statistics` query never lists `PRIMARY`), so any other index
+     over those columns is an index the user asked for. `hasExtendedSchemaChanges` compares against
+     `createIndexDrafts`, not the raw catalog, so the synthesized primary draft no longer reads as a
+     pending change on every MySQL table.
+  2. *One index, two editable copies.* The primary key and every unique index were listed under both
+     `keys` and `indexes`, and the plan uses the key: an edit or delete made on the `indexes` copy was
+     silently discarded (the builders exclude an index whose name a key carries). The dialog now lists
+     an index once — the primary and unique indexes under `keys`, standalone indexes under `indexes` —
+     so every visible item is the one the plan writes (`createIndexDrafts` returns
+     `getStandaloneIndexDrafts`).
+  3. *The SQLite preview ignored the drafts.* `buildSqlitePreviewSql` rebuilt the table from the
+     catalog's indexes and foreign keys, so a deleted index still appeared (and a new one did not) in
+     the rebuild it printed. It now takes `keys`, `foreignKeys` and `indexes` from the draft, like the
+     backend's rebuild does. Edited index/key columns also tint their form label, like every other
+     field, so the change is visible where it was made.
+
+  Guarded by `useModifyTable.spec.ts` (preview statements: an added index over the primary-key column in
+  edit and create mode, an existing one stays a no-op until deleted, the untouched draft produces
+  nothing, the SQLite rebuild contains a new index and not a deleted one) and the browser specs
+  `modify-table-popup.spec.ts` (add index, add unique key, index made unique, column/order/comment edit,
+  delete index, unique index listed only under keys and edited there, delete unique key, amber label)
+  and `sqlite-modify-table.spec.ts` (delete an index through the dialog on a file source; data and
+  uniqueness survive the rebuild). `openModifyTablePopup` now lives in `helpers.ts` so both specs share
+  it.
 
 ### 2026-10-13 user-reported grid-state fixes (U7–U10)
 
