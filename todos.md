@@ -284,8 +284,8 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
 
 - **U16 — names for new foreign keys and indexes are generated and follow the form.** Adding an index
   or a foreign key used to leave `new_index` / `new_foreign_key` in the Name field, so the user had to
-  type one. A new draft now starts from its own shape — `idx_<table>_<columns>`,
-  `fk_<table>_<columns>_<targetTable>` — and a synchronous watcher re-derives it when the table name,
+  type one. A new draft now starts from its own shape — `IX_<table>_<columns>`,
+  `FK_<table>_<columns>_<targetTable>` — and a synchronous watcher re-derives it when the table name,
   the covered columns or the FK target changes (long names are clamped to 60 characters, a name
   another draft already holds gets `_2`, `_3`, …). Typing a name clears the draft's `autoName`, so a
   manual name is never overwritten; catalog indexes and foreign keys keep their names, and a

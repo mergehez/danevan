@@ -408,13 +408,13 @@ function columnSuffix(columns: string[]) {
 
 export function buildAutoIndexName(tableName: string, columns: string[]) {
     const suffix = columnSuffix(columns);
-    return clampAutoName(suffix ? `idx_${tableName}_${suffix}` : `idx_${tableName}`);
+    return clampAutoName(suffix ? `IX_${tableName}_${suffix}` : `IX_${tableName}`);
 }
 
 export function buildAutoForeignKeyName(tableName: string, columns: string[], targetTable: string) {
     const suffix = columnSuffix(columns);
     const target = targetTable.trim();
-    return clampAutoName(['fk', tableName, suffix, target].filter(Boolean).join('_'));
+    return clampAutoName(['FK', tableName, suffix, target].filter(Boolean).join('_'));
 }
 
 /** A generated name that no other draft already holds (`_2`, `_3`, …). */

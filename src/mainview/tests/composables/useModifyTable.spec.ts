@@ -392,8 +392,8 @@ describe('auto-generated index and foreign-key names', () => {
     it('names a new index and a new foreign key from the table and the columns', () => {
         const state = namingHost();
 
-        expect(state.indexes[0]!.name).toBe('idx_orders_id');
-        expect(state.foreignKeys[0]!.name).toBe('fk_orders_customer_id');
+        expect(state.indexes[0]!.name).toBe('IX_orders_id');
+        expect(state.foreignKeys[0]!.name).toBe('FK_orders_customer_id');
     });
 
     it('follows the table name, the index columns and the foreign-key target', () => {
@@ -401,16 +401,16 @@ describe('auto-generated index and foreign-key names', () => {
 
         state.table.name = 'invoices';
         syncAutoEntityNames(state);
-        expect(state.indexes[0]!.name).toBe('idx_invoices_id');
+        expect(state.indexes[0]!.name).toBe('IX_invoices_id');
 
         state.indexes[0]!.columns[0]!.columnName = 'total';
         state.indexes[0]!.columns.push(createIndexColumnDraft('currency'));
         syncAutoEntityNames(state);
-        expect(state.indexes[0]!.name).toBe('idx_invoices_total_currency');
+        expect(state.indexes[0]!.name).toBe('IX_invoices_total_currency');
 
         state.foreignKeys[0]!.targetTable = 'customers';
         syncAutoEntityNames(state);
-        expect(state.foreignKeys[0]!.name).toBe('fk_invoices_customer_id_customers');
+        expect(state.foreignKeys[0]!.name).toBe('FK_invoices_customer_id_customers');
     });
 
     it('keeps a name the user typed', () => {
@@ -431,11 +431,11 @@ describe('auto-generated index and foreign-key names', () => {
         state.indexes.push(createNewIndex(state.indexes, ['id'], 'orders'));
         syncAutoEntityNames(state);
 
-        expect(state.indexes.map((index) => index.name)).toEqual(['idx_orders_id', 'idx_orders_id_2']);
+        expect(state.indexes.map((index) => index.name)).toEqual(['IX_orders_id', 'IX_orders_id_2']);
 
         state.foreignKeys.push(createNewForeignKey(state.foreignKeys, ['customer_id'], 'orders'));
         state.foreignKeys[1]!.targetTable = '';
         syncAutoEntityNames(state);
-        expect(state.foreignKeys[1]!.name).toBe('fk_orders_customer_id_2');
+        expect(state.foreignKeys[1]!.name).toBe('FK_orders_customer_id_2');
     });
 });

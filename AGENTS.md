@@ -220,8 +220,8 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
 Suggested from the 2026-10-23 "I never have to type the name" request:
 
 - **A generated default follows the form and yields to the user.** New indexes and foreign keys in
-  Modify Table are named from their own shape (`idx_<table>_<columns>`,
-  `fk_<table>_<columns>_<target>`) and the name is re-derived on every change to the table, columns or
+  Modify Table are named from their own shape (`IX_<table>_<columns>`,
+  `FK_<table>_<columns>_<target>`) and the name is re-derived on every change to the table, columns or
   target — until the user types one, which clears the draft's `autoName` and is never overwritten.
   A hand-typed `new_index` that the form then ignores (or renames) is worse than no default at all.
   Guarded by the naming cases in `useModifyTable.spec.ts` and `modify-table-popup.spec.ts`.
