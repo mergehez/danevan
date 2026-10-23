@@ -671,7 +671,7 @@ export const ModifyTableModal = component(
                         <div class={getLabelClass(isIndexFieldDirty('name'))}>Name</div>
                         <Input {...vModel(selIndex, 'name')} disabled={selIndex.status === 'deleted'} small={true} />
                         <div class={getLabelClass(isIndexFieldDirty('comment'))}>Comment</div>
-                        <Input {...vModel(selIndex, 'comment')} disabled={selIndex.status === 'deleted'} small={true} />
+                        <Input {...vModel(selIndex, 'comment')} data-testid="modify-index-comment" disabled={selIndex.status === 'deleted'} small={true} />
                         <div class={getLabelClass(isIndexFieldDirty('isUnique'))} />
                         <Checkbox {...vModel(selIndex, 'isUnique')} disabled={selIndex.status === 'deleted'} label="Unique" small={true} />
                         <div class={getLabelClass(isIndexFieldDirty('type'))}>Type</div>
@@ -728,6 +728,7 @@ export const ModifyTableModal = component(
                                 {selectedIndexColumn.value ? (
                                     <Select
                                         {...vModel(selectedIndexColumn.value, 'columnName')}
+                                        data-testid="modify-index-column-name"
                                         options={modifyTable.activeColumnNames}
                                         disabled={selIndex.status === 'deleted'}
                                         small={true}
@@ -735,7 +736,13 @@ export const ModifyTableModal = component(
                                 ) : null}
                                 <span class={rowLabelClass}>Order</span>
                                 {selectedIndexColumn.value ? (
-                                    <Select {...vModel(selectedIndexColumn.value, 'order')} options={indexOrderOptions} disabled={selIndex.status === 'deleted'} small={true} />
+                                    <Select
+                                        {...vModel(selectedIndexColumn.value, 'order')}
+                                        data-testid="modify-index-column-order"
+                                        options={indexOrderOptions}
+                                        disabled={selIndex.status === 'deleted'}
+                                        small={true}
+                                    />
                                 ) : null}
                             </div>
                         </div>

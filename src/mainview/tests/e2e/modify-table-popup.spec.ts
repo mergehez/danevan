@@ -274,6 +274,88 @@ test.describe('Modify table popup (e2e)', () => {
         ]);
     });
 
+    test('detects an edit to an existing index and applies it', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openTableModifyPopup(page, connectionId, tableName, serverId);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="caps_created_by_foreign"]').click();
+
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-index-comment"]').fill('caps comment');
+
+        await expect(page.getByText('2 statements', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.find((index: any) => index.name === 'caps_created_by_foreign').comment).toBe('caps comment');
+    });
+
+    test('detects a change to an index column order', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openTableModifyPopup(page, connectionId, tableName, serverId);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="caps_created_by_foreign"]').click();
+
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-index-column-order"] select').selectOption('DESC');
+        await expect(page.getByText('2 statements', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.find((index: any) => index.name === 'caps_created_by_foreign').orders).toEqual(['DESC']);
+    });
+
+    test('detects an added index', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openTableModifyPopup(page, connectionId, tableName, serverId);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await expect(page.getByText('No change yet', { exact: true })).toBeVisible();
+        await page.locator('[data-testid="modify-add"]').click();
+
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.some((index: any) => index.name === 'new_index')).toBe(true);
+    });
+
+    test('detects a deleted index', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openTableModifyPopup(page, connectionId, tableName, serverId);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="caps_created_by_foreign"]').click();
+        await page.locator('[data-testid="modify-delete"]').click();
+        await page.locator('[data-testid="centered-modal-surface"]').getByRole('button', { name: 'Delete' }).click();
+
+        await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.some((index: any) => index.name === 'caps_created_by_foreign')).toBe(false);
+    });
+
     test('deletes a column through the popup', async ({ page }) => {
         // Seed the table with a column to delete.
         await post(page.request, 'runQuery', {

@@ -79,6 +79,8 @@ type ModifyTableIndexDraft = {
     type: string;
     columns: ModifyTableIndexColumnDraft[];
     status: ModifyTableEntityStatus;
+    /** The draft that stands for the table's primary key; not part of the posted plan. */
+    isPrimaryKey: boolean;
 };
 
 type ModifyTableNavigationItem = {
@@ -108,7 +110,7 @@ type ModifyTableOpenParams =
           mode: 'create';
       };
 
-type ModifyTablePreviewState = {
+export type ModifyTablePreviewState = {
     mode: ModifyTableMode;
     tableName: string | undefined;
     driver: DbType | undefined;
@@ -685,7 +687,7 @@ function buildMsAccessPreviewStatements(state: ModifyTablePreviewState) {
     const activeColumns = getActiveColumns(state.columns);
     const currentKeys = createKeyDrafts(state.currentTableInfo);
     const currentUniqueKeys = getUniqueKeyDrafts(currentKeys);
-    const currentStandaloneIndexes = getStandaloneIndexDrafts(createIndexDrafts(state.currentTableInfo), currentKeys);
+    const currentStandaloneIndexes = getStandaloneIndexDrafts(createIndexDrafts(state.currentTableInfo, state.driver), currentKeys);
     const currentForeignKeys = createForeignKeyDrafts(currentTableName, state.currentTableInfo);
     const statements: string[] = [];
     let workingTableName = currentTableName;
@@ -938,7 +940,7 @@ function getMsAccessExplicitPlanErrors(state: ModifyTablePreviewState) {
     const currentPrimaryKey = getPrimaryKeyDraft(currentKeys);
     const desiredPrimaryKey = getPrimaryKeyDraft(state.keys);
     const currentUniqueKeys = getUniqueKeyDrafts(currentKeys);
-    const currentStandaloneIndexes = getStandaloneIndexDrafts(createIndexDrafts(state.currentTableInfo), currentKeys);
+    const currentStandaloneIndexes = getStandaloneIndexDrafts(createIndexDrafts(state.currentTableInfo, state.driver), currentKeys);
     const currentForeignKeys = createForeignKeyDrafts(state.tableName, state.currentTableInfo);
     const errors: string[] = [];
 
@@ -1080,23 +1082,12 @@ function getUniqueKeyDrafts(keys: ModifyTableKeyDraft[]) {
     return getActiveKeys(keys).filter((key) => !key.isPrimary);
 }
 
-function isPrimaryIndexDraft(index: Pick<ModifyTableIndexDraft, 'name' | 'columns'>, primaryKeyColumns: string[]) {
-    if (index.name.trim().toLowerCase() === 'primary') {
-        return true;
-    }
-
-    return (
-        primaryKeyColumns.length > 0 &&
-        index.columns.length === primaryKeyColumns.length &&
-        index.columns.every((column, indexPosition) => column.columnName === primaryKeyColumns[indexPosition])
-    );
-}
-
 function getStandaloneIndexDrafts(indexes: ModifyTableIndexDraft[], keys: ModifyTableKeyDraft[]) {
-    const primaryKeyColumns = getPrimaryKeyDraft(keys)?.columns.map((column) => column.columnName) ?? [];
     const excludedNames = new Set(getActiveKeys(keys).map((key) => key.name.toLowerCase()));
-    excludedNames.add('primary');
-    return getActiveIndexes(indexes).filter((index) => !excludedNames.has(index.name.toLowerCase()) && !isPrimaryIndexDraft(index, primaryKeyColumns));
+    // Only the draft that *is* the primary index is carried by the primary key: another index that
+    // covers the same columns is an index the user asked for ("Add index" starts on the first column,
+    // which is the primary key on most tables).
+    return getActiveIndexes(indexes).filter((index) => !index.isPrimaryKey && !excludedNames.has(index.name.toLowerCase()));
 }
 
 function buildPreviewIndexColumns(columns: Array<{ columnName: string; order?: string | null }>, driver: DbType) {
@@ -1143,7 +1134,7 @@ function buildMySqlExtendedPreviewStatements(state: ModifyTablePreviewState) {
     const currentInfo = state.currentTableInfo;
     const quotedTableName = quoteSqlIdentifier(state.tableName, 'mysql');
     const currentKeys = createKeyDrafts(currentInfo);
-    const currentIndexes = createIndexDrafts(currentInfo);
+    const currentIndexes = createIndexDrafts(currentInfo, state.driver);
     const currentForeignKeys = createForeignKeyDrafts(state.tableName, currentInfo);
     const desiredPrimaryKey = getPrimaryKeyDraft(state.keys);
     const currentPrimaryKey = getPrimaryKeyDraft(currentKeys);
@@ -1256,7 +1247,7 @@ function buildPostgresExtendedPreviewStatements(state: ModifyTablePreviewState) 
     const currentInfo = state.currentTableInfo;
     const quotedTableName = quoteSqlIdentifier(state.tableName, 'postgresql');
     const currentKeys = createKeyDrafts(currentInfo);
-    const currentIndexes = createIndexDrafts(currentInfo);
+    const currentIndexes = createIndexDrafts(currentInfo, state.driver);
     const currentForeignKeys = createForeignKeyDrafts(state.tableName, currentInfo);
     const desiredPrimaryKey = getPrimaryKeyDraft(state.keys);
     const currentPrimaryKey = getPrimaryKeyDraft(currentKeys);
@@ -1362,7 +1353,7 @@ function buildPostgresExtendedPreviewStatements(state: ModifyTablePreviewState) 
     return statements;
 }
 
-function hasExtendedSchemaChanges(state: ModifyTablePreviewState) {
+export function hasExtendedSchemaChanges(state: ModifyTablePreviewState) {
     const currentTableInfo = state.currentTableInfo;
 
     if (!currentTableInfo) {
@@ -1451,15 +1442,9 @@ function hasExtendedSchemaChanges(state: ModifyTablePreviewState) {
         return true;
     }
 
-    const currentIndexes = currentTableInfo.indexes.map((index) =>
-        buildIndexSignature({
-            name: index.name,
-            comment: index.comment ?? '',
-            isUnique: index.isUnique,
-            type: index.type ?? 'btree',
-            columns: index.columns.map((columnName, indexPosition) => ({ id: `${index.name}:${columnName}`, columnName, order: index.orders?.[indexPosition] ?? 'NONE' })),
-        })
-    );
+    // The drafts the dialog opened with are the baseline: the catalog alone would report the
+    // primary key MySQL hides from `statistics` (and the one synthesized for it) as a difference.
+    const currentIndexes = getActiveIndexes(createIndexDrafts(currentTableInfo, state.driver)).map((index) => buildIndexSignature(index));
     const nextIndexes = getActiveIndexes(state.indexes).map((index) => buildIndexSignature(index));
 
     return currentIndexes.sort().join('\n') !== nextIndexes.sort().join('\n');
@@ -1697,7 +1682,7 @@ function getModifyTableValidationErrors(state: ModifyTablePreviewState) {
     return [...new Set(errors)];
 }
 
-function buildPreviewStatements(state: ModifyTablePreviewState) {
+export function buildPreviewStatements(state: ModifyTablePreviewState) {
     if (state.mode === 'create') {
         return buildCreatePreviewStatements(state);
     }
@@ -1972,6 +1957,21 @@ function isPrimaryIndex(index: TableIndexInfo, primaryKeyColumns: string[]) {
     );
 }
 
+/**
+ * The catalog's own primary index. MySQL lists the primary key only as the columns' flag (its
+ * `statistics` query excludes `PRIMARY`), so an index that merely covers those columns there is a
+ * separate index, not the primary one.
+ */
+function findPrimaryIndex(tableInfo: TableInfo, primaryKeyColumns: string[], driver: DbType | undefined) {
+    const markedIndex = tableInfo.indexes.find((index) => index.name.toLowerCase() === 'primary' || index.origin === 'pk');
+
+    if (markedIndex || driver === 'mysql') {
+        return markedIndex;
+    }
+
+    return tableInfo.indexes.find((index) => isPrimaryIndex(index, primaryKeyColumns));
+}
+
 function createKeyDrafts(tableInfo: TableInfo) {
     const primaryKeyColumns = [...tableInfo.columns]
         .filter((column) => column.isPrimaryKey)
@@ -2034,12 +2034,12 @@ function createForeignKeyDrafts(tableName: string, tableInfo: TableInfo) {
     });
 }
 
-function createIndexDrafts(tableInfo: TableInfo): ModifyTableIndexDraft[] {
+function createIndexDrafts(tableInfo: TableInfo, driver: DbType | undefined): ModifyTableIndexDraft[] {
     const primaryKeyColumns = [...tableInfo.columns]
         .filter((column) => column.isPrimaryKey)
         .sort((left, right) => (left.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER) - (right.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER))
         .map((column) => column.name);
-    const hasPrimaryIndex = tableInfo.indexes.some((index) => isPrimaryIndex(index, primaryKeyColumns));
+    const primaryIndexName = findPrimaryIndex(tableInfo, primaryKeyColumns, driver)?.name;
     const indexes = tableInfo.indexes.map((index) => ({
         id: `existing:${index.name}`,
         originalName: index.name,
@@ -2049,9 +2049,10 @@ function createIndexDrafts(tableInfo: TableInfo): ModifyTableIndexDraft[] {
         type: index.type ?? 'btree',
         columns: index.columns.map((columnName, indexPosition) => createIndexColumnDraft(columnName, index.orders?.[indexPosition] ?? 'NONE')),
         status: 'existing' as const,
+        isPrimaryKey: index.name === primaryIndexName,
     }));
 
-    if (!hasPrimaryIndex && primaryKeyColumns.length > 0) {
+    if (!primaryIndexName && primaryKeyColumns.length > 0) {
         indexes.unshift({
             id: 'existing:PRIMARY',
             originalName: 'PRIMARY',
@@ -2061,6 +2062,7 @@ function createIndexDrafts(tableInfo: TableInfo): ModifyTableIndexDraft[] {
             type: '',
             columns: primaryKeyColumns.map((columnName) => createIndexColumnDraft(columnName)),
             status: 'existing',
+            isPrimaryKey: true,
         });
     }
 
@@ -2128,6 +2130,7 @@ function createNewIndex(indexes: ModifyTableIndexDraft[], columnNames: string[])
         type: 'btree',
         columns: [createIndexColumnDraft(columnNames[0] ?? '')],
         status: 'new',
+        isPrimaryKey: false,
     } satisfies ModifyTableIndexDraft;
 }
 
@@ -2562,7 +2565,7 @@ export function _useModifyTable() {
                     state.columns = cloneColumns(tableInfo.columns);
                     state.keys = createKeyDrafts(tableInfo);
                     state.foreignKeys = createForeignKeyDrafts(tableInfo.name, tableInfo);
-                    state.indexes = createIndexDrafts(tableInfo);
+                    state.indexes = createIndexDrafts(tableInfo, state.driver);
                 }
 
                 state.selectedNodeId = 'table';
@@ -2940,6 +2943,7 @@ export function _useModifyTable() {
                 name: `${index.name}_copy`,
                 columns: index.columns.map((column) => createIndexColumnDraft(column.columnName, column.order)),
                 status: 'new',
+                isPrimaryKey: false,
             } satisfies ModifyTableIndexDraft;
             state.indexes.push(duplicate);
             state.selectNode(`index:${duplicate.id}`);
