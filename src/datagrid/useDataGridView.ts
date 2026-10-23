@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, reactive, ref, toRef, watch, type CSSPropert
 import {
     DATA_GRID_CELL_HORIZONTAL_PADDING,
     DATA_GRID_COLUMN_MAX_WIDTH,
+    DATA_GRID_COLUMN_RESIZE_MAX_WIDTH,
     DATA_GRID_COLUMN_MIN_WIDTH,
     DATA_GRID_EDITING_TEXTAREA_MAX_GRID_HEIGHT_RATIO,
     DATA_GRID_EDITING_TEXTAREA_MAX_GRID_WIDTH_RATIO,
@@ -197,7 +198,9 @@ function getSharedState(state: TDataGridState, _hasToolbar: boolean, withCheckbo
         return Math.ceil(context.measureText(value).width);
     };
 
-    const clampColumnWidth = (width: number) => Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(width, DATA_GRID_COLUMN_MAX_WIDTH));
+    const clampMeasuredColumnWidth = (width: number) => Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(width, DATA_GRID_COLUMN_MAX_WIDTH));
+    // A width the user chose is not the auto-measured one: it may exceed the measuring cap.
+    const clampCustomColumnWidth = (width: number) => Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(width, DATA_GRID_COLUMN_RESIZE_MAX_WIDTH));
     const measuredColumnWidths = computed((): Record<string, number> => {
         const columnValueLengths = state.columnValueLengths;
         const averageCharacterWidth = measureGridText('0123456789', false) / 10;
@@ -215,14 +218,14 @@ function getSharedState(state: TDataGridState, _hasToolbar: boolean, withCheckbo
                     width = Math.max(width, Math.ceil(maxValueLength * averageCharacterWidth) + DATA_GRID_CELL_HORIZONTAL_PADDING);
                 }
 
-                return [columnName, clampColumnWidth(width)];
+                return [columnName, clampMeasuredColumnWidth(width)];
             })
         );
     });
     const resolvedColumnWidths = computed((): number[] =>
         state.orderedColumns.map((columnName) => {
             const customWidth = state.columnWidths?.[columnName];
-            return typeof customWidth === 'number' ? clampColumnWidth(customWidth) : (measuredColumnWidths.value[columnName] ?? DATA_GRID_COLUMN_MIN_WIDTH);
+            return typeof customWidth === 'number' ? clampCustomColumnWidth(customWidth) : (measuredColumnWidths.value[columnName] ?? DATA_GRID_COLUMN_MIN_WIDTH);
         })
     );
     const totalMeasuredWidth = computed((): number => resolvedColumnWidths.value.reduce((sum: number, width: number) => sum + width, 0));

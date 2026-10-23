@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
 import {
+    DATA_GRID_COLUMN_MAX_WIDTH,
     DATA_GRID_COLUMN_MIN_WIDTH,
     DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS,
     DATA_GRID_ROW_HEIGHT,
@@ -33,6 +34,7 @@ type GridStateOptions = {
     sqlInsertDialect?: DbType;
     primaryKeyColumns?: string[];
     layoutStorageKey?: string;
+    columnStats?: Record<string, number>;
     addRow?: () => void | Promise<void>;
     deleteSelectedRows?: () => void | Promise<void>;
     canAddRow?: boolean;
@@ -166,7 +168,7 @@ function createGridState(options: GridStateOptions = {}) {
             rowCount: rows.value.length,
             limit: options.limit,
             offset: options.offset,
-            columnStats: {},
+            columnStats: options.columnStats ?? {},
         })),
         renderVersion: computed(() => `${columns.value.join('|')}:${rows.value.length}:${options.offset ?? 0}`),
         setSourceCellValue: (rowIndex, columnName, nextValue) => {
@@ -482,6 +484,26 @@ describe('DataGrid', () => {
         await state.copyAllCellsAsJson?.();
 
         expect(execCommandStub).toHaveBeenCalledWith('copy');
+    });
+
+    it('lets a manual column width exceed the auto-measure cap', async () => {
+        // A long value makes the column measure at its cap, which used to leave a drag unable to
+        // widen it at all: the resize was clamped by the same limit as the measurement.
+        const { state } = createGridState({
+            columns: ['body'],
+            rows: [{ id: 1, body: 'x'.repeat(2000) }],
+            columnStats: { body: 2000 },
+        });
+        const { vm, wrapper } = await mountGridViewHarness(state);
+
+        expect(Number(vm.vs.totalMeasuredWidth)).toBe(DATA_GRID_COLUMN_MAX_WIDTH);
+
+        state.setColumnWidth('body', DATA_GRID_COLUMN_MAX_WIDTH + 240);
+        await nextTick();
+
+        expect(Number(vm.vs.totalMeasuredWidth)).toBe(DATA_GRID_COLUMN_MAX_WIDTH + 240);
+
+        wrapper.unmount();
     });
 
     it('writes the grid layout once at the end of a column resize', () => {

@@ -1,7 +1,14 @@
 export const DATA_GRID_ROW_HEIGHT = 25;
 export const DATA_GRID_HEADER_HEIGHT = 33;
 export const DATA_GRID_COLUMN_MIN_WIDTH = 72;
+/** How wide the grid may auto-measure a column before it caps it. */
 export const DATA_GRID_COLUMN_MAX_WIDTH = 520;
+/**
+ * How wide a user may drag a column. Deliberately above the auto-measure cap: a column holding long
+ * text is already at the cap when it is first measured, so clamping the drag to the same value left
+ * it unable to grow at all.
+ */
+export const DATA_GRID_COLUMN_RESIZE_MAX_WIDTH = 2000;
 export const DATA_GRID_CELL_HORIZONTAL_PADDING = 24;
 export const DATA_GRID_OVERSCAN_ROWS = 16;
 

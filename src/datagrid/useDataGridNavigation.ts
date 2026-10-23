@@ -1,6 +1,6 @@
 import { nextTick, watch, type ComputedRef } from 'vue';
 import { useKeyboardNavigation, type KeyboardNavigationPosition } from '../shared/utils/useKeyboardNavigation';
-import { DATA_GRID_COLUMN_MAX_WIDTH, DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT, DATA_GRID_SEARCH_DEBOUNCE_MS } from './dataGrid';
+import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_COLUMN_RESIZE_MAX_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT, DATA_GRID_SEARCH_DEBOUNCE_MS } from './dataGrid';
 import type { DataGridInternalState, DataGridTransposedState } from './useDataGrid';
 import { isJsonObjectText } from './useDataGridCoreUtils';
 import type { DataGridHistoryOptions, DataGridNormalizedCellRange, DataGridSearchMatch, DataGridUpdateLayoutState } from './useDataGridHelperTypes';
@@ -593,7 +593,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
             {
                 columnWidths: {
                     ...internalState.normalizedLayoutState.columnWidths,
-                    [columnName]: Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(Math.round(width), DATA_GRID_COLUMN_MAX_WIDTH)),
+                    [columnName]: Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(Math.round(width), DATA_GRID_COLUMN_RESIZE_MAX_WIDTH)),
                 },
             },
             { deferSave: true }
