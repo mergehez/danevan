@@ -24,6 +24,7 @@ import {
     getActiveColumns,
     getPrimaryKeyDraft,
     moveArrayEntry,
+    syncAutoEntityNames,
     syncColumnsWithPrimaryKeyDraft,
 } from './modifyTable/drafts';
 import { applyModifyTableChanges } from './modifyTable/apply';
@@ -632,7 +633,7 @@ export function _useModifyTable() {
             moveArrayEntry(state.selectedKey?.columns ?? [], state.selectedKeyColumn, 'down');
         },
         addForeignKey() {
-            const foreignKey = createNewForeignKey(state.foreignKeys, state.activeColumnNames);
+            const foreignKey = createNewForeignKey(state.foreignKeys, state.activeColumnNames, state.table.name.trim() || state.tableName);
             state.foreignKeys.push(foreignKey);
             state.selectNode(`foreign-key:${foreignKey.id}`);
         },
@@ -682,6 +683,7 @@ export function _useModifyTable() {
                 id: `new:${crypto.randomUUID()}`,
                 originalName: undefined,
                 name: `${foreignKey.name}_copy`,
+                autoName: undefined,
                 columns: foreignKey.columns.map((column) => createForeignKeyColumnDraft(column.columnName, column.targetName)),
                 status: 'new',
             } satisfies ModifyTableForeignKeyDraft;
@@ -731,7 +733,7 @@ export function _useModifyTable() {
             moveArrayEntry(state.selectedForeignKey?.columns ?? [], state.selectedForeignKeyColumn, 'down');
         },
         addIndex() {
-            const index = createNewIndex(state.indexes, state.activeColumnNames);
+            const index = createNewIndex(state.indexes, state.activeColumnNames, state.table.name.trim() || state.tableName);
             state.indexes.push(index);
             state.selectNode(`index:${index.id}`);
         },
@@ -778,6 +780,7 @@ export function _useModifyTable() {
                 id: `new:${crypto.randomUUID()}`,
                 originalName: undefined,
                 name: `${index.name}_copy`,
+                autoName: undefined,
                 columns: index.columns.map((column) => createIndexColumnDraft(column.columnName, column.order)),
                 status: 'new',
             } satisfies ModifyTableIndexDraft;
@@ -1010,6 +1013,31 @@ export function _useModifyTable() {
         }),
         () => {
             syncColumnsWithPrimaryKeyDraft(state.columns, state.keys);
+        },
+        { deep: true, flush: 'sync' }
+    );
+
+    watch(
+        () => ({
+            tableName: state.table.name,
+            indexes: state.indexes.map((index) => ({
+                id: index.id,
+                name: index.name,
+                autoName: index.autoName,
+                columns: index.columns.map((column) => column.columnName),
+                status: index.status,
+            })),
+            foreignKeys: state.foreignKeys.map((foreignKey) => ({
+                id: foreignKey.id,
+                name: foreignKey.name,
+                autoName: foreignKey.autoName,
+                columns: foreignKey.columns.map((column) => column.columnName),
+                targetTable: foreignKey.targetTable,
+                status: foreignKey.status,
+            })),
+        }),
+        () => {
+            syncAutoEntityNames(state);
         },
         { deep: true, flush: 'sync' }
     );

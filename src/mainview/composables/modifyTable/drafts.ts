@@ -392,6 +392,107 @@ export function createIndexDrafts(tableInfo: TableInfo, driver: DbType | undefin
         }));
 }
 
+/** Long identifiers are truncated by the dialects anyway; keep our own names inside MySQL's 64. */
+const AUTO_NAME_MAX_LENGTH = 60;
+
+function clampAutoName(name: string) {
+    return name.length <= AUTO_NAME_MAX_LENGTH ? name : name.slice(0, AUTO_NAME_MAX_LENGTH);
+}
+
+function columnSuffix(columns: string[]) {
+    return columns
+        .map((columnName) => columnName.trim())
+        .filter(Boolean)
+        .join('_');
+}
+
+export function buildAutoIndexName(tableName: string, columns: string[]) {
+    const suffix = columnSuffix(columns);
+    return clampAutoName(suffix ? `idx_${tableName}_${suffix}` : `idx_${tableName}`);
+}
+
+export function buildAutoForeignKeyName(tableName: string, columns: string[], targetTable: string) {
+    const suffix = columnSuffix(columns);
+    const target = targetTable.trim();
+    return clampAutoName(['fk', tableName, suffix, target].filter(Boolean).join('_'));
+}
+
+/** A generated name that no other draft already holds (`_2`, `_3`, …). */
+export function resolveAutoName(baseName: string, takenNames: string[]) {
+    const taken = new Set(takenNames.map((name) => name.trim().toLowerCase()));
+
+    if (!taken.has(baseName.toLowerCase())) {
+        return baseName;
+    }
+
+    let sequence = 2;
+
+    while (taken.has(`${baseName}_${sequence}`.toLowerCase())) {
+        sequence += 1;
+    }
+
+    return `${baseName}_${sequence}`;
+}
+
+type AutoNameHost = {
+    table: { name: string };
+    tableName?: string;
+    indexes: ModifyTableIndexDraft[];
+    foreignKeys: ModifyTableForeignKeyDraft[];
+};
+
+/**
+ * Keeps the generated names of new indexes and foreign keys in step with what the form holds. A
+ * name the user typed wins: the draft's `autoName` is the value we last generated, so a name that no
+ * longer matches it was typed by hand and is left alone.
+ */
+export function syncAutoEntityNames(state: AutoNameHost) {
+    const tableName = (state.table.name.trim() || state.tableName || 'table').trim();
+
+    state.indexes.forEach((index, position) => {
+        if (index.autoName === undefined) {
+            return;
+        }
+
+        if (index.name !== index.autoName) {
+            index.autoName = undefined;
+            return;
+        }
+
+        const taken = state.indexes.filter((_, otherPosition) => otherPosition !== position).map((other) => other.name);
+        index.name = resolveAutoName(
+            buildAutoIndexName(
+                tableName,
+                index.columns.map((column) => column.columnName)
+            ),
+            taken
+        );
+        index.autoName = index.name;
+    });
+
+    state.foreignKeys.forEach((foreignKey, position) => {
+        if (foreignKey.autoName === undefined) {
+            return;
+        }
+
+        if (foreignKey.name !== foreignKey.autoName) {
+            foreignKey.autoName = undefined;
+            return;
+        }
+
+        const taken = state.foreignKeys.filter((_, otherPosition) => otherPosition !== position).map((other) => other.name);
+        foreignKey.name = resolveAutoName(
+            buildAutoForeignKeyName(
+                tableName,
+                foreignKey.columns.map((column) => column.columnName),
+                foreignKey.targetTable
+            ),
+            taken
+        );
+        foreignKey.autoName = foreignKey.name;
+    });
+}
+
 export function createNewKey(keys: ModifyTableKeyDraft[], columnNames: string[]) {
     const name = createUniqueName(
         keys.map((key) => key.name),
@@ -419,16 +520,17 @@ export function createPrimaryKeyDraft(columnName: string) {
     } satisfies ModifyTableKeyDraft;
 }
 
-export function createNewForeignKey(foreignKeys: ModifyTableForeignKeyDraft[], columnNames: string[]) {
-    const name = createUniqueName(
-        foreignKeys.map((foreignKey) => foreignKey.name),
-        'new_foreign_key'
+export function createNewForeignKey(foreignKeys: ModifyTableForeignKeyDraft[], columnNames: string[], tableName = '') {
+    const name = resolveAutoName(
+        buildAutoForeignKeyName(tableName, [columnNames[0] ?? ''], ''),
+        foreignKeys.map((foreignKey) => foreignKey.name)
     );
 
     return {
         id: `new:${crypto.randomUUID()}`,
         originalName: undefined,
         name,
+        autoName: name,
         targetTable: '',
         columns: [createForeignKeyColumnDraft(columnNames[0] ?? '', '')],
         onDelete: 'no_action',
@@ -438,16 +540,18 @@ export function createNewForeignKey(foreignKeys: ModifyTableForeignKeyDraft[], c
     } satisfies ModifyTableForeignKeyDraft;
 }
 
-export function createNewIndex(indexes: ModifyTableIndexDraft[], columnNames: string[]) {
-    const name = createUniqueName(
-        indexes.map((index) => index.name),
-        'new_index'
+export function createNewIndex(indexes: ModifyTableIndexDraft[], columnNames: string[], tableName = '') {
+    const baseName = buildAutoIndexName(tableName, [columnNames[0] ?? '']);
+    const name = resolveAutoName(
+        baseName,
+        indexes.map((index) => index.name)
     );
 
     return {
         id: `new:${crypto.randomUUID()}`,
         originalName: undefined,
         name,
+        autoName: name,
         comment: '',
         isUnique: false,
         type: 'btree',

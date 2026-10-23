@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPreviewStatements, hasExtendedSchemaChanges, resolveForeignKeyDraftName, type ModifyTablePreviewState } from '../../composables/useModifyTable';
+import { createIndexColumnDraft, createNewForeignKey, createNewIndex, syncAutoEntityNames } from '../../composables/modifyTable/drafts';
 
 describe('resolveForeignKeyDraftName', () => {
     it('prefers the matching foreign index name when mysql foreign key rows are unnamed', () => {
@@ -375,5 +376,66 @@ describe('buildPreviewStatements', () => {
         state.indexes = [addedIndex()];
 
         expect(buildPreviewStatements(state)).toContain('ALTER TABLE `caps` ADD INDEX `new_index` (`id`) USING btree;');
+    });
+});
+
+describe('auto-generated index and foreign-key names', () => {
+    function namingHost() {
+        return {
+            table: { name: 'orders' },
+            tableName: 'orders',
+            indexes: [createNewIndex([], ['id'], 'orders')],
+            foreignKeys: [createNewForeignKey([], ['customer_id'], 'orders')],
+        };
+    }
+
+    it('names a new index and a new foreign key from the table and the columns', () => {
+        const state = namingHost();
+
+        expect(state.indexes[0]!.name).toBe('idx_orders_id');
+        expect(state.foreignKeys[0]!.name).toBe('fk_orders_customer_id');
+    });
+
+    it('follows the table name, the index columns and the foreign-key target', () => {
+        const state = namingHost();
+
+        state.table.name = 'invoices';
+        syncAutoEntityNames(state);
+        expect(state.indexes[0]!.name).toBe('idx_invoices_id');
+
+        state.indexes[0]!.columns[0]!.columnName = 'total';
+        state.indexes[0]!.columns.push(createIndexColumnDraft('currency'));
+        syncAutoEntityNames(state);
+        expect(state.indexes[0]!.name).toBe('idx_invoices_total_currency');
+
+        state.foreignKeys[0]!.targetTable = 'customers';
+        syncAutoEntityNames(state);
+        expect(state.foreignKeys[0]!.name).toBe('fk_invoices_customer_id_customers');
+    });
+
+    it('keeps a name the user typed', () => {
+        const state = namingHost();
+
+        state.indexes[0]!.name = 'my_index';
+        syncAutoEntityNames(state);
+
+        state.indexes[0]!.columns[0]!.columnName = 'size';
+        syncAutoEntityNames(state);
+
+        expect(state.indexes[0]!.name).toBe('my_index');
+    });
+
+    it('suffixes a generated name another draft already holds', () => {
+        const state = namingHost();
+
+        state.indexes.push(createNewIndex(state.indexes, ['id'], 'orders'));
+        syncAutoEntityNames(state);
+
+        expect(state.indexes.map((index) => index.name)).toEqual(['idx_orders_id', 'idx_orders_id_2']);
+
+        state.foreignKeys.push(createNewForeignKey(state.foreignKeys, ['customer_id'], 'orders'));
+        state.foreignKeys[1]!.targetTable = '';
+        syncAutoEntityNames(state);
+        expect(state.foreignKeys[1]!.name).toBe('fk_orders_customer_id_2');
     });
 });

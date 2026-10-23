@@ -35,7 +35,7 @@ export const ModifyTableIndexForm = component(
                 <div class="space-y-3">
                     <div class={formGridClass}>
                         <div class={getLabelClass(isIndexFieldDirty('name'))}>Name</div>
-                        <Input {...vModel(selIndex, 'name')} disabled={selIndex.status === 'deleted'} small={true} />
+                        <Input {...vModel(selIndex, 'name')} data-testid="modify-index-name" disabled={selIndex.status === 'deleted'} small={true} />
                         <div class={getLabelClass(isIndexFieldDirty('comment'))}>Comment</div>
                         <Input {...vModel(selIndex, 'comment')} data-testid="modify-index-comment" disabled={selIndex.status === 'deleted'} small={true} />
                         <div class={getLabelClass(isIndexFieldDirty('isUnique'))} />

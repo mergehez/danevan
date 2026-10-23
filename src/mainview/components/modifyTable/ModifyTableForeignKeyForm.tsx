@@ -35,9 +35,15 @@ export const ModifyTableForeignKeyForm = component(
                     <div>
                         <div class={formGridClass}>
                             <div class={getLabelClass(isForeignKeyFieldDirty('name'))}>Name</div>
-                            <Input {...vModel(selFk, 'name')} disabled={selFk.status === 'deleted'} small={true} />
+                            <Input {...vModel(selFk, 'name')} data-testid="modify-foreign-key-name" disabled={selFk.status === 'deleted'} small={true} />
                             <div class={getLabelClass(isForeignKeyFieldDirty('targetTable'))}>Target Table</div>
-                            <Select {...vModel(selFk, 'targetTable')} options={modifyTable.targetTableNames} disabled={selFk.status === 'deleted'} small={true} />
+                            <Select
+                                {...vModel(selFk, 'targetTable')}
+                                data-testid="modify-foreign-key-target"
+                                options={modifyTable.targetTableNames}
+                                disabled={selFk.status === 'deleted'}
+                                small={true}
+                            />
                             <div class={getLabelClass(isForeignKeyFieldDirty('onDelete'))}>On Delete</div>
                             <Select {...vModel(selFk, 'onDelete')} options={referentialActionOptions} disabled={selFk.status === 'deleted'} small={true} />
                             <div class={getLabelClass(isForeignKeyFieldDirty('onUpdate'))}>On Update</div>
@@ -99,6 +105,7 @@ export const ModifyTableForeignKeyForm = component(
                                 {selectedForeignKeyColumn.value ? (
                                     <Select
                                         {...vModel(selectedForeignKeyColumn.value, 'columnName')}
+                                        data-testid="modify-foreign-key-column"
                                         options={modifyTable.activeColumnNames}
                                         disabled={selFk.status === 'deleted'}
                                         small={true}

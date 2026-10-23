@@ -50,6 +50,8 @@ export type ModifyTableForeignKeyDraft = {
     id: string;
     originalName?: string;
     name: string;
+    /** The last name generated from the columns: cleared once the user types a name of their own. */
+    autoName?: string;
     targetTable: string;
     columns: ModifyTableForeignKeyColumnDraft[];
     onDelete: string;
@@ -68,6 +70,8 @@ export type ModifyTableIndexDraft = {
     id: string;
     originalName?: string;
     name: string;
+    /** The last name generated from the columns: cleared once the user types a name of their own. */
+    autoName?: string;
     comment: string;
     isUnique: boolean;
     type: string;

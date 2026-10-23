@@ -299,7 +299,7 @@ test.describe('Modify table popup (e2e)', () => {
         await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
 
         const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
-        expect(info.indexes.some((index: any) => index.name === 'new_index')).toBe(true);
+        expect(info.indexes.some((index: any) => index.name === `idx_${tableName}_id`)).toBe(true);
     });
 
     test('detects a deleted index', async ({ page }) => {
@@ -428,7 +428,7 @@ test.describe('Modify table popup (e2e)', () => {
         await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
 
         const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
-        const index = info.indexes.find((entry: any) => entry.name === 'new_index');
+        const index = info.indexes.find((entry: any) => entry.name === `idx_${tableName}_id`);
         expect([index?.isUnique, index?.columns]).toEqual([true, ['id']]);
     });
 
@@ -458,7 +458,7 @@ test.describe('Modify table popup (e2e)', () => {
 
         // Picking one adds it to the draft, like the toolbar's + does.
         await newMenu.getByRole('menuitem', { name: 'Index' }).click();
-        await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="new_index"]')).toBeVisible();
+        await expect(page.locator(`[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="idx_${tableName}_id"]`)).toBeVisible();
         await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
     });
 
@@ -528,6 +528,60 @@ test.describe('Modify table popup (e2e)', () => {
         await page.keyboard.press('Backspace');
         await page.locator('[data-testid="centered-modal-surface"]').getByRole('button', { name: 'Delete' }).click();
         await expect(page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="description"]')).toContainText('removed');
+    });
+
+    test('auto-names a new index and follows its columns until a name is typed', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="indexes"]').click();
+        await page.locator('[data-testid="modify-add"]').click();
+
+        const name = page.locator('[data-testid="modify-index-name"]');
+        await expect(name).toHaveValue(`idx_${tableName}_id`);
+
+        // The generated name follows the column the index covers.
+        await page.locator('[data-testid="modify-index-column-name"] select').selectOption('size');
+        await expect(name).toHaveValue(`idx_${tableName}_size`);
+
+        // A name the user typed wins over the generator.
+        await name.fill('my_index');
+        await page.locator('[data-testid="modify-index-column-name"] select').selectOption('height');
+        await expect(name).toHaveValue('my_index');
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        expect(info.indexes.find((index: any) => index.name === 'my_index')?.columns).toEqual(['height']);
+    });
+
+    test('auto-names a new foreign key from its column and target table', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="group"][data-group-kind="foreign-keys"]').click();
+        await page.locator('[data-testid="modify-add"]').click();
+
+        const name = page.locator('[data-testid="modify-foreign-key-name"]');
+        await expect(name).toHaveValue(`fk_${tableName}_id`);
+
+        await page.locator('[data-testid="modify-foreign-key-target"] select').selectOption('users');
+        await expect(name).toHaveValue(`fk_${tableName}_id_users`);
+
+        await page.locator('[data-testid="modify-foreign-key-column"] select').selectOption('foo_user_id');
+        await expect(name).toHaveValue(`fk_${tableName}_foo_user_id_users`);
+
+        await page.locator('[data-testid="modify-apply"]').click();
+        await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+        const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+        const foreignKey = info.foreignKeys.find((entry: any) => entry.name === `fk_${tableName}_foo_user_id_users`);
+        expect([foreignKey?.table, foreignKey?.from]).toEqual(['users', 'foo_user_id']);
     });
 
     test('deletes a column through the popup', async ({ page }) => {
