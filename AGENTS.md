@@ -29,7 +29,7 @@ To efficiently build this compact database client;
 
 - Use `defineModel` for two-way binding of form inputs.
 
-- Use `useTemplateRef` for any DOM element that needs to be accessed in the script. Don't use simple `ref, since it doesn't provide type inference for DOM elements.
+- Use `useTemplateRef` for any DOM element that needs to be accessed in the script. Don't use simple `ref`, since it doesn't provide type inference for DOM elements. Exception: an element rendered through another component's slot *prop* (e.g. `splitter({ top: ... })`): a string ref resolves in that component's scope, so use a typed function ref instead.
 
 - in Vue components, never use '.value' in the `template` for `ref's or `reactive´ values, because it is not needed and breaks the code.
 
@@ -216,6 +216,15 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   that sort them last. NULL placement is now an explicit per-dialect rule (`sortNullOrdering`:
   `nulls-low` everywhere except PostgreSQL), so the grid agrees with the server order it just
   loaded. Guarded by `grid-sort-nulls.spec.ts`.
+
+Suggested from the 2026-10-23 grid-resize report:
+
+- **A cap that keeps the layout tidy must not clamp an explicit user choice.** The grid measures a
+  column at most 520 px wide, and the resize drag was clamped by that same maximum: a column with long
+  text was already at 520 when it first appeared, so the last column refused to grow (worst with two
+  or three columns). Auto-measurement and a drag have separate limits (`DATA_GRID_COLUMN_MAX_WIDTH`
+  versus `DATA_GRID_COLUMN_RESIZE_MAX_WIDTH`). Guarded by the custom-width case in `DataGrid.spec.ts`
+  and `grid-resize.spec.ts`.
 
 Suggested from the 2026-10-23 "index changes are not detected" report:
 

@@ -8,9 +8,9 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-23, after the modify-table index fixes (one list per object, identity instead of
-column shape, constraints split from indexes, SQLite preview from the drafts). Before that,
-2026-10-13: the grid-state fixes._
+_Last verified: 2026-10-23, after the Modify Table split (folder per side, item menu and shortcuts), the
+grid's last-column resize fix, and the index fixes before them. Before that, 2026-10-13: the
+grid-state fixes._
 
 ## 1. What this is
 
@@ -44,7 +44,7 @@ browser dev API, Vite + Electron, Bun as runtime/package manager.
 | Path | What lives there |
 | --- | --- |
 | `src/backend/` | `app.ts` (~47 async handlers, the whole API), `db-tools.ts` (driver dispatch + metadata caches), `useMySqlDriver.ts` / `usePostgresDriver.ts` / `useSqliteDriver.ts` / `useSqlServerDriver.ts` / `useMsAccessDriver.ts`, `useRemoteDriverTools.ts` (shared remote query/exec), `remoteDataSourcePool.ts` (one pooled DataSource per server/connection), `db-app.ts` (the app's own SQLite store), `auth.ts` (keychain secrets), `sqlScriptRunner.ts`, `devServer.ts` (Express mount for browser mode) |
-| `src/mainview/` | `App.tsx` (shell), `components/` (`DbSidebar`, `DbTabs`, `DbData`, `DbScripts`, `MonacoEditor`, modals…), `composables/` (all renderer state, see §5), `lib/` (Monaco setup, menus, formatting), `tests/` (unit, components, e2e, electron) |
+| `src/mainview/` | `App.tsx` (shell), `components/` (`DbSidebar`, `DbTabs`, `DbData`, `DbScripts`, `MonacoEditor`, modals…), `composables/` (all renderer state, see §5), `lib/` (Monaco setup, menus, formatting), `tests/` (unit, components, e2e, electron). **Modify Table** is a folder each: `composables/modifyTable/` (types, drafts, column DDL, create/alter previews per dialect, validation, apply, history, navigation) with `useModifyTable.ts` as the store, and `components/modifyTable/` (sidebar with its item menu, form helpers, one form per entity) with `ModifyTableModal.tsx` as the shell |
 | `src/datagrid/` | The canvas data grid (`DataGrid.tsx`, `useDataGrid.ts`, navigation, clipboard, layout persistence). Editors are DOM overlays on the canvas. |
 | `src/shared/` | Types (`types.ts` — `AppBootstrapApi`, `QueryExecutionResult`, …), components (`Button`, `CenteredModal`, `Splitter`, `ListBox`…), utils (`sqlStatements`, `sqlSourceTable`, `sqlIdentifiers`, `valueFormatting`, `tsxHelpers`, `useCache`…) |
 | `src/electron/` | `main.ts` (window + native handlers), `preload.ts` (IPC bridge), `bridge.ts` |
@@ -146,7 +146,12 @@ guards it are the reference.
    its sort indicator by flipping the value comparison on DESC, which puts NULLs first on dialects
    that sort them last. *Rule:* NULL placement is an explicit per-dialect rule (`sortNullOrdering`).
    *Guard:* `grid-sort-nulls.spec.ts`.
-10. **An entity was matched by a shared property, listed twice, and confused with its neighbour.**
+10. **An auto-measure cap also clamped what the user asked for.** The grid measures a column with long
+    text at 520 px and the resize drag was clamped by the same limit, so the last column (usually the
+    long one, worst with 2–3 columns) was already at its ceiling and refused to grow. *Rule:* the
+    auto-measure ceiling is not the user's ceiling. *Guards:* the custom-width case in
+    `DataGrid.spec.ts`, `grid-resize.spec.ts`.
+11. **An entity was matched by a shared property, listed twice, and confused with its neighbour.**
     The Modify Table dialog called any index draft over the primary-key columns "the primary index",
     so an added index on the first column (usually the primary key) was dropped from the plan and the
     dialog said `No change yet`. It listed the primary key and unique indexes under both `keys` and
@@ -207,9 +212,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1076 unit tests (87 files)**, **142 browser tests (40 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **48.9 % statements / 41.0 % branches** with
-the floors green. The full browser suite is 142 passed + 0 failed; that green run also assumes the local
+Snapshot at the last verification: **1081 unit tests (88 files)**, **147 browser tests (41 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.0 % statements / 41.4 % branches** with
+the floors green. The full browser suite is 147 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
 packaged suites were not re-run after these fixes (renderer-only changes).

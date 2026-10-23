@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 36 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
+**Status:** 39 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1076 unit tests (87 files) · 142 browser tests
-(40 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **48.9 % statements / 41.0 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+settings blob, T11, T12, T14's tree work) · suite: **1081 unit tests (88 files) · 147 browser tests
+(41 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
+file **49.0 % statements / 41.4 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -279,6 +279,42 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   edit with a reason. Guarded by `src/shared/utils/sqlSourceTable.spec.ts` and
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
+
+### 2026-10-23 grid resize, Modify Table layout and its item menu
+
+- **U13 — the last grid column could not be made wider.** A column holding long text is measured at
+  `DATA_GRID_COLUMN_MAX_WIDTH` (520 px) straight away, and the resize drag was clamped by that *same*
+  limit, so the column was already at its ceiling and dragging did nothing — worst with two or three
+  columns where the long one is last. Auto-measurement and a drag now have separate ceilings
+  (`DATA_GRID_COLUMN_RESIZE_MAX_WIDTH`, 2000 px): the measured width still caps at 520, a width the
+  user chose is honoured up to 2000 and persisted. Guarded by "lets a manual column width exceed the
+  auto-measure cap" in `src/mainview/tests/dataGrid/DataGrid.spec.ts` and
+  `src/mainview/tests/e2e/grid-resize.spec.ts` (drags the last column's edge, reads the laid-out width
+  and the persisted `columnWidths`).
+- **U14 — Modify Table was two 1000-line files.** They are now a folder each, split by responsibility
+  rather than by size:
+  - `src/mainview/composables/modifyTable/`: `types.ts` (drafts/preview/history types), `drafts.ts`
+    (draft factories, accessors, signatures), `columnDdl.ts` (column definitions per dialect),
+    `createPreview.ts` (the create-table plan), `mysqlAlter.ts` / `postgresAlter.ts` /
+    `msAccessAlter.ts` (the alter plans), `preview.ts` (change detection + the dispatcher),
+    `validation.ts` (the rules), `apply.ts` (the apply/post pipeline), `history.ts` (undo/redo),
+    `navigation.ts` (the sidebar sections). `useModifyTable.ts` is the store and re-exports its public
+    surface, so importers did not change.
+  - `src/mainview/components/modifyTable/`: `ModifyTableSidebar.tsx` (toolbar, tree, item menu),
+    `formHelpers.ts` (selection, dirty markers, classes) and one form component per entity
+    (`ModifyTableTableForm` / `ColumnForm` / `KeyForm` / `ForeignKeyForm` / `IndexForm`).
+    `ModifyTableModal.tsx` is the shell (splitter, header, alerts, preview, footer, shortcuts).
+  - The history moved out with its own spec (`modifyTableHistory.spec.ts`); it keeps its snapshots in
+    a shallow-reactive stack so `structuredClone` still gets plain objects. The first extraction made
+    them deep-reactive proxies and every undo threw a `DataCloneError`, which the new spec caught.
+- **U15 — the Modify Table item menu.** Right-clicking a row in the dialog's sidebar opens the menu
+  from the mock-up: **New** (Column / Unique Key / Foreign Key / Index), **Duplicate** (⌘D), **Edit**
+  (⌘↓), **Delete** (⌫) and **Revert** (⌘Z, disabled while the draft has no history). Every action names
+  the row that was right-clicked instead of trusting the selection, and Delete keeps its confirmation.
+  The same shortcuts work on the focused selection, and the shared context-menu directive grew a
+  `shortcut` hint rendered right-aligned. Guarded by four cases in
+  `modify-table-popup.spec.ts` (menu contents and submenu, duplicate/edit/revert, delete, and the
+  keyboard shortcuts) plus the shortcut-hint case in `src/directives/VContextMenu.spec.ts`.
 
 ### 2026-10-23 user-reported: index changes in Modify Table
 
