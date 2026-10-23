@@ -217,6 +217,15 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   `nulls-low` everywhere except PostgreSQL), so the grid agrees with the server order it just
   loaded. Guarded by `grid-sort-nulls.spec.ts`.
 
+Suggested from the 2026-10-23 "I never have to type the name" request:
+
+- **A generated default follows the form and yields to the user.** New indexes and foreign keys in
+  Modify Table are named from their own shape (`idx_<table>_<columns>`,
+  `fk_<table>_<columns>_<target>`) and the name is re-derived on every change to the table, columns or
+  target — until the user types one, which clears the draft's `autoName` and is never overwritten.
+  A hand-typed `new_index` that the form then ignores (or renames) is worse than no default at all.
+  Guarded by the naming cases in `useModifyTable.spec.ts` and `modify-table-popup.spec.ts`.
+
 Suggested from the 2026-10-23 grid-resize report:
 
 - **A cap that keeps the layout tidy must not clamp an explicit user choice.** The grid measures a

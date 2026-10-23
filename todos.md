@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 39 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
+**Status:** 40 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1081 unit tests (88 files) · 147 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1085 unit tests (88 files) · 149 browser tests
 (41 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **49.0 % statements / 41.4 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+file **49.1 % statements / 41.4 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -279,6 +279,20 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   edit with a reason. Guarded by `src/shared/utils/sqlSourceTable.spec.ts` and
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
+
+### 2026-10-23 auto-named foreign keys and indexes
+
+- **U16 — names for new foreign keys and indexes are generated and follow the form.** Adding an index
+  or a foreign key used to leave `new_index` / `new_foreign_key` in the Name field, so the user had to
+  type one. A new draft now starts from its own shape — `idx_<table>_<columns>`,
+  `fk_<table>_<columns>_<targetTable>` — and a synchronous watcher re-derives it when the table name,
+  the covered columns or the FK target changes (long names are clamped to 60 characters, a name
+  another draft already holds gets `_2`, `_3`, …). Typing a name clears the draft's `autoName`, so a
+  manual name is never overwritten; catalog indexes and foreign keys keep their names, and a
+  duplicated draft keeps its `_copy` name. Guarded by the naming cases in
+  `useModifyTable.spec.ts` (initial name, table/column/target tracking, manual override wins,
+  uniqueness suffix) and two browser cases in `modify-table-popup.spec.ts` (an index and a foreign
+  key each auto-name, follow the form, and reach the catalog under the expected name).
 
 ### 2026-10-23 grid resize, Modify Table layout and its item menu
 
