@@ -8,8 +8,9 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-23, after the modify-table index fixes (one list per index, identity instead of
-column shape, SQLite preview from the drafts). Before that, 2026-10-13: the grid-state fixes._
+_Last verified: 2026-10-23, after the modify-table index fixes (one list per object, identity instead of
+column shape, constraints split from indexes, SQLite preview from the drafts). Before that,
+2026-10-13: the grid-state fixes._
 
 ## 1. What this is
 
@@ -145,13 +146,17 @@ guards it are the reference.
    its sort indicator by flipping the value comparison on DESC, which puts NULLs first on dialects
    that sort them last. *Rule:* NULL placement is an explicit per-dialect rule (`sortNullOrdering`).
    *Guard:* `grid-sort-nulls.spec.ts`.
-10. **An entity was matched by a shared property, and listed twice.** The Modify Table dialog called
-    any index draft over the primary-key columns "the primary index", so an added index on the first
-    column (usually the primary key) was dropped from the plan and the dialog said `No change yet`.
-    It also listed the primary key and unique indexes under both `keys` and `indexes`; the plan reads
-    the key, so edits and deletes on the `indexes` copy were discarded. *Rule:* identify an entity by
-    its own identity, and let the list the plan writes be the one the user edits. *Guards:*
-    `useModifyTable.spec.ts`, `modify-table-popup.spec.ts`, `sqlite-modify-table.spec.ts`.
+10. **An entity was matched by a shared property, listed twice, and confused with its neighbour.**
+    The Modify Table dialog called any index draft over the primary-key columns "the primary index",
+    so an added index on the first column (usually the primary key) was dropped from the plan and the
+    dialog said `No change yet`. It listed the primary key and unique indexes under both `keys` and
+    `indexes`, and the plan reads the key, so edits and deletes on the copy were discarded. It also
+    treated a PostgreSQL/SQLite unique *index* as a unique *constraint*, rebuilding a named
+    `CREATE UNIQUE INDEX` inline (SQLite: name lost) and dropping it with `DROP CONSTRAINT`, which
+    fails. *Rule:* identify an entity by its own identity, edit the list the plan writes, and keep a
+    constraint and an index of the same columns apart (`origin: 'unique'`). *Guards:*
+    `useModifyTable.spec.ts`, `postgresTableDdl.spec.ts`, `typeOrmMappers.spec.ts`,
+    `modify-table-popup.spec.ts`, `sqlite-modify-table.spec.ts`.
 
 ## 7. Testing — the traps
 
@@ -202,8 +207,8 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1073 unit tests (87 files)**, **142 browser tests (40 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **48.6 % statements / 40.7 % branches** with
+Snapshot at the last verification: **1076 unit tests (87 files)**, **142 browser tests (40 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **48.9 % statements / 41.0 % branches** with
 the floors green. The full browser suite is 142 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and

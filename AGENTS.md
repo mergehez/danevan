@@ -222,18 +222,24 @@ Suggested from the 2026-10-23 "index changes are not detected" report:
 - **Identify an entity by its identity, not by a property another entity can share.** The Modify
   Table dialog treated any index draft that covered the primary-key columns as *the* primary index,
   and "Add index" starts on the first column — usually the primary key — so the new index vanished
-  from the plan: the preview said `No change yet` and OK stayed disabled. The draft that stands for
-  the primary key now carries the flag itself (`isPrimaryKey`), so any other index over those columns
-  is a real index. Guarded by `useModifyTable.spec.ts` (the preview statements for an added index
-  over the primary-key column) and `modify-table-popup.spec.ts` (detect, apply, and the catalog lists
-  it).
+  from the plan: the preview said `No change yet` and OK stayed disabled. The primary index is now
+  recognised by its own name, and any other index over those columns is a real index. Guarded by
+  `useModifyTable.spec.ts` (the preview statements for an added index over the primary-key column) and
+  `modify-table-popup.spec.ts` (detect, apply, and the catalog lists it).
 - **List an entity once, and let the list the plan writes be the one the user edits.** The dialog
   listed the primary key and every unique index under both `keys` and `indexes`; the plan only reads
-  the key, so editing or deleting the `indexes` copy did nothing at all. Standalone indexes now live
-  under `indexes`, the primary and unique ones under `keys` (`createIndexDrafts` returns
-  `getStandaloneIndexDrafts`), and a preview built from the catalog instead of the drafts
-  (`buildSqlitePreviewSql`) is considered broken: it shows a deleted index recreated and a new one
-  missing. Guarded by the index/key cases in `modify-table-popup.spec.ts` and
+  the key, so editing or deleting the `indexes` copy did nothing at all. Indexes now live once:
+  the primary key and the unique *constraints* under `keys`, indexes under `indexes`
+  (`createIndexDrafts` returns `getStandaloneIndexDrafts`). A preview built from the catalog instead
+  of the drafts (`buildSqlitePreviewSql`) is broken by the same standard: it shows a deleted index
+  recreated and a new one missing. Guarded by the index/key cases in `modify-table-popup.spec.ts` and
+  `sqlite-modify-table.spec.ts`.
+- **A unique constraint is not a unique index.** TypeORM reports PostgreSQL's and SQLite's unique
+  `uniques` separately from the user's indexes; the mapper marks them `origin: 'unique'`. They are
+  dropped differently (`DROP CONSTRAINT` versus `DROP INDEX`) and a SQLite rebuild recreates a
+  constraint inline (its name is SQLite's) while a named unique index keeps its own name. Inferring
+  one from the other loses the name or emits a statement the server rejects. Guarded by
+  `postgresTableDdl.spec.ts`, `typeOrmMappers.spec.ts` and the SQLite index case in
   `sqlite-modify-table.spec.ts`.
 
 
