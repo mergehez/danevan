@@ -1,9 +1,9 @@
 # todos — findings, fix list and test audit
 
-**Status:** 40 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
+**Status:** 41 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1085 unit tests (88 files) · 149 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1085 unit tests (88 files) · 150 browser tests
 (41 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
 file **49.1 % statements / 41.4 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
@@ -279,6 +279,21 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   edit with a reason. Guarded by `src/shared/utils/sqlSourceTable.spec.ts` and
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
+
+### 2026-10-24 a tab refresh touched another database
+
+- **U17 — "I refresh a table from server1/db1 and the app tries to load a table from server2/db2."**
+  Activating a table tab verified the table list of **every** connection the session held a table tab
+  for (`hydrateTableTabConnections`): coming back to (or reloading into) one tab sent `getTables` to
+  the other tabs' databases, and a dead one among them raised its "connection lost" error over the
+  table the user was reading — the toast named `eezyportal2` while `tirsik3.push_subscriptions` was
+  open. Activation now hydrates **the tab's own connection only**
+  (`hydrateTableTabConnection(targetTab)`), and the stale-data invalidation names the activated tab's
+  connection instead of `connections.selectedConnectionId` (the sidebar's selection, which is another
+  context). A tab of another database is verified when it becomes active. Guarded by
+  `src/mainview/tests/e2e/tab-connection-refresh.spec.ts`: two file sources hold a `notes` table and
+  both tabs are open; after a reload only the restored tab's connection is fetched, and the other
+  one is fetched when its tab is clicked (the spec fails with the old hydration reverted).
 
 ### 2026-10-23 auto-named foreign keys and indexes
 

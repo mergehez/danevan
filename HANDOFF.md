@@ -8,9 +8,9 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-23, after the Modify Table split (folder per side, item menu and shortcuts),
-generated index/foreign-key names, the grid's last-column resize fix, and the index fixes before
-them. Before that, 2026-10-13: the grid-state fixes._
+_Last verified: 2026-10-24, after tab activation was scoped to its own connection. Before that,
+2026-10-23: the Modify Table split, generated index/foreign-key names and the grid's last-column
+resize fix, and the index fixes before them._
 
 ## 1. What this is
 
@@ -107,7 +107,8 @@ guards it are the reference.
    opened after it, a stale selection reverted the whole app context, Modify Table's open filled a
    later table's draft, Format SQL replaced another tab's draft, the FK peek answered for a replaced
    cell, the schema popover listed another server's schemas, quick settings toggles reverted each
-   other. *Rule:* carry a sequence (or the requested key) and drop stale answers. *Example guards:*
+   other, and activating one table tab verified every other tab's database (a dead one raised its
+   "connection lost" over the table being read). *Rule:* carry a sequence (or the requested key) and drop stale answers. *Example guards:*
    `dbCoreState.spec.ts`, the sequence counters in `useQuery.ts`/`useComparison.ts`/`useModifyTable.ts`/
    `useGridFormatters.ts`/`useForeignKeyPeek.ts`.
 3. **One shared object held every tab's panel state.** `useQuery` was a singleton whose fields were
@@ -212,9 +213,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1085 unit tests (88 files)**, **149 browser tests (41 files)**,
+Snapshot at the last verification: **1085 unit tests (88 files)**, **150 browser tests (41 files)**,
 **14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.1 % statements / 41.4 % branches** with
-the floors green. The full browser suite is 149 passed + 0 failed; that green run also assumes the local
+the floors green. The full browser suite is 150 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
 packaged suites were not re-run after these fixes (renderer-only changes).

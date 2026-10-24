@@ -217,6 +217,16 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   `nulls-low` everywhere except PostgreSQL), so the grid agrees with the server order it just
   loaded. Guarded by `grid-sort-nulls.spec.ts`.
 
+Suggested from the 2026-10-24 "refresh loads another database" report:
+
+- **Activation refreshes the tab's own context, never every tab's.** `useNavState` used to verify the
+  table list of every connection that had a table tab open, so returning to one tab (or reloading
+  into it) sent `getTables` to the other tabs' databases; a dead server among them raised its
+  "connection lost" error over the table on screen, and a refresh looked like it loaded another
+  database. An activation names its tab's connection (`hydrateTableTabConnection(targetTab)`), and
+  the stale-data invalidation names that connection too, never `connections.selectedConnectionId`.
+  Guarded by `tab-connection-refresh.spec.ts`.
+
 Suggested from the 2026-10-23 "I never have to type the name" request:
 
 - **A generated default follows the form and yields to the user.** New indexes and foreign keys in
