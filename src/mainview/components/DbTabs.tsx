@@ -125,22 +125,26 @@ export const DbTabs = component(
         }
 
         return () => (
-            <div class="flex min-w-0 flex-col gap-0.5 bg-x2">
+            // A grid, not fixed widths: the label column is as wide as the widest group header and the
+            // tab row takes the rest. `contents` rows share those three column tracks.
+            <div class="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 bg-x2">
                 {rows.value.map((row, i) =>
                     // The script row stays for its "new scratch tab" button, which is the only way to
                     // start a scratch tab and used to disappear exactly when the workspace was empty.
                     row.kind === 'table' || row.tabs.length || connections.connections.length ? (
-                        <div class="flex min-w-0 items-center gap-2" key={row.key} data-testid={`tab-row-${row.key}`}>
+                        <div class="contents" key={row.key} data-testid={`tab-row-${row.key}`}>
                             {row.kind === 'table' && row.label ? (
-                                <span class="flex w-24 shrink-0 items-center gap-1 pl-1" v-tooltip={{ value: row.label, xs: true, nowrap: true }}>
+                                <span class="flex min-w-0 items-center gap-1 pl-1" v-tooltip={{ value: row.label, xs: true, nowrap: true }}>
                                     {renderTag(row.appearance?.color, row.appearance?.shortCode, `group-${row.key}-code`, `group-${row.key}-color`)}
-                                    <span class="min-w-0 truncate text-2xs opacity-60">{row.label}</span>
+                                    <span class="text-2xs opacity-60">{row.label}</span>
                                 </span>
-                            ) : null}
+                            ) : (
+                                <span aria-hidden="true" />
+                            )}
                             <DragTabs
                                 items={row.tabs}
                                 onChange={(tabs) => onChange(tabs, row)}
-                                class="min-w-0 flex flex-1 flex-wrap overflow-x-auto border-b border-x0"
+                                class="min-w-0 flex flex-wrap overflow-x-auto border-b border-x0"
                                 slots={{
                                     tab: ({ requiredClass, item: e, key }) => (
                                         <div
@@ -191,7 +195,9 @@ export const DbTabs = component(
                                     smaller={true}
                                     v-menu={{ value: () => navState.tableTabMenuItems(), button: true }}
                                 />
-                            ) : null}
+                            ) : (
+                                <span aria-hidden="true" />
+                            )}
                         </div>
                     ) : null
                 )}
