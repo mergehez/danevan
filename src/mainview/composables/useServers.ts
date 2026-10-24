@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import { dbTypes, type CreateServerParams, type DbType, type ServerSchemaRecord, type UpdateServerParams } from '../../shared/types';
+import { normalizeDbColor, normalizeDbShortCode } from '../../shared/utils/dbAppearance';
 import { confirmAction } from '../lib/utils';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
@@ -131,7 +132,13 @@ export function _useServers() {
         async updateServer(serverId: number, server: UpdateServerParams) {
             _dbCoreState.applyBootstrap(await tasks.updateServer.run({ serverId, server }));
         },
-        /** Tags a file source with its tab appearance; server entries keep it on their connections. */
+        /** A server's own appearance, used by the grouped (by server) tab rows. */
+        getServerAppearance(serverId: number | undefined) {
+            const server = serverId === undefined ? undefined : _dbCoreState.servers.find((entry) => entry.id === serverId);
+
+            return { color: normalizeDbColor(server?.color), shortCode: normalizeDbShortCode(server?.short_code) };
+        },
+        /** Tags a file source (or a server row) with the appearance its grouped tabs show. */
         async setServerAppearance(serverId: number, appearance: { color: string | null; shortCode: string | null }) {
             const server = _dbCoreState.servers.find((entry) => entry.id === serverId);
 

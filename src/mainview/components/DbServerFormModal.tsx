@@ -104,10 +104,8 @@ export const DbServerFormModal = component(
                     port: isFileServer.value ? undefined : typeof form.port === 'number' ? form.port : undefined,
                     username: undefined,
                     password: undefined,
-                    // A file source's color is stored on the server row; a server entry's lives on
-                    // each of its connections.
-                    color: isFileServer.value ? form.color : undefined,
-                    shortCode: isFileServer.value ? form.shortCode : undefined,
+                    color: form.color,
+                    shortCode: form.shortCode,
                 });
 
                 closeModal();
@@ -139,17 +137,15 @@ export const DbServerFormModal = component(
                                 class="w-full border border-x4 bg-x0 px-2.5 py-2 text-xs outline-none"
                             />
                         </label>
-                        {isFileServer.value ? (
-                            <div class="space-y-1">
-                                <span class="text-2xs uppercase tracking-[0.18em] opacity-60">Tab appearance</span>
-                                <DbAppearanceField
-                                    modelValue={form.color}
-                                    shortCode={form.shortCode}
-                                    onChange={(color) => (form.color = color)}
-                                    onShortCodeChange={(shortCode) => (form.shortCode = shortCode)}
-                                />
-                            </div>
-                        ) : null}
+                        <div class="space-y-1">
+                            <span class="text-2xs uppercase tracking-[0.18em] opacity-60">{isFileServer.value ? 'Tab appearance' : 'Group appearance (server)'}</span>
+                            <DbAppearanceField
+                                modelValue={form.color}
+                                shortCode={form.shortCode}
+                                onChange={(color) => (form.color = color)}
+                                onShortCodeChange={(shortCode) => (form.shortCode = shortCode)}
+                            />
+                        </div>
                         {isFileServer.value ? (
                             <label class="block space-y-1">
                                 <span class="text-2xs uppercase tracking-[0.18em] opacity-60">Database File</span>

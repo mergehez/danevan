@@ -2,7 +2,7 @@
 // orders a copy of the stored tab list, so returning to "no grouping" has to show the plain order
 // again — which is what these assertions are about.
 import { expect, test, type Page } from '@playwright/test';
-import { createFileSource, openSidebarTable, reloadSidebarRow } from './helpers';
+import { createFileSource, openSidebarRowMenu, openSidebarTable, reloadSidebarRow } from './helpers';
 
 async function openApp(page: Page) {
     await page.goto('/');
@@ -25,6 +25,34 @@ async function pickGrouping(page: Page, label: string) {
     await page.locator('.v-menu-children .v-menu-panel').first().getByRole('menuitem', { name: label }).click();
 }
 
+async function setServerAppearance(page: Page, serverId: number, appearance: { hex?: string; code?: string }) {
+    await openSidebarRowMenu(page.locator(`[data-node-id="server:${serverId}"]`));
+    await page.getByRole('menuitem', { name: 'Appearance...' }).click();
+
+    const dialog = page.getByTestId('db-appearance-dialog');
+
+    if (appearance.hex) {
+        const hexInput = dialog.locator('input[aria-label="Hex"]');
+        await hexInput.fill(appearance.hex);
+        await hexInput.press('Tab');
+    }
+
+    if (appearance.code) {
+        await dialog.getByTestId('db-appearance-short-code').fill(appearance.code);
+    }
+
+    await page.getByTestId('db-appearance-save').click();
+    await expect(dialog).toBeHidden();
+}
+
+/** The table tabs of one row, in display order. */
+async function rowTableTabs(page: Page, rowKey: string) {
+    return page
+        .getByTestId(`tab-row-${rowKey}`)
+        .locator('[id^="table-"]')
+        .evaluateAll((tabs) => tabs.map((tab) => tab.id.replace(/^table-\d+-/, '')));
+}
+
 async function toggleSortByName(page: Page) {
     await openTableTabsMenu(page);
     await page.getByRole('menuitem', { name: 'Sort tabs by name' }).click();
@@ -32,7 +60,7 @@ async function toggleSortByName(page: Page) {
 }
 
 test.describe('Table tab grouping and sorting', () => {
-    test('groups by server and database, sorts by name, and restores the plain order', async ({ page, request }) => {
+    test('groups by server and database into a row each, with the tag shown once', async ({ page, request }) => {
         const sourceA = await createFileSource(request, {
             label: 'tab-group-a',
             schema: `CREATE TABLE zulu (id integer primary key); CREATE TABLE alpha (id integer primary key);`,
@@ -47,24 +75,42 @@ test.describe('Table tab grouping and sorting', () => {
             await reloadSidebarRow(page.locator(`[data-node-id="server:${sourceA.serverId}"]`));
             await reloadSidebarRow(page.locator(`[data-node-id="server:${sourceB.serverId}"]`));
 
-            // Opening order: A.zulu, B.beta, A.alpha.
+            // Opening order: A.zulu, B.beta, A.alpha; A is tagged TA in blue.
             await openSidebarTable(page, sourceA.connectionId, 'zulu');
             await openSidebarTable(page, sourceB.connectionId, 'beta');
             await openSidebarTable(page, sourceA.connectionId, 'alpha');
+            await setServerAppearance(page, sourceA.serverId, { hex: '3b82f6', code: 'ta' });
             await expect.poll(() => tableTabOrder(page)).toEqual(['zulu', 'beta', 'alpha']);
+            await expect(page.locator(`[data-testid="tab-code-table-${sourceA.connectionId}-zulu"]`)).toHaveText('TA');
 
-            // By server: A's tabs together (A sorts before B), add order inside.
+            // By server: one row per server, the tag carried once by the row header.
             await pickGrouping(page, 'By server');
-            await expect.poll(() => tableTabOrder(page)).toEqual(['zulu', 'alpha', 'beta']);
+            await expect(page.getByTestId(`tab-row-server:${sourceA.serverId}`)).toContainText(sourceA.serverName);
+            await expect(page.getByTestId(`tab-row-server:${sourceB.serverId}`)).toContainText(sourceB.serverName);
+            await expect.poll(() => rowTableTabs(page, `server:${sourceA.serverId}`)).toEqual(['zulu', 'alpha']);
+            await expect.poll(() => rowTableTabs(page, `server:${sourceB.serverId}`)).toEqual(['beta']);
+            await expect(page.getByTestId(`tab-row-server:${sourceA.serverId}`).locator('[data-testid^="tab-color-"]')).toHaveCount(0);
+            await expect(page.getByTestId(`group-server:${sourceA.serverId}-code`)).toHaveText('TA');
+            await expect(page.getByTestId(`group-server:${sourceA.serverId}-code`)).toHaveCSS('color', 'rgb(59, 130, 246)');
+            await expect(page.getByTestId(`group-server:${sourceA.serverId}-color`)).toHaveCSS('background-color', 'rgb(59, 130, 246)');
+            // A database without a tag shows the neutral dot.
+            await expect(page.getByTestId(`group-server:${sourceB.serverId}-color`)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-            // Sorting by name works inside the groups.
+            // Sorting by name sorts inside each row.
             await toggleSortByName(page);
-            await expect.poll(() => tableTabOrder(page)).toEqual(['alpha', 'zulu', 'beta']);
+            await expect.poll(() => rowTableTabs(page, `server:${sourceA.serverId}`)).toEqual(['alpha', 'zulu']);
 
-            // The plain order never changed: no grouping and no sort brings it back.
+            // No grouping: one row again, the plain order, and every tab carries its own tag.
             await pickGrouping(page, 'No grouping');
             await toggleSortByName(page);
             await expect.poll(() => tableTabOrder(page)).toEqual(['zulu', 'beta', 'alpha']);
+            await expect(page.locator(`[data-testid="tab-code-table-${sourceA.connectionId}-alpha"]`)).toHaveText('TA');
+
+            // By database: one row per connection.
+            await pickGrouping(page, 'By database');
+            await expect.poll(() => rowTableTabs(page, `database:${sourceA.connectionId}`)).toEqual(['zulu', 'alpha']);
+            await expect.poll(() => rowTableTabs(page, `database:${sourceB.connectionId}`)).toEqual(['beta']);
+            await expect(page.getByTestId(`group-database:${sourceA.connectionId}-code`)).toHaveText('TA');
         } finally {
             await sourceA.cleanup();
             await sourceB.cleanup();

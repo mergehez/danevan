@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { orderTabs, tabOrderModeKey, type TabOrderOptions } from './tabOrdering';
+import { orderTabGroups, orderTabs, tabOrderModeKey, type TabOrderOptions } from './tabOrdering';
 
 type TestTab = {
     hash: string;
@@ -65,5 +65,51 @@ describe('orderTabs', () => {
 
     it('does not let a string order drop a tab it has never seen', () => {
         expect(order(tabs, { savedOrder: ['alpha'] })).toEqual(['alpha', 'zulu', 'beta']);
+    });
+});
+
+describe('orderTabGroups', () => {
+    const tabs = [tab('zulu', 'zulu', 'Server B'), tab('beta', 'beta', 'Server A'), tab('alpha', 'alpha', 'Server A')];
+
+    it('is one unlabelled group when nothing is grouped', () => {
+        expect(orderTabGroups(tabs, { grouping: 'none', sortByName: false, addedOrder: [], groupLabel: (entry) => entry.group, name: (entry) => entry.name })).toEqual([
+            { key: 'all', label: '', tabs },
+        ]);
+    });
+
+    it('makes one row per label, sorted by label and keeping the add order inside', () => {
+        const groups = orderTabGroups(tabs, { grouping: 'server', sortByName: false, addedOrder: [], groupLabel: (entry) => entry.group, name: (entry) => entry.name });
+
+        expect(groups.map((group) => [group.label, group.tabs.map((entry) => entry.hash)])).toEqual([
+            ['Server A', ['beta', 'alpha']],
+            ['Server B', ['zulu']],
+        ]);
+    });
+
+    it('uses the group key for identity, not the label', () => {
+        const shared = [tab('one', 'one', 'same'), tab('two', 'two', 'same')];
+        const groups = orderTabGroups(shared, {
+            grouping: 'server',
+            sortByName: false,
+            addedOrder: [],
+            groupLabel: (entry) => entry.group,
+            groupKey: (entry) => `server:${entry.hash === 'one' ? 1 : 2}`,
+            name: (entry) => entry.name,
+        });
+
+        expect(groups.map((group) => group.key)).toEqual(['server:1', 'server:2']);
+    });
+
+    it('applies the saved order inside a group only', () => {
+        const groups = orderTabGroups(tabs, {
+            grouping: 'server',
+            sortByName: false,
+            addedOrder: [],
+            savedOrder: ['alpha', 'zulu', 'beta'],
+            groupLabel: (entry) => entry.group,
+            name: (entry) => entry.name,
+        });
+
+        expect(groups.map((group) => group.tabs.map((entry) => entry.hash))).toEqual([['alpha', 'beta'], ['zulu']]);
     });
 });

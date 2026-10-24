@@ -90,28 +90,56 @@ export const DbTabs = component(
             ].join(' ');
         };
 
-        const states = computed(() => {
-            return [navState.scriptTabs, navState.nonScriptTabs];
-        });
+        // The script row first, then one table row per group (or a single "all" row). A grouped row
+        // shows its database/server tag on the left, once, so its tabs are just names.
+        const rows = computed(() => [
+            { key: 'scripts', kind: 'scripts' as const, label: '', tabs: navState.scriptTabs, appearance: undefined },
+            ...navState.tableTabGroups.map((group) => ({ key: group.key, kind: 'table' as const, label: group.label, tabs: group.tabs, appearance: group.appearance })),
+        ]);
 
-        function onChange(tabs: Tab[], index: number) {
-            if (index === 0) {
+        function onChange(tabs: Tab[], row: { key: string; kind: 'scripts' | 'table' }) {
+            if (row.kind === 'scripts') {
                 navState.onScriptTabsChange(tabs);
-            } else {
-                navState.onNonScriptTabsChange(tabs);
+                return;
             }
+
+            navState.onTableTabsChange(row.key, tabs);
+        }
+
+        function renderTag(color: string | undefined, shortCode: string | undefined, codeTestId: string, colorTestId: string) {
+            return (
+                <>
+                    {shortCode ? (
+                        <span data-testid={codeTestId} style={{ color }} class="shrink-0 font-mono text-2xs font-semibold">
+                            {shortCode}
+                        </span>
+                    ) : null}
+                    <span
+                        data-testid={colorTestId}
+                        aria-hidden="true"
+                        style={{ backgroundColor: color ?? 'transparent' }}
+                        class={['h-2.5 w-2.5 shrink-0 rounded-full border', color ? 'border-transparent' : 'border-x5']}
+                    />
+                </>
+            );
         }
 
         return () => (
             <div class="flex min-w-0 flex-col gap-0.5 bg-x2">
-                {states.value.map((tabs, i) =>
+                {rows.value.map((row, i) =>
                     // The script row stays for its "new scratch tab" button, which is the only way to
                     // start a scratch tab and used to disappear exactly when the workspace was empty.
-                    i != 0 || tabs.length || connections.connections.length ? (
-                        <div class="flex min-w-0 items-center gap-2" key={i}>
+                    row.kind === 'table' || row.tabs.length || connections.connections.length ? (
+                        <div class="flex min-w-0 items-center gap-2" key={row.key} data-testid={`tab-row-${row.key}`}>
+                            {row.kind === 'table' && row.label ? (
+                                <span class="flex w-24 shrink-0 items-center gap-1 pl-1" v-tooltip={{ value: row.label, xs: true, nowrap: true }}>
+                                    {renderTag(row.appearance?.color, row.appearance?.shortCode, `group-${row.key}-code`, `group-${row.key}-color`)}
+                                    <span class="min-w-0 truncate text-2xs opacity-60">{row.label}</span>
+                                </span>
+                            ) : null}
                             <DragTabs
-                                items={tabs}
-                                onChange={(tabs) => onChange(tabs, i)}
+                                items={row.tabs}
+                                onChange={(tabs) => onChange(tabs, row)}
                                 class="min-w-0 flex flex-1 flex-wrap overflow-x-auto border-b border-x0"
                                 slots={{
                                     tab: ({ requiredClass, item: e, key }) => (
@@ -127,21 +155,11 @@ export const DbTabs = component(
                                             class={getClass(e, requiredClass)}
                                         >
                                             {e.type === 'table' ? (
-                                                // A table tab is named by its table only. The short code (in the
-                                                // database's color) and the dot carry which database it belongs to.
-                                                <>
-                                                    {e.shortCode ? (
-                                                        <span data-testid={`tab-code-${e.hash}`} style={{ color: e.color }} class="shrink-0 font-mono text-2xs font-semibold">
-                                                            {e.shortCode}
-                                                        </span>
-                                                    ) : null}
-                                                    <span
-                                                        data-testid={`tab-color-${e.hash}`}
-                                                        aria-hidden="true"
-                                                        style={{ backgroundColor: e.color ?? 'transparent' }}
-                                                        class={['h-2.5 w-2.5 shrink-0 rounded-full border', e.color ? 'border-transparent' : 'border-x5']}
-                                                    />
-                                                </>
+                                                // A table tab is named by its table only. When the rows are grouped,
+                                                // the group header carries the tag once; otherwise the tab does.
+                                                row.kind === 'table' && row.label ? null : (
+                                                    renderTag(e.color, e.shortCode, `tab-code-${e.hash}`, `tab-color-${e.hash}`)
+                                                )
                                             ) : (
                                                 <Icon icon={e.type === 'scratch' ? 'icon-[mdi--file-edit-outline]' : 'icon-[mdi--table-large]'} class="text-sm opacity-70" />
                                             )}
@@ -156,7 +174,7 @@ export const DbTabs = component(
                                     ),
                                 }}
                             />
-                            {i == 0 ? (
+                            {row.kind === 'scripts' ? (
                                 <IconButton
                                     icon="icon-[mdi--plus]"
                                     data-testid="new-scratch-tab"
@@ -165,7 +183,7 @@ export const DbTabs = component(
                                     disabled={!connections.connections.length}
                                     onClick={() => navState.openScratchTab(navState.activeTab?.connectionId ?? connections.selectedConnectionId ?? undefined)}
                                 />
-                            ) : (
+                            ) : i === 1 ? (
                                 <IconButton
                                     icon="icon-[mdi--dots-vertical]"
                                     data-testid="table-tabs-menu"
@@ -173,7 +191,7 @@ export const DbTabs = component(
                                     smaller={true}
                                     v-menu={{ value: () => navState.tableTabMenuItems(), button: true }}
                                 />
-                            )}
+                            ) : null}
                         </div>
                     ) : null
                 )}

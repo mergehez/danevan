@@ -2,7 +2,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import type { SqlDiagnosticMarker } from '../../shared/types';
 import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import { strToNumber, uniqueId } from '../../shared/utils/utils';
-import { orderTabs, tabOrderModeKey } from '../lib/tabOrdering';
+import { orderTabGroups, tabOrderModeKey, type TabGroup } from '../lib/tabOrdering';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
 import { dropQueryStateForTab, markQueryTextSeeded, moveQueryStateForTab, queryStateTabHashes, seedQueryTextForTab, useQuery, useQueryForTab } from './useQuery';
@@ -369,19 +369,32 @@ const createNavState = () => {
      * back to the plain order (or to another grouping) restores what that mode had. A mode the user
      * dragged remembers its own order (`tabOrders[tabModeKey]`).
      */
-    const nonScriptTabs = computed(() => {
+    type DisplayTabGroup = TabGroup<DisplayTab> & { appearance?: { color?: string; shortCode?: string } };
+
+    const tableTabGroups = computed<DisplayTabGroup[]>(() => {
         const tabs = settings.tabs.filter((tab) => !isScriptTab(tab));
-        const ordered = orderTabs(tabs, {
+        const groups = orderTabGroups(tabs, {
             grouping: settings.tabGrouping,
             sortByName: settings.tabSortByName,
             addedOrder: settings.tabAddedOrder,
             savedOrder: settings.tabOrders[tabModeKey.value],
             groupLabel: (tab) => (settings.tabGrouping === 'server' ? getServerName(tab.connectionId) : getConnectionName(tab.connectionId)),
+            groupKey: (tab) =>
+                settings.tabGrouping === 'server'
+                    ? `server:${conns.connections.find((connection) => connection.id === tab.connectionId)?.server_id ?? 0}`
+                    : `database:${tab.connectionId}`,
             name: (tab) => resolveTabName(tab),
         });
 
-        return ordered.map((tab) => toDisplayTab(tab));
+        return groups.map((group) => {
+            const numericId = Number(group.key.split(':')[1]);
+            const appearance =
+                group.key === 'all' ? undefined : settings.tabGrouping === 'server' ? servers.getServerAppearance(numericId) : conns.getConnectionAppearance(numericId);
+
+            return { ...group, tabs: group.tabs.map((tab) => toDisplayTab(tab)), appearance };
+        });
     });
+    const nonScriptTabs = computed(() => tableTabGroups.value.flatMap((group) => group.tabs));
 
     const selectScript = (scriptId: number) => {
         const script = scripts.scripts.find((s) => s.id === scriptId);
@@ -517,18 +530,37 @@ const createNavState = () => {
         setTabs([...tabs, ...settings.tabs.filter((tab) => !isScriptTab(tab))]);
     };
 
-    const onNonScriptTabsChange = (tabs: Tab[]) => {
-        // The plain order is the stored order; every other mode keeps the order it was left in, so
-        // dragging in a grouped view cannot rewrite the order the user returns to.
-        if (tabModeKey.value === 'default') {
+    /**
+     * A dragged row. In the plain view this is the stored order itself; in every other view the row
+     * only rewrites its own slice of that view's order, so the mode (and the plain order) keep what
+     * the user left there.
+     */
+    const onTableTabsChange = (groupKey: string, tabs: Tab[]) => {
+        const modeKey = tabModeKey.value;
+
+        if (modeKey === 'default' && groupKey === 'all') {
             setTabs([...settings.tabs.filter((tab) => isScriptTab(tab)), ...tabs]);
             return;
         }
 
-        settings.setTabOrder(
-            tabModeKey.value,
-            tabs.map((tab) => tab.hash)
-        );
+        const currentOrder = nonScriptTabs.value.map((tab) => tab.hash);
+        const draggedHashes = new Set(tabs.map((tab) => tab.hash));
+        const nextOrder: string[] = [];
+        let inserted = false;
+
+        for (const hash of currentOrder) {
+            if (draggedHashes.has(hash)) {
+                if (!inserted) {
+                    nextOrder.push(...tabs.map((tab) => tab.hash));
+                    inserted = true;
+                }
+                continue;
+            }
+
+            nextOrder.push(hash);
+        }
+
+        settings.setTabOrder(modeKey, nextOrder);
     };
 
     /** The table-tab row's menu: how the tabs are grouped and whether they are sorted by name. */
@@ -807,7 +839,8 @@ const createNavState = () => {
         setScriptTabRuntimeState,
         addScriptHistoryEntry,
         onScriptTabsChange,
-        onNonScriptTabsChange,
+        onTableTabsChange,
+        tableTabGroups,
         tableTabMenuItems,
         selectTab: selectTab,
         selectScript: selectScript,

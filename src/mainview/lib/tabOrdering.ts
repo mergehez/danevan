@@ -75,3 +75,42 @@ export function orderTabs<T extends { hash: string }>(tabs: T[], options: TabOrd
 
     return ordered;
 }
+
+export type TabGroup<T> = {
+    /** Stable identity of the group (a server or connection); `all` when nothing is grouped. */
+    key: string;
+    label: string;
+    tabs: T[];
+};
+
+/**
+ * The groups a grouped tab row renders: one row per server or database, each in its own order. The
+ * saved order applies inside a group, so dragging a row cannot move tabs between the rows.
+ */
+export function orderTabGroups<T extends { hash: string }>(tabs: T[], options: TabOrderOptions<T> & { groupKey?: (tab: T) => string }): TabGroup<T>[] {
+    const grouped = options.grouping === 'server' || options.grouping === 'database';
+    const ordered = orderTabs(tabs, { ...options, savedOrder: undefined });
+    const savedIndex = new Map((options.savedOrder ?? []).map((hash, index) => [hash, index] as const));
+    const applySaved = (list: T[]) =>
+        savedIndex.size > 0
+            ? [...list].sort((left, right) => (savedIndex.get(left.hash) ?? Number.MAX_SAFE_INTEGER) - (savedIndex.get(right.hash) ?? Number.MAX_SAFE_INTEGER))
+            : list;
+
+    if (!grouped) {
+        return [{ key: 'all', label: '', tabs: applySaved(ordered) }];
+    }
+
+    const groups = new Map<string, TabGroup<T>>();
+
+    for (const tab of ordered) {
+        const label = options.groupLabel(tab);
+        const key = options.groupKey?.(tab) ?? label;
+        const group = groups.get(key) ?? { key, label, tabs: [] };
+        group.tabs.push(tab);
+        groups.set(key, group);
+    }
+
+    return [...groups.values()]
+        .sort((left, right) => compareText(left.label, right.label) || compareText(left.key, right.key))
+        .map((group) => ({ ...group, tabs: applySaved(group.tabs) }));
+}

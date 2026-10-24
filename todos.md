@@ -3,7 +3,7 @@
 **Status:** 45 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1104 unit tests (90 files) · 158 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1108 unit tests (90 files) · 158 browser tests
 (44 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
 file **49.2 % statements / 41.7 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
@@ -308,7 +308,12 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   `ti` from the row menu and asserts the tab reads `TI` in the database's color, before the dot.
 - **U21 — group and sort the table tabs.** A three-dot button at the end of the table-tab row opens
   the menu: **Group tabs** (No grouping / Add time / By server / By database) and **Sort tabs by
-  name**. Grouping orders a *copy* of the stored list, so the plain order is never rewritten:
+  name**. Grouping by server or database renders **one row per group**, with the tag (short code in
+  the group's color + the dot) and the group name shown **once on the row's left**; the tabs in a
+  grouped row are plain names. A server row's tag is the server's own appearance, editable in the
+  server **Update...** form (a file source's tag is the one it already had). "No grouping" (and "Add
+  time") stay a single row where each tab carries its own tag. Grouping orders a *copy* of the stored
+  list, so the plain order is never rewritten:
   - the opening order is recorded separately (`tabAddedOrder`) and "Add time" restores it even after a
     drag;
   - each combination remembers its own order under `tabOrders[modeKey]`
@@ -317,9 +322,10 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
     restores the plain (dragged) order;
   - grouping and sorting persist in the settings blob across a reload.
   Guarded by `src/mainview/lib/tabOrdering.spec.ts` (mode keys, add order, server/database grouping,
-  name sorting, saved order) and `tab-grouping.spec.ts` (group by server + sort, restore the plain
-  order; drag a tab, "Add time" restores the opening order, survives a reload, then back to the
-  dragged plain order).
+  group keys vs labels, per-group saved order, name sorting) and `tab-grouping.spec.ts` (one row per
+  server/database with the tag on the header and none on its tabs, sorting inside a row, restore the
+  plain order and per-tab tags; drag a tab, "Add time" restores the opening order, survives a reload,
+  then back to the dragged plain order).
 
 ### 2026-10-24 database colors
 

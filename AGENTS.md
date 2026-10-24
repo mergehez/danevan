@@ -224,8 +224,9 @@ Suggested from the 2026-10-24 tab-grouping request:
   remembered under its mode key (`default`, `server_sorted`, …). Ordering works on a copy; the stored
   tab list is only rewritten by a drag in the plain "no grouping, no sort" view. "Add time" needs its
   own recorded opening order (`tabAddedOrder`), because a drag changes the stored list. Switching back
-  to a view therefore restores what the user left there. Guarded by `tabOrdering.spec.ts` and
-  `tab-grouping.spec.ts`.
+  to a view therefore restores what the user left there. A grouped view is one **row per group** (not
+  just an order): the group's tag belongs to the row header and the tabs in it are plain names.
+  Guarded by `tabOrdering.spec.ts` and `tab-grouping.spec.ts`.
 
 Suggested from the 2026-10-24 database-colour request:
 
