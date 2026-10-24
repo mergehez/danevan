@@ -3,6 +3,7 @@ import { computed, reactive } from 'vue';
 import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import { Button } from '../../shared/components/Button.tsx';
 import { dbTypeIcons, type ServerRecord } from '../../shared/types';
+import { normalizeDbColor } from '../../shared/utils/dbColor';
 import { withMinLifetime } from '../../shared/utils/useMinLifetime';
 import { formatNumber } from '../../shared/utils/utils.ts';
 import { useConnections } from '../composables/useConnections';
@@ -487,6 +488,7 @@ export const TreeServer = component(
                     <FileTreeButton
                         item={server}
                         icon={server.icon}
+                        color={normalizeDbColor(server.color)}
                         tooltip={server.file_path}
                         dataNodeId={`server:${server.id}`}
                         stickySlot={slot}
@@ -540,6 +542,7 @@ export const TreeServer = component(
                         child: ({ item: connection, parentId }) => (
                             <FileTreeButton
                                 item={connection}
+                                color={normalizeDbColor(connection.color)}
                                 dataNodeId={`connection:${connection.id}`}
                                 dataParentId={parentId}
                                 collapsed={state.isGroupCollapsed(server.id, String(connection.id), true)}

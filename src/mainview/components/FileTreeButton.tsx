@@ -23,6 +23,8 @@ type Props<T extends Pick<FileTreeItem, 'id' | 'rightText' | 'subtitle'> & { tit
     skipTitle?: boolean;
     stickySlot?: number;
     icon?: 'icon-[mdi--database-outline]' | 'icon-[mdi--folder-outline]' | 'icon-[mdi--file-outline]' | (string & {});
+    /** A dot in this color replaces the icon (a database's tab color). */
+    color?: string;
     contextMenuItems?: (item: T) => ContextMenuEntry[];
 
     onClick: (event: MouseEvent) => void;
@@ -170,13 +172,22 @@ export const FileTreeButton = componentGeneric(
                                 class={['icon', [props.collapsed ? 'icon-[mdi--chevron-right]' : 'icon-[mdi--chevron-down]', props.expandable ? undefined : 'invisible w-2']]}
                             />
                             <span class="flex-1 inline-flex items-center gap-1 min-w-0 shrink-0 truncate">
-                                {props.icon ? <span class={['icon shrink-0 text-sm', props.isLoading ? 'icon-[mdi--loading] animate-spin' : props.icon]} /> : null}
+                                {props.color ? (
+                                    <span
+                                        data-testid={`sidebar-color-${props.dataNodeId}`}
+                                        aria-hidden="true"
+                                        style={{ backgroundColor: props.color }}
+                                        class="h-2.5 w-2.5 shrink-0 rounded-full border border-transparent"
+                                    />
+                                ) : null}
+                                {props.isLoading ? (
+                                    <span class="icon icon-[mdi--loading] shrink-0 animate-spin text-sm" />
+                                ) : !props.color && props.icon ? (
+                                    <span class={['icon shrink-0 text-sm', props.icon]} />
+                                ) : null}
                                 <span class="text-xs leading-tight text-white">
                                     {props.slots?.text?.({ text: props.item.title ?? props.item.name }) ?? <>{props.item.title ?? props.item.name}</>}
                                 </span>
-                                {!props.icon && props.isLoading ? (
-                                    <span class={['icon shrink-0 text-sm', props.isLoading ? 'icon-[mdi--loading] animate-spin' : props.icon]} />
-                                ) : null}
                                 {props.item.subtitle ? <span class="pl-2 text-2xs opacity-70 select-none">{props.item.subtitle}</span> : null}
                                 {props.item.rightText ? <span class="pl-2 ml-auto text-2xs opacity-80 font-semibold select-none">{props.item.rightText}</span> : null}
                             </span>
@@ -217,6 +228,7 @@ export const FileTreeButton = componentGeneric(
             'skipTitle',
             'stickySlot',
             'icon',
+            'color',
             'contextMenuItems',
             'onClick',
             'onDblClick',

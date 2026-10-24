@@ -45,6 +45,8 @@ test.describe('Database colors on table tabs', () => {
             await pickColorFromRowMenu(page, source.serverId, '3b82f6');
 
             await expect(tableTabDot(page, source.connectionId)).toHaveCSS('background-color', 'rgb(59, 130, 246)');
+            // The sidebar row carries the same dot, in place of its database icon.
+            await expect(page.locator(`[data-testid="sidebar-color-server:${source.serverId}"]`)).toHaveCSS('background-color', 'rgb(59, 130, 246)');
             // The label is the table name only; the full path stays in the tooltip.
             await expect(tableTab(page, source.connectionId)).toContainText('notes');
             await expect(tableTab(page, source.connectionId)).not.toContainText(source.serverName);
@@ -81,6 +83,7 @@ test.describe('Database colors on table tabs', () => {
 
             await openSidebarTable(page, source.connectionId, 'notes');
             await expect(tableTabDot(page, source.connectionId)).toHaveCSS('background-color', 'rgb(236, 72, 153)');
+            await expect(page.locator(`[data-testid="sidebar-color-server:${source.serverId}"]`)).toHaveCSS('background-color', 'rgb(236, 72, 153)');
 
             // Reopening shows the stored color.
             await openSidebarRowMenu(page.locator(`[data-node-id="server:${source.serverId}"]`));
@@ -169,6 +172,7 @@ test.describe('Database colors on a server-based connection', () => {
             await expect(dialog).toBeHidden();
 
             await expect(page.locator(`[data-testid="tab-color-table-${connection.connectionId}-${tableName}"]`)).toHaveCSS('background-color', 'rgb(139, 92, 246)');
+            await expect(page.locator(`[data-testid="sidebar-color-connection:${connection.connectionId}"]`)).toHaveCSS('background-color', 'rgb(139, 92, 246)');
 
             const bootstrap = await post(page.request, 'getBootstrap', undefined);
             expect(bootstrap.connections.find((entry: { id: number }) => entry.id === connection.connectionId)?.color).toBe('#8b5cf6');

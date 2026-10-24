@@ -300,7 +300,8 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
 
 - **U19 — tag a database with a color and show it on its table tabs.** A table tab is named by its
   table only, so two databases with a `users` table were indistinguishable; the icon is now a dot in
-  the database's color (neutral outline when none). The color is stored in the app DB — `servers.color`
+  the database's color (neutral outline when none), and the same dot replaces the database icon on a
+  file-source row and leads a connection row in the sidebar (`FileTreeButton`'s `color`). The color is stored in the app DB — `servers.color`
   for a file source, `connections.color` for a server-based database — added by app-DB migration **v2**
   (`database-colors`, guarded by `hasColumn`, so a half-upgraded DB boots). It is edited through:
   - the **add connection** form and the **Update Source** form (a swatch field with the picker),
@@ -314,8 +315,9 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   Guarded by `appDbSchema.spec.ts` (both columns on a fresh and an upgraded DB including the
   half-finished case), `appApi.spec.ts` (round trip on server and connection, keep-on-rename,
   invalid value dropped, `null` clears, create-with-color), `DbColorField.spec.ts` (free-form hex,
-  clear, dialog save/clear) and `db-colors.spec.ts` (row menu → dot, update form → dot, two databases
-  with the same table name get different dots, MySQL connection row → dot).
+  clear, dialog save/clear) and `db-colors.spec.ts` (row menu → dot, update form → dot, sidebar dot
+  on the file source and on a MySQL connection, two databases with the same table name get different
+  dots).
 
 ### 2026-10-24 a tab refresh touched another database
 
