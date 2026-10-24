@@ -57,7 +57,8 @@ export const ModifyTableModal = component(
                 const options = modifyTable.getTargetTableColumnNames(targetTable);
 
                 if (options.length > 0 && !options.includes(selectedForeignKeyColumn.targetName)) {
-                    selectedForeignKeyColumn.targetName = options[0]!;
+                    // A reference points at the target's primary key unless it already names a column.
+                    selectedForeignKeyColumn.targetName = modifyTable.getTargetTablePrimaryKeyColumn(targetTable) ?? options[0]!;
                 }
             },
             { immediate: true }

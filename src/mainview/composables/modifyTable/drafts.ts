@@ -493,6 +493,32 @@ export function syncAutoEntityNames(state: AutoNameHost) {
     });
 }
 
+/**
+ * The table a `<name>_id` column points at, when the connection has one: `user_id` finds `users`
+ * (then `useres`/`usery`-style plurals, then `user` itself). Only the first candidate that exists is
+ * used, so an ambiguous name leaves the target empty rather than guessing.
+ */
+export function resolveForeignKeyTargetTable(columnName: string, tableNames: string[]) {
+    const match = /^(.+)_id$/i.exec(columnName.trim());
+
+    if (!match?.[1]) {
+        return undefined;
+    }
+
+    const base = match[1];
+    const candidates = [base + 's', base + 'es', base.replace(/y$/i, 'ies'), base];
+
+    for (const candidate of new Set(candidates)) {
+        const found = tableNames.find((tableName) => tableName.toLowerCase() === candidate.toLowerCase());
+
+        if (found) {
+            return found;
+        }
+    }
+
+    return undefined;
+}
+
 export function createNewKey(keys: ModifyTableKeyDraft[], columnNames: string[]) {
     const name = createUniqueName(
         keys.map((key) => key.name),

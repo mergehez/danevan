@@ -45,7 +45,13 @@ export const ModifyTableForeignKeyForm = component(
                                 small={true}
                             />
                             <div class={getLabelClass(isForeignKeyFieldDirty('onDelete'))}>On Delete</div>
-                            <Select {...vModel(selFk, 'onDelete')} options={referentialActionOptions} disabled={selFk.status === 'deleted'} small={true} />
+                            <Select
+                                {...vModel(selFk, 'onDelete')}
+                                data-testid="modify-foreign-key-on-delete"
+                                options={referentialActionOptions}
+                                disabled={selFk.status === 'deleted'}
+                                small={true}
+                            />
                             <div class={getLabelClass(isForeignKeyFieldDirty('onUpdate'))}>On Update</div>
                             <Select {...vModel(selFk, 'onUpdate')} options={referentialActionOptions} disabled={selFk.status === 'deleted'} small={true} />
                         </div>

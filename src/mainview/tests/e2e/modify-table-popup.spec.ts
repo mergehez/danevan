@@ -456,9 +456,10 @@ test.describe('Modify table popup (e2e)', () => {
             await expect(newMenu.getByRole('menuitem', { name: label })).toBeVisible();
         }
 
-        // Picking one adds it to the draft, like the toolbar's + does.
+        // Picking one adds it to the draft, on the row that was right-clicked (`name`), like the
+        // toolbar's + does on the first column.
         await newMenu.getByRole('menuitem', { name: 'Index' }).click();
-        await expect(page.locator(`[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="IX_${tableName}_id"]`)).toBeVisible();
+        await expect(page.locator(`[data-testid="modify-nav-item"][data-nav-kind="index"][data-nav-title="IX_${tableName}_name"]`)).toBeVisible();
         await expect(page.getByText('1 statement', { exact: true })).toBeVisible();
     });
 
@@ -582,6 +583,50 @@ test.describe('Modify table popup (e2e)', () => {
         const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
         const foreignKey = info.foreignKeys.find((entry: any) => entry.name === `FK_${tableName}_foo_user_id_users`);
         expect([foreignKey?.table, foreignKey?.from]).toEqual(['users', 'foo_user_id']);
+    });
+
+    test('starts a foreign key from the right-clicked column, with its target and cascade', async ({ page }) => {
+        // `user_id` names the table it points at; `created_by` is NOT NULL.
+        await post(page.request, 'runQuery', { connectionId, sql: `ALTER TABLE \`${tableName}\` ADD COLUMN \`user_id\` bigint unsigned DEFAULT NULL` });
+
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        const navItem = (title: string) => page.locator(`[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="${title}"]`);
+        await navItem('user_id').click({ button: 'right' });
+        await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'New' }).hover();
+        await page.locator('.v-menu-children .v-menu-panel').first().getByRole('menuitem', { name: 'Foreign Key' }).click();
+
+        await expect(page.locator('[data-testid="modify-foreign-key-column"] select')).toHaveValue('user_id');
+        await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
+        await expect(page.locator('[data-testid="modify-foreign-key-name"]')).toHaveValue(`FK_${tableName}_user_id_users`);
+        // The column is nullable, so the reference keeps the database's "no action".
+        await expect(page.locator('[data-testid="modify-foreign-key-on-delete"] select')).toHaveValue('no_action');
+
+        // A NOT NULL column cascades instead: a reference to it cannot disappear.
+        await navItem('created_by').click({ button: 'right' });
+        await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'New' }).hover();
+        await page.locator('.v-menu-children .v-menu-panel').first().getByRole('menuitem', { name: 'Foreign Key' }).click();
+
+        await expect(page.locator('[data-testid="modify-foreign-key-column"] select')).toHaveValue('created_by');
+        await expect(page.locator('[data-testid="modify-foreign-key-on-delete"] select')).toHaveValue('cascade');
+        await expect(page.locator('[data-testid="modify-foreign-key-name"]')).toHaveValue(`FK_${tableName}_created_by`);
+    });
+
+    test('starts an index from the right-clicked column', async ({ page }) => {
+        await page.goto('/');
+        await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+        await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+        await page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="path"]').click({ button: 'right' });
+        await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'New' }).hover();
+        await page.locator('.v-menu-children .v-menu-panel').first().getByRole('menuitem', { name: 'Index' }).click();
+
+        await expect(page.locator('[data-testid="modify-index-column-name"] select')).toHaveValue('path');
+        await expect(page.locator('[data-testid="modify-index-name"]')).toHaveValue(`IX_${tableName}_path`);
     });
 
     test('deletes a column through the popup', async ({ page }) => {

@@ -120,9 +120,15 @@ export const ModifyTableSidebar = component(
             return item.kind === 'key' || item.kind === 'foreign-key' || item.kind === 'index';
         }
 
+        /** The column a column row stands for, so "New > Foreign Key" starts on the row clicked. */
+        function columnNameOf(item: SidebarNode) {
+            return item.kind === 'column' ? modifyTable.columns.find((column) => `column:${column.id}` === item.id)?.name : undefined;
+        }
+
         /** The item menu: the same actions as the toolbar, on the row the user right-clicked. */
         function getItemMenuItems(item: SidebarNode): ContextMenuEntry[] {
             const isEntity = item.kind !== 'group' && item.kind !== 'table';
+            const columnName = columnNameOf(item);
 
             return [
                 {
@@ -131,9 +137,9 @@ export const ModifyTableSidebar = component(
                     iconClass: 'icon-[mdi--plus]',
                     children: [
                         { id: 'new-column', label: 'Column', iconClass: 'icon-[mdi--view-column-outline]', action: () => modifyTable.addColumn() },
-                        { id: 'new-key', label: 'Unique Key', iconClass: 'icon-[mdi--key-variant]', action: () => modifyTable.addKey() },
-                        { id: 'new-foreign-key', label: 'Foreign Key', iconClass: 'icon-[mdi--link-variant]', action: () => modifyTable.addForeignKey() },
-                        { id: 'new-index', label: 'Index', iconClass: 'icon-[mdi--format-list-numbered]', action: () => modifyTable.addIndex() },
+                        { id: 'new-key', label: 'Unique Key', iconClass: 'icon-[mdi--key-variant]', action: () => modifyTable.addKey(columnName) },
+                        { id: 'new-foreign-key', label: 'Foreign Key', iconClass: 'icon-[mdi--link-variant]', action: () => modifyTable.addForeignKey(columnName) },
+                        { id: 'new-index', label: 'Index', iconClass: 'icon-[mdi--format-list-numbered]', action: () => modifyTable.addIndex(columnName) },
                     ],
                 },
                 { type: 'separator', id: 'new-separator' },

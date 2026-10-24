@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPreviewStatements, hasExtendedSchemaChanges, resolveForeignKeyDraftName, type ModifyTablePreviewState } from '../../composables/useModifyTable';
-import { createIndexColumnDraft, createNewForeignKey, createNewIndex, syncAutoEntityNames } from '../../composables/modifyTable/drafts';
+import { createIndexColumnDraft, createNewForeignKey, createNewIndex, resolveForeignKeyTargetTable, syncAutoEntityNames } from '../../composables/modifyTable/drafts';
 
 describe('resolveForeignKeyDraftName', () => {
     it('prefers the matching foreign index name when mysql foreign key rows are unnamed', () => {
@@ -437,5 +437,25 @@ describe('auto-generated index and foreign-key names', () => {
         state.foreignKeys[1]!.targetTable = '';
         syncAutoEntityNames(state);
         expect(state.foreignKeys[1]!.name).toBe('FK_orders_customer_id_2');
+    });
+});
+
+describe('resolveForeignKeyTargetTable', () => {
+    it('finds the table a <name>_id column points at', () => {
+        expect(resolveForeignKeyTargetTable('user_id', ['users', 'posts'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('customer_id', ['customers'])).toBe('customers');
+        expect(resolveForeignKeyTargetTable('address_id', ['addresses'])).toBe('addresses');
+        expect(resolveForeignKeyTargetTable('category_id', ['categories'])).toBe('categories');
+        // Sometimes the table is the bare name.
+        expect(resolveForeignKeyTargetTable('tenant_id', ['tenant'])).toBe('tenant');
+        // Matched case-insensitively, returning the catalog's own spelling.
+        expect(resolveForeignKeyTargetTable('user_id', ['Users'])).toBe('Users');
+    });
+
+    it('leaves the target alone when no table matches or the name is not a reference', () => {
+        expect(resolveForeignKeyTargetTable('foo_user_id', ['users'])).toBeUndefined();
+        expect(resolveForeignKeyTargetTable('created_by', ['users'])).toBeUndefined();
+        expect(resolveForeignKeyTargetTable('id', ['users'])).toBeUndefined();
+        expect(resolveForeignKeyTargetTable('user_id', [])).toBeUndefined();
     });
 });

@@ -24,6 +24,7 @@ import {
     getActiveColumns,
     getPrimaryKeyDraft,
     moveArrayEntry,
+    resolveForeignKeyTargetTable,
     syncAutoEntityNames,
     syncColumnsWithPrimaryKeyDraft,
 } from './modifyTable/drafts';
@@ -118,6 +119,16 @@ export function _useModifyTable() {
             }
 
             return (connections.getTableDetailsState(state.connectionId, tableName).info?.columns ?? []).map((column) => column.name);
+        },
+        /** The column a reference points at by default: the target's primary key, if it has one. */
+        getTargetTablePrimaryKeyColumn(tableName: string | undefined) {
+            if (!state.connectionId || !tableName) {
+                return undefined as string | undefined;
+            }
+
+            return (connections.getTableDetailsState(state.connectionId, tableName).info?.columns ?? [])
+                .filter((column) => column.isPrimaryKey)
+                .sort((left, right) => (left.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER) - (right.primaryKeyOrdinal ?? Number.MAX_SAFE_INTEGER))[0]?.name;
         },
         get navigationSections() {
             return buildNavigationSections(state);
@@ -385,7 +396,13 @@ export function _useModifyTable() {
                 } else {
                     const tableName = params.tableName!;
 
-                    await Promise.all([connections.ensureTableDetails(params.connectionId, tableName, true), state.loadCollationOptions(params.connectionId)]);
+                    // The table list names the FK targets and validates a rename; a table reached
+                    // through the tree already loaded it, but the dialog must not depend on that.
+                    await Promise.all([
+                        connections.ensureConnectionTables(params.connectionId),
+                        connections.ensureTableDetails(params.connectionId, tableName, true),
+                        state.loadCollationOptions(params.connectionId),
+                    ]);
 
                     if (openId !== openModalSequence) {
                         return;
@@ -525,8 +542,8 @@ export function _useModifyTable() {
 
             column.status = 'existing';
         },
-        addKey() {
-            const key = createNewKey(state.keys, state.activeColumnNames);
+        addKey(columnName?: string) {
+            const key = createNewKey(state.keys, columnName ? [columnName] : state.activeColumnNames);
             state.keys.push(key);
             state.selectNode(`key:${key.id}`);
         },
@@ -632,8 +649,21 @@ export function _useModifyTable() {
         moveSelectedKeyColumnDown() {
             moveArrayEntry(state.selectedKey?.columns ?? [], state.selectedKeyColumn, 'down');
         },
-        addForeignKey() {
-            const foreignKey = createNewForeignKey(state.foreignKeys, state.activeColumnNames, state.table.name.trim() || state.tableName);
+        addForeignKey(columnName?: string) {
+            const sourceColumn = columnName ?? state.activeColumnNames[0] ?? '';
+            const foreignKey = createNewForeignKey(state.foreignKeys, [sourceColumn], state.table.name.trim() || state.tableName);
+            const targetTable = resolveForeignKeyTargetTable(sourceColumn, state.existingTableNames);
+            const column = getActiveColumns(state.columns).find((entry) => entry.name === sourceColumn);
+
+            if (targetTable) {
+                foreignKey.targetTable = targetTable;
+            }
+
+            // A NOT NULL column cannot take a reference that disappears: cascade deletes with it.
+            if (column?.notNull) {
+                foreignKey.onDelete = 'cascade';
+            }
+
             state.foreignKeys.push(foreignKey);
             state.selectNode(`foreign-key:${foreignKey.id}`);
         },
@@ -732,8 +762,8 @@ export function _useModifyTable() {
         moveSelectedForeignKeyColumnDown() {
             moveArrayEntry(state.selectedForeignKey?.columns ?? [], state.selectedForeignKeyColumn, 'down');
         },
-        addIndex() {
-            const index = createNewIndex(state.indexes, state.activeColumnNames, state.table.name.trim() || state.tableName);
+        addIndex(columnName?: string) {
+            const index = createNewIndex(state.indexes, columnName ? [columnName] : state.activeColumnNames, state.table.name.trim() || state.tableName);
             state.indexes.push(index);
             state.selectNode(`index:${index.id}`);
         },
