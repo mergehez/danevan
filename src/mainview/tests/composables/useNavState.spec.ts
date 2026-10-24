@@ -47,6 +47,10 @@ vi.mock('../../composables/useSettings', async () => {
     const store = reactive({
         tabs: [] as any[],
         activeTabHash: undefined as string | undefined,
+        tabGrouping: 'none' as 'none' | 'added' | 'server' | 'database',
+        tabSortByName: false,
+        tabOrders: {} as Record<string, string[]>,
+        tabAddedOrder: [] as string[],
     });
     holders.settings = store;
     return {
@@ -57,11 +61,44 @@ vi.mock('../../composables/useSettings', async () => {
             get activeTabHash() {
                 return store.activeTabHash;
             },
+            get tabGrouping() {
+                return store.tabGrouping;
+            },
+            get tabSortByName() {
+                return store.tabSortByName;
+            },
+            get tabOrders() {
+                return store.tabOrders;
+            },
+            get tabAddedOrder() {
+                return store.tabAddedOrder;
+            },
             setTabs(tabs: any[]) {
                 store.tabs = tabs;
             },
             setActiveTab(tab: any) {
                 store.activeTabHash = tab?.hash;
+            },
+            setTabGrouping(grouping: 'none' | 'added' | 'server' | 'database') {
+                store.tabGrouping = grouping;
+            },
+            setTabSortByName(sortByName: boolean) {
+                store.tabSortByName = sortByName;
+            },
+            setTabOrder(modeKey: string, hashes: string[]) {
+                store.tabOrders = { ...store.tabOrders, [modeKey]: hashes };
+            },
+            syncTabAddedOrder(hashes: string[]) {
+                const current = store.tabAddedOrder.filter((hash) => hashes.includes(hash));
+                const known = new Set(current);
+
+                for (const hash of hashes) {
+                    if (!known.has(hash)) {
+                        current.push(hash);
+                    }
+                }
+
+                store.tabAddedOrder = current;
             },
         }),
     };
@@ -93,6 +130,7 @@ vi.mock('../../composables/useConnections', async () => {
             selectConnection: vi.fn(async () => {}),
             getConnectionTablesState: () => store.tableState,
             ensureConnectionTables: ensureConnectionTables,
+            getConnectionAppearance: () => ({ color: undefined, shortCode: undefined }),
         }),
     };
 });

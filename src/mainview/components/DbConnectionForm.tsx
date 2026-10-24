@@ -4,7 +4,7 @@ import { Alert } from '../../shared/components/Alert.tsx';
 import { Button } from '../../shared/components/Button.tsx';
 import { CenteredModal } from '../../shared/components/CenteredModal.tsx';
 import { dbTypeLabels, dbTypes, type DbType, type MsAccessRuntimeStatus } from '../../shared/types';
-import { DbColorField } from './DbColorField.tsx';
+import { DbAppearanceField } from './DbAppearanceField.tsx';
 import { useConnections } from '../composables/useConnections';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
@@ -35,6 +35,7 @@ export const DbConnectionForm = component(
             databaseName: '',
             connectionReadonly: false,
             color: null as string | null,
+            shortCode: null as string | null,
         });
 
         const status = reactive({
@@ -226,6 +227,7 @@ export const DbConnectionForm = component(
                         host: undefined,
                         port: undefined,
                         color: forms.color,
+                        shortCode: forms.shortCode,
                     });
                 } else {
                     const host = forms.connectionHost.trim();
@@ -268,6 +270,7 @@ export const DbConnectionForm = component(
                     databaseName: isFileDriver.value ? undefined : forms.databaseName.trim() || undefined,
                     readonly: forms.connectionReadonly,
                     color: forms.color,
+                    shortCode: forms.shortCode,
                 });
             }
 
@@ -281,6 +284,7 @@ export const DbConnectionForm = component(
             forms.databaseName = '';
             forms.connectionReadonly = false;
             forms.color = null;
+            forms.shortCode = null;
             resetStatus();
             servers.addForm.visible = false;
 
@@ -424,8 +428,13 @@ export const DbConnectionForm = component(
                             />
                         </>
                     )}
-                    <span class="text-sm">Color:</span>
-                    <DbColorField modelValue={forms.color} onChange={(color) => (forms.color = color)} />
+                    <span class="text-sm">Appearance:</span>
+                    <DbAppearanceField
+                        modelValue={forms.color}
+                        shortCode={forms.shortCode}
+                        onChange={(color) => (forms.color = color)}
+                        onShortCodeChange={(shortCode) => (forms.shortCode = shortCode)}
+                    />
                     <label for="form-connectionReadonly" class="text-sm">
                         Read-only:
                     </label>

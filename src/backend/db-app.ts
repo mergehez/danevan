@@ -13,7 +13,7 @@ import type {
     UpdateScriptParams,
     UpdateServerParams,
 } from '../shared/types';
-import { normalizeDbColor } from '../shared/utils/dbColor.ts';
+import { normalizeDbColor, normalizeDbShortCode } from '../shared/utils/dbAppearance.ts';
 import { cleanupLegacySettings } from './appDbMaintenance.ts';
 import { configureAppDbSchema } from './appDbSchema.ts';
 
@@ -354,7 +354,7 @@ export function useAppDb() {
             return db
                 .prepare(
                     `
-                        SELECT id, name, kind, driver, file_path, host, port, schema_count, sequence, username, color, created_at, updated_at
+                        SELECT id, name, kind, driver, file_path, host, port, schema_count, sequence, username, color, short_code, created_at, updated_at
                         FROM servers
                         ORDER BY sequence ASC, created_at ASC, id ASC
                     `
@@ -362,7 +362,7 @@ export function useAppDb() {
                 .all<ServerRow>();
         },
         listConnections(serverId?: number, options: { includeHidden?: boolean } = {}) {
-            const columns = 'id, server_id, name, host, port, database_name, readonly, hidden, color, sequence, created_at, updated_at, last_used_at';
+            const columns = 'id, server_id, name, host, port, database_name, readonly, hidden, color, short_code, sequence, created_at, updated_at, last_used_at';
             const hiddenFilter = options.includeHidden ? '' : ' AND hidden = 0';
 
             return typeof serverId === 'number'
@@ -438,8 +438,8 @@ export function useAppDb() {
             const result = db
                 .prepare(
                     `
-                        INSERT INTO servers(name, kind, driver, file_path, host, port, username, sequence, color)
-                        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO servers(name, kind, driver, file_path, host, port, username, sequence, color, short_code)
+                        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `
                 )
                 .run(
@@ -451,7 +451,8 @@ export function useAppDb() {
                     params.port ?? null,
                     normalizeOptionalText(params.username) ?? null,
                     getNextServerSequence(),
-                    normalizeDbColor(params.color) ?? null
+                    normalizeDbColor(params.color) ?? null,
+                    normalizeDbShortCode(params.shortCode) ?? null
                 );
 
             return toNumber(result.lastInsertRowid)!;
@@ -459,11 +460,12 @@ export function useAppDb() {
         updateServer(id: number, params: Omit<UpdateServerParams, 'password'>) {
             const currentServer = db.prepare('SELECT * FROM servers WHERE id = ?').get<ServerRow>(id);
             const nextColor = params.color === undefined ? (currentServer?.color ?? null) : (normalizeDbColor(params.color) ?? null);
+            const nextShortCode = params.shortCode === undefined ? (currentServer?.short_code ?? null) : (normalizeDbShortCode(params.shortCode) ?? null);
 
             db.prepare(
                 `
                     UPDATE servers
-                    SET name = ?, kind = ?, driver = ?, file_path = ?, host = ?, port = ?, username = ?, color = ?, updated_at = CURRENT_TIMESTAMP
+                    SET name = ?, kind = ?, driver = ?, file_path = ?, host = ?, port = ?, username = ?, color = ?, short_code = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 `
             ).run(
@@ -475,6 +477,7 @@ export function useAppDb() {
                 params.port ?? null,
                 normalizeOptionalText(params.username) ?? null,
                 nextColor,
+                nextShortCode,
                 id
             );
         },
@@ -498,8 +501,8 @@ export function useAppDb() {
             const result = db
                 .prepare(
                     `
-                        INSERT INTO connections(server_id, name, host, port, database_name, readonly, sequence, color)
-                        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO connections(server_id, name, host, port, database_name, readonly, sequence, color, short_code)
+                        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `
                 )
                 .run(
@@ -510,7 +513,8 @@ export function useAppDb() {
                     normalizeOptionalText(params.databaseName) ?? null,
                     params.readonly ? 1 : 0,
                     getNextConnectionSequence(params.serverId),
-                    normalizeDbColor(params.color) ?? null
+                    normalizeDbColor(params.color) ?? null,
+                    normalizeDbShortCode(params.shortCode) ?? null
                 );
 
             return toNumber(result.lastInsertRowid)!;
@@ -525,11 +529,12 @@ export function useAppDb() {
             const targetServerId = params.serverId ?? currentConnection.server_id;
             const targetSequence = targetServerId === currentConnection.server_id ? toNumber(currentConnection.sequence)! : getNextConnectionSequence(targetServerId);
             const nextColor = params.color === undefined ? (currentConnection.color ?? null) : (normalizeDbColor(params.color) ?? null);
+            const nextShortCode = params.shortCode === undefined ? (currentConnection.short_code ?? null) : (normalizeDbShortCode(params.shortCode) ?? null);
 
             db.prepare(
                 `
                     UPDATE connections
-                    SET server_id = ?, name = ?, host = ?, port = ?, database_name = ?, readonly = ?, sequence = ?, color = ?, updated_at = CURRENT_TIMESTAMP
+                    SET server_id = ?, name = ?, host = ?, port = ?, database_name = ?, readonly = ?, sequence = ?, color = ?, short_code = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 `
             ).run(
@@ -541,6 +546,7 @@ export function useAppDb() {
                 params.readonly ? 1 : 0,
                 targetSequence,
                 nextColor,
+                nextShortCode,
                 id
             );
 

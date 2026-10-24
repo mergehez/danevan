@@ -131,8 +131,8 @@ export function _useServers() {
         async updateServer(serverId: number, server: UpdateServerParams) {
             _dbCoreState.applyBootstrap(await tasks.updateServer.run({ serverId, server }));
         },
-        /** Tags a file source with a tab color; server entries keep the color on their connections. */
-        async setServerColor(serverId: number, color: string | null) {
+        /** Tags a file source with its tab appearance; server entries keep it on their connections. */
+        async setServerAppearance(serverId: number, appearance: { color: string | null; shortCode: string | null }) {
             const server = _dbCoreState.servers.find((entry) => entry.id === serverId);
 
             if (!server) {
@@ -148,7 +148,8 @@ export function _useServers() {
                 port: server.port,
                 username: server.username,
                 password: undefined,
-                color,
+                color: appearance.color,
+                shortCode: appearance.shortCode,
             });
         },
         async deleteServer(serverId: number) {

@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
-import { resolveDbColor } from '../../shared/utils/dbColor';
+import { resolveDbAppearance } from '../../shared/utils/dbAppearance';
 import { _dbCoreState } from '../composables/dbCoreState';
 import { useDbCaches } from '../composables/useDbCaches';
 import { tasks } from '../composables/useTasks';
@@ -303,22 +303,24 @@ export function _useConnections() {
             state.runSqlScriptModal.connectionId = -1;
             state.runSqlScriptModal.scriptPath = '';
         },
-        /** The dot a tab shows for this connection: file sources carry the color on their server. */
-        getConnectionColor(connectionId: number | undefined) {
+        /** The tag a tab shows for this connection: file sources carry both on their server row. */
+        getConnectionAppearance(connectionId: number | undefined) {
             const connection = connectionId === undefined ? undefined : _dbCoreState.connections.find((entry) => entry.id === connectionId);
 
             if (!connection) {
-                return undefined;
+                return { color: undefined, shortCode: undefined };
             }
 
             const server = _dbCoreState.servers.find((entry) => entry.id === connection.server_id);
 
-            return resolveDbColor({
+            return resolveDbAppearance({
                 serverColor: server?.kind === 'file' ? server.color : undefined,
+                serverShortCode: server?.kind === 'file' ? server.short_code : undefined,
                 connectionColor: connection.color,
+                connectionShortCode: connection.short_code,
             });
         },
-        async setConnectionColor(connectionId: number, color: string | null) {
+        async setConnectionAppearance(connectionId: number, appearance: { color: string | null; shortCode: string | null }) {
             const connection = _dbCoreState.connections.find((entry) => entry.id === connectionId);
 
             if (!connection) {
@@ -332,7 +334,8 @@ export function _useConnections() {
                 port: connection.port,
                 databaseName: connection.database_name,
                 readonly: connection.readonly === 1,
-                color,
+                color: appearance.color,
+                shortCode: appearance.shortCode,
             });
         },
         async createConnection(connection: CreateConnectionParams) {

@@ -12,6 +12,8 @@ export type Tab = {
     tooltip?: string;
     /** A dot color the tab can show (the database it belongs to). */
     color?: string;
+    /** One or two letters naming the database, shown before the dot. */
+    shortCode?: string;
 };
 
 type T = Tab;

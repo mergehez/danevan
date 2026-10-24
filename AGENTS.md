@@ -217,6 +217,16 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   `nulls-low` everywhere except PostgreSQL), so the grid agrees with the server order it just
   loaded. Guarded by `grid-sort-nulls.spec.ts`.
 
+Suggested from the 2026-10-24 tab-grouping request:
+
+- **A derived view order never rewrites the canonical order, and each view keeps its own.** The table
+  tabs can be grouped and sorted, and each grouping+sort combination is a view whose order is
+  remembered under its mode key (`default`, `server_sorted`, …). Ordering works on a copy; the stored
+  tab list is only rewritten by a drag in the plain "no grouping, no sort" view. "Add time" needs its
+  own recorded opening order (`tabAddedOrder`), because a drag changes the stored list. Switching back
+  to a view therefore restores what the user left there. Guarded by `tabOrdering.spec.ts` and
+  `tab-grouping.spec.ts`.
+
 Suggested from the 2026-10-24 database-colour request:
 
 - **A user-chosen value is free-form, not a palette you picked.** Database colours are chosen with the

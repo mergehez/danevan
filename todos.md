@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 43 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
+**Status:** 45 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1094 unit tests (89 files) · 156 browser tests
-(43 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **49.2 % statements / 41.5 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+settings blob, T11, T12, T14's tree work) · suite: **1104 unit tests (90 files) · 158 browser tests
+(44 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
+file **49.2 % statements / 41.7 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -295,6 +295,31 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   depend on the sidebar having loaded it. Guarded by `resolveForeignKeyTargetTable` cases in
   `useModifyTable.spec.ts` and two browser cases in `modify-table-popup.spec.ts` (a `user_id` column
   pre-fills `users` and its name; a NOT NULL `created_by` cascades; an index starts on `path`).
+
+### 2026-10-24 database short codes and tab grouping
+
+- **U20 — a 1-2 letter short code for a database.** `servers.short_code` / `connections.short_code`
+  (app DB migration **v3**, guarded like v2) is shown in a table tab before the dot and takes the
+  database's color. It is picked together with the color in one **Appearance** dialog (row menu) and
+  in the add-connection / update-source forms (`DbAppearanceField`, `DbAppearanceDialog`); the code is
+  upper-cased, keeps at most two letters, and `undefined` keeps / `null` clears it like the color.
+  Guarded by `appDbSchema.spec.ts` (v3 columns), `appApi.spec.ts` (round trip, upper-casing, the
+  two-letter clamp, keep-on-rename, clear) and `DbAppearanceField.spec.ts`; `db-colors.spec.ts` sets
+  `ti` from the row menu and asserts the tab reads `TI` in the database's color, before the dot.
+- **U21 — group and sort the table tabs.** A three-dot button at the end of the table-tab row opens
+  the menu: **Group tabs** (No grouping / Add time / By server / By database) and **Sort tabs by
+  name**. Grouping orders a *copy* of the stored list, so the plain order is never rewritten:
+  - the opening order is recorded separately (`tabAddedOrder`) and "Add time" restores it even after a
+    drag;
+  - each combination remembers its own order under `tabOrders[modeKey]`
+    (`default`, `default_sorted`, `added`, `server`, `server_sorted`, `database`, `database_sorted`),
+    and a drag in a mode writes that mode's entry only — switching back to "no grouping, no sort"
+    restores the plain (dragged) order;
+  - grouping and sorting persist in the settings blob across a reload.
+  Guarded by `src/mainview/lib/tabOrdering.spec.ts` (mode keys, add order, server/database grouping,
+  name sorting, saved order) and `tab-grouping.spec.ts` (group by server + sort, restore the plain
+  order; drag a tab, "Add time" restores the opening order, survives a reload, then back to the
+  dragged plain order).
 
 ### 2026-10-24 database colors
 

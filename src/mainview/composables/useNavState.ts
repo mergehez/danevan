@@ -1,6 +1,8 @@
 import { computed, reactive, ref, watch } from 'vue';
 import type { SqlDiagnosticMarker } from '../../shared/types';
+import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import { strToNumber, uniqueId } from '../../shared/utils/utils';
+import { orderTabs, tabOrderModeKey } from '../lib/tabOrdering';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
 import { dropQueryStateForTab, markQueryTextSeeded, moveQueryStateForTab, queryStateTabHashes, seedQueryTextForTab, useQuery, useQueryForTab } from './useQuery';
@@ -16,8 +18,9 @@ const isScriptTab = (tab: Tab) => tab.type === 'script' || tab.type === 'scratch
 
 type DisplayTab = Tab & {
     tooltip: string;
-    /** The database's tab color, as a dot next to the table name. */
+    /** The database's tab color (the dot) and 1-2 letter tag shown before it. */
     color?: string;
+    shortCode?: string;
 };
 
 type ScriptTabRuntimeState = {
@@ -242,11 +245,14 @@ const createNavState = () => {
     }
 
     function toDisplayTab(tab: Tab) {
+        const appearance = tab.type === 'table' ? conns.getConnectionAppearance(tab.connectionId) : { color: undefined, shortCode: undefined };
+
         return {
             ...tab,
             name: resolveTabName(tab),
             tooltip: resolveTabTooltip(tab),
-            color: tab.type === 'table' ? conns.getConnectionColor(tab.connectionId) : undefined,
+            color: appearance.color,
+            shortCode: appearance.shortCode,
         } satisfies DisplayTab;
     }
 
@@ -355,9 +361,27 @@ const createNavState = () => {
     }
 
     const selectedTabs = computed(() => settings.tabs.map((tab) => toDisplayTab(tab)));
-    const scriptTabs = computed(() => selectedTabs.value.filter((tab) => isScriptTab(tab)));
-    const nonScriptTabs = computed(() => selectedTabs.value.filter((tab) => !isScriptTab(tab)));
     const activeTab = computed(() => selectedTabs.value.find((tab) => tab.hash === settings.activeTabHash));
+    const tabModeKey = computed(() => tabOrderModeKey(settings.tabGrouping, settings.tabSortByName));
+    const scriptTabs = computed(() => settings.tabs.filter((tab) => isScriptTab(tab)).map((tab) => toDisplayTab(tab)));
+    /**
+     * The table tabs in display order: grouping/sorting order a copy of the stored list, so switching
+     * back to the plain order (or to another grouping) restores what that mode had. A mode the user
+     * dragged remembers its own order (`tabOrders[tabModeKey]`).
+     */
+    const nonScriptTabs = computed(() => {
+        const tabs = settings.tabs.filter((tab) => !isScriptTab(tab));
+        const ordered = orderTabs(tabs, {
+            grouping: settings.tabGrouping,
+            sortByName: settings.tabSortByName,
+            addedOrder: settings.tabAddedOrder,
+            savedOrder: settings.tabOrders[tabModeKey.value],
+            groupLabel: (tab) => (settings.tabGrouping === 'server' ? getServerName(tab.connectionId) : getConnectionName(tab.connectionId)),
+            name: (tab) => resolveTabName(tab),
+        });
+
+        return ordered.map((tab) => toDisplayTab(tab));
+    });
 
     const selectScript = (scriptId: number) => {
         const script = scripts.scripts.find((s) => s.id === scriptId);
@@ -494,8 +518,43 @@ const createNavState = () => {
     };
 
     const onNonScriptTabsChange = (tabs: Tab[]) => {
-        setTabs([...settings.tabs.filter((tab) => isScriptTab(tab)), ...tabs]);
+        // The plain order is the stored order; every other mode keeps the order it was left in, so
+        // dragging in a grouped view cannot rewrite the order the user returns to.
+        if (tabModeKey.value === 'default') {
+            setTabs([...settings.tabs.filter((tab) => isScriptTab(tab)), ...tabs]);
+            return;
+        }
+
+        settings.setTabOrder(
+            tabModeKey.value,
+            tabs.map((tab) => tab.hash)
+        );
     };
+
+    /** The table-tab row's menu: how the tabs are grouped and whether they are sorted by name. */
+    function tableTabMenuItems(): ContextMenuEntry[] {
+        return [
+            {
+                id: 'tab-group',
+                label: 'Group tabs',
+                iconClass: 'icon-[mdi--view-grid-outline]',
+                children: [
+                    { id: 'tab-group-none', label: 'No grouping', checked: settings.tabGrouping === 'none', action: () => settings.setTabGrouping('none') },
+                    { id: 'tab-group-added', label: 'Add time', checked: settings.tabGrouping === 'added', action: () => settings.setTabGrouping('added') },
+                    { id: 'tab-group-server', label: 'By server', checked: settings.tabGrouping === 'server', action: () => settings.setTabGrouping('server') },
+                    { id: 'tab-group-database', label: 'By database', checked: settings.tabGrouping === 'database', action: () => settings.setTabGrouping('database') },
+                ],
+            },
+            { type: 'separator', id: 'tab-group-separator' },
+            {
+                type: 'checkbox',
+                id: 'tab-sort-name',
+                label: 'Sort tabs by name',
+                checked: settings.tabSortByName,
+                action: () => settings.setTabSortByName(!settings.tabSortByName),
+            },
+        ];
+    }
 
     async function activateTab(tab: Tab | undefined) {
         if (!tab) {
@@ -691,6 +750,7 @@ const createNavState = () => {
     watch(
         () => settings.tabs.map((tab) => tab.hash).join('|'),
         () => {
+            settings.syncTabAddedOrder(settings.tabs.map((tab) => tab.hash));
             const activeHashes = new Set(settings.tabs.map((tab) => tab.hash));
 
             for (const hash of Object.keys(scriptTabRuntimeStateByHash)) {
@@ -748,6 +808,7 @@ const createNavState = () => {
         addScriptHistoryEntry,
         onScriptTabsChange,
         onNonScriptTabsChange,
+        tableTabMenuItems,
         selectTab: selectTab,
         selectScript: selectScript,
         selectTable: selectTable,

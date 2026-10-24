@@ -36,6 +36,20 @@ export const APP_DB_MIGRATIONS: AppDbMigration[] = [
         },
     },
     {
+        version: 3,
+        name: 'database-short-codes',
+        migrate: (db) => {
+            // The 1-2 letter tag a database shows in its table tabs.
+            if (!hasColumn(db, 'servers', 'short_code')) {
+                db.exec('ALTER TABLE servers ADD COLUMN short_code TEXT;');
+            }
+
+            if (!hasColumn(db, 'connections', 'short_code')) {
+                db.exec('ALTER TABLE connections ADD COLUMN short_code TEXT;');
+            }
+        },
+    },
+    {
         version: 2,
         name: 'database-colors',
         migrate: (db) => {
@@ -77,6 +91,7 @@ export function createAppDbTables(db: AppDbSchemaStore) {
             schema_count INTEGER,
             username TEXT,
             color TEXT,
+            short_code TEXT,
             sequence INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -91,6 +106,7 @@ export function createAppDbTables(db: AppDbSchemaStore) {
             readonly INTEGER NOT NULL DEFAULT 0,
             hidden INTEGER NOT NULL DEFAULT 0,
             color TEXT,
+            short_code TEXT,
             sequence INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

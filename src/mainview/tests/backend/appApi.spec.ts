@@ -916,6 +916,26 @@ describe('database colors', () => {
         expect(cleared.connections.find((connection) => connection.id === source.connectionId)?.color).toBeUndefined();
     });
 
+    it('stores a short code next to the color, upper-cased and at most two letters', async () => {
+        const source = await createFileSource('Coded source');
+
+        const updated = await app.updateServer({
+            serverId: source.serverId,
+            server: createServerParams({ name: 'Coded source', filePath: source.filePath, shortCode: 'ti' }),
+        });
+        expect(updated.servers.find((server) => server.id === source.serverId)?.short_code).toBe('TI');
+
+        // A later rename without the field keeps it; `null` clears it.
+        const renamed = await app.updateServer({ serverId: source.serverId, server: createServerParams({ name: 'Renamed', filePath: source.filePath }) });
+        expect(renamed.servers.find((server) => server.id === source.serverId)?.short_code).toBe('TI');
+
+        const cleared = await app.updateConnection({ connectionId: source.connectionId, connection: { name: 'Connection', shortCode: null } });
+        expect(cleared.connections.find((connection) => connection.id === source.connectionId)?.short_code).toBeUndefined();
+
+        const long = await app.updateConnection({ connectionId: source.connectionId, connection: { name: 'Connection', shortCode: 'tirsik3' } });
+        expect(long.connections.find((connection) => connection.id === source.connectionId)?.short_code).toBe('TI');
+    });
+
     it('carries the color on a new connection from the create call', async () => {
         const { serverId } = await createFileSource('Color on create');
         const bootstrap = await app.createConnection(createConnectionParams(serverId, { name: 'Tagged', color: '#ec4899' }));

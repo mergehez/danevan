@@ -20,13 +20,23 @@ function tableTabDot(page: Page, connectionId: number) {
 
 async function pickColorFromRowMenu(page: Page, serverId: number, hex: string) {
     await openSidebarRowMenu(page.locator(`[data-node-id="server:${serverId}"]`));
-    await page.getByRole('menuitem', { name: 'Color...' }).click();
+    await page.getByRole('menuitem', { name: 'Appearance...' }).click();
 
-    const dialog = page.getByTestId('db-color-dialog');
+    const dialog = page.getByTestId('db-appearance-dialog');
     const hexInput = dialog.locator('input[aria-label="Hex"]');
     await hexInput.fill(hex);
     await hexInput.press('Tab');
-    await page.getByTestId('db-color-dialog-save').click();
+    await page.getByTestId('db-appearance-save').click();
+    await expect(dialog).toBeHidden();
+}
+
+async function setShortCodeFromRowMenu(page: Page, serverId: number, shortCode: string) {
+    await openSidebarRowMenu(page.locator(`[data-node-id="server:${serverId}"]`));
+    await page.getByRole('menuitem', { name: 'Appearance...' }).click();
+
+    const dialog = page.getByTestId('db-appearance-dialog');
+    await dialog.getByTestId('db-appearance-short-code').fill(shortCode);
+    await page.getByTestId('db-appearance-save').click();
     await expect(dialog).toBeHidden();
 }
 
@@ -52,6 +62,18 @@ test.describe('Database colors on table tabs', () => {
             await expect(tableTab(page, source.connectionId)).not.toContainText(source.serverName);
             await expect(tableTab(page, source.connectionId).locator('i.icon-[mdi\\-\\-table-large]')).toHaveCount(0);
 
+            // The 1-2 letter tag is shown before the dot and takes the database's color.
+            await setShortCodeFromRowMenu(page, source.serverId, 'ti');
+            const code = page.locator(`[data-testid="tab-code-table-${source.connectionId}-notes"]`);
+            await expect(code).toHaveText('TI');
+            await expect(code).toHaveCSS('color', 'rgb(59, 130, 246)');
+            const codeBeforeDot = await page.locator(`#table-${source.connectionId}-notes`).evaluate((tab) => {
+                const codeElement = tab.querySelector('[data-testid^="tab-code-"]');
+                const dotElement = tab.querySelector('[data-testid^="tab-color-"]');
+                return !!codeElement && !!dotElement && codeElement.compareDocumentPosition(dotElement) === Node.DOCUMENT_POSITION_FOLLOWING;
+            });
+            expect(codeBeforeDot).toBe(true);
+
             // The choice is stored in the app DB, not only in the tab.
             const bootstrap = await post(page.request, 'getBootstrap', undefined);
             expect(bootstrap.servers.find((server: { id: number }) => server.id === source.serverId)?.color).toBe('#3b82f6');
@@ -71,10 +93,10 @@ test.describe('Database colors on table tabs', () => {
             await page.locator('.v-menu-item', { hasText: 'Update...' }).click();
 
             const surface = page.locator('[data-testid="centered-modal-surface"]');
-            await expect(surface.getByTestId('db-color-current')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+            await expect(surface.getByTestId('db-appearance-current')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-            await surface.getByTestId('db-color-trigger').click();
-            const picker = surface.getByTestId('db-color-picker');
+            await surface.getByTestId('db-appearance-trigger').click();
+            const picker = surface.getByTestId('db-appearance-picker');
             const hexInput = picker.locator('input[aria-label="Hex"]');
             await hexInput.fill('ec4899');
             await hexInput.press('Tab');
@@ -88,7 +110,9 @@ test.describe('Database colors on table tabs', () => {
             // Reopening shows the stored color.
             await openSidebarRowMenu(page.locator(`[data-node-id="server:${source.serverId}"]`));
             await page.locator('.v-menu-item', { hasText: 'Update...' }).click();
-            await expect(page.locator('[data-testid="centered-modal-surface"]').getByTestId('db-color-current')).toHaveCSS('background-color', 'rgb(236, 72, 153)');
+            await expect(page.locator('[data-testid="centered-modal-surface"]').getByTestId('db-appearance-current')).toHaveCSS('background-color', 'rgb(236, 72, 153)');
+            // The form's short-code field is part of the same appearance block.
+            await expect(page.locator('[data-testid="centered-modal-surface"]').getByTestId('db-short-code')).toHaveValue('');
         } finally {
             await source.cleanup();
         }
@@ -162,13 +186,13 @@ test.describe('Database colors on a server-based connection', () => {
             await openSidebarTable(page, connection.connectionId, tableName);
 
             await openSidebarRowMenu(page.locator(`[data-node-id="connection:${connection.connectionId}"]`));
-            await page.getByRole('menuitem', { name: 'Color...' }).click();
+            await page.getByRole('menuitem', { name: 'Appearance...' }).click();
 
-            const dialog = page.getByTestId('db-color-dialog');
+            const dialog = page.getByTestId('db-appearance-dialog');
             const hexInput = dialog.locator('input[aria-label="Hex"]');
             await hexInput.fill('8b5cf6');
             await hexInput.press('Tab');
-            await page.getByTestId('db-color-dialog-save').click();
+            await page.getByTestId('db-appearance-save').click();
             await expect(dialog).toBeHidden();
 
             await expect(page.locator(`[data-testid="tab-color-table-${connection.connectionId}-${tableName}"]`)).toHaveCSS('background-color', 'rgb(139, 92, 246)');

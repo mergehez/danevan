@@ -127,14 +127,21 @@ export const DbTabs = component(
                                             class={getClass(e, requiredClass)}
                                         >
                                             {e.type === 'table' ? (
-                                                // A table tab is named by its table only; the dot carries which
-                                                // database it belongs to (see the tooltip for the full path).
-                                                <span
-                                                    data-testid={`tab-color-${e.hash}`}
-                                                    aria-hidden="true"
-                                                    style={{ backgroundColor: e.color ?? 'transparent' }}
-                                                    class={['h-2.5 w-2.5 shrink-0 rounded-full border', e.color ? 'border-transparent' : 'border-x5']}
-                                                />
+                                                // A table tab is named by its table only. The short code (in the
+                                                // database's color) and the dot carry which database it belongs to.
+                                                <>
+                                                    {e.shortCode ? (
+                                                        <span data-testid={`tab-code-${e.hash}`} style={{ color: e.color }} class="shrink-0 font-mono text-2xs font-semibold">
+                                                            {e.shortCode}
+                                                        </span>
+                                                    ) : null}
+                                                    <span
+                                                        data-testid={`tab-color-${e.hash}`}
+                                                        aria-hidden="true"
+                                                        style={{ backgroundColor: e.color ?? 'transparent' }}
+                                                        class={['h-2.5 w-2.5 shrink-0 rounded-full border', e.color ? 'border-transparent' : 'border-x5']}
+                                                    />
+                                                </>
                                             ) : (
                                                 <Icon icon={e.type === 'scratch' ? 'icon-[mdi--file-edit-outline]' : 'icon-[mdi--table-large]'} class="text-sm opacity-70" />
                                             )}
@@ -158,7 +165,15 @@ export const DbTabs = component(
                                     disabled={!connections.connections.length}
                                     onClick={() => navState.openScratchTab(navState.activeTab?.connectionId ?? connections.selectedConnectionId ?? undefined)}
                                 />
-                            ) : null}
+                            ) : (
+                                <IconButton
+                                    icon="icon-[mdi--dots-vertical]"
+                                    data-testid="table-tabs-menu"
+                                    v-tooltip={{ value: 'Group and sort table tabs', xs: true, nowrap: true }}
+                                    smaller={true}
+                                    v-menu={{ value: () => navState.tableTabMenuItems(), button: true }}
+                                />
+                            )}
                         </div>
                     ) : null
                 )}

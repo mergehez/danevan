@@ -96,6 +96,7 @@ export type ServerRecord = {
     updated_at: string;
     username: string | undefined;
     color?: string;
+    short_code?: string;
 };
 
 export type ConnectionRecord = {
@@ -111,6 +112,7 @@ export type ConnectionRecord = {
     updated_at: string;
     last_used_at: string | undefined;
     color?: string;
+    short_code?: string;
 };
 
 export type ScriptRecord = {
@@ -146,8 +148,10 @@ export type CreateServerParams = {
     port: number | undefined;
     username: string | undefined;
     password: string | undefined;
-    /** A palette color; `null` clears it, `undefined` leaves an existing one alone. */
+    /** A colour; `null` clears it, `undefined` leaves an existing one alone. */
     color?: string | null;
+    /** One or two upper-case letters for the tab; `null` clears, `undefined` keeps. */
+    shortCode?: string | null;
 };
 
 export type UpdateServerParams = CreateServerParams;
@@ -159,8 +163,10 @@ export type CreateConnectionParams = {
     port: number | undefined;
     databaseName: string | undefined;
     readonly: boolean | undefined;
-    /** A palette color; `null` clears it, `undefined` leaves an existing one alone. */
+    /** A colour; `null` clears it, `undefined` leaves an existing one alone. */
     color?: string | null;
+    /** One or two upper-case letters for the tab; `null` clears, `undefined` keeps. */
+    shortCode?: string | null;
 };
 
 export type UpdateConnectionParams = {
@@ -170,8 +176,10 @@ export type UpdateConnectionParams = {
     port?: number;
     databaseName?: string;
     readonly?: boolean;
-    /** A palette color; `null` clears it, `undefined` leaves an existing one alone. */
+    /** A colour; `null` clears it, `undefined` leaves an existing one alone. */
     color?: string | null;
+    /** One or two upper-case letters for the tab; `null` clears, `undefined` keeps. */
+    shortCode?: string | null;
 };
 
 export type TestConnectionParams = {
@@ -480,6 +488,7 @@ export type ServerRow = {
     created_at: string;
     updated_at: string;
     color?: string;
+    short_code?: string;
 };
 
 export type ConnectionRow = {
@@ -496,6 +505,7 @@ export type ConnectionRow = {
     updated_at: string;
     last_used_at: string | undefined;
     color?: string;
+    short_code?: string;
 };
 
 export type MysqldumpExportOptions = {

@@ -4,7 +4,7 @@ import { Alert } from '../../shared/components/Alert.tsx';
 import { Button } from '../../shared/components/Button.tsx';
 import { CenteredModal } from '../../shared/components/CenteredModal.tsx';
 import type { ServerRecord } from '../../shared/types';
-import { DbColorField } from './DbColorField.tsx';
+import { DbAppearanceField } from './DbAppearanceField.tsx';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
 
@@ -24,6 +24,7 @@ export const DbServerFormModal = component(
             host: '',
             port: '' as '' | number,
             color: null as string | null,
+            shortCode: null as string | null,
         });
 
         const status = reactive({
@@ -65,6 +66,7 @@ export const DbServerFormModal = component(
                 form.host = currentServer.host || '';
                 form.port = currentServer.port ?? '';
                 form.color = currentServer.color ?? null;
+                form.shortCode = currentServer.short_code ?? null;
                 status.message = '';
             },
             { immediate: true }
@@ -105,6 +107,7 @@ export const DbServerFormModal = component(
                     // A file source's color is stored on the server row; a server entry's lives on
                     // each of its connections.
                     color: isFileServer.value ? form.color : undefined,
+                    shortCode: isFileServer.value ? form.shortCode : undefined,
                 });
 
                 closeModal();
@@ -138,8 +141,13 @@ export const DbServerFormModal = component(
                         </label>
                         {isFileServer.value ? (
                             <div class="space-y-1">
-                                <span class="text-2xs uppercase tracking-[0.18em] opacity-60">Tab color</span>
-                                <DbColorField modelValue={form.color} onChange={(color) => (form.color = color)} />
+                                <span class="text-2xs uppercase tracking-[0.18em] opacity-60">Tab appearance</span>
+                                <DbAppearanceField
+                                    modelValue={form.color}
+                                    shortCode={form.shortCode}
+                                    onChange={(color) => (form.color = color)}
+                                    onShortCodeChange={(shortCode) => (form.shortCode = shortCode)}
+                                />
                             </div>
                         ) : null}
                         {isFileServer.value ? (

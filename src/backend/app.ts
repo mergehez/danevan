@@ -561,6 +561,7 @@ function normalizeServerPayload(params: CreateServerParams) {
             username: params.username?.trim() || undefined,
             password: undefined as string | undefined,
             color: params.color,
+            shortCode: params.shortCode,
         };
     }
 
@@ -580,6 +581,7 @@ function normalizeServerPayload(params: CreateServerParams) {
         filePath: undefined as string | undefined,
         password: undefined as string | undefined,
         color: params.color,
+        shortCode: params.shortCode,
     };
 }
 
@@ -802,6 +804,7 @@ export const app = {
             databaseName: ps.databaseName?.trim(),
             readonly: ps.readonly,
             color: ps.color,
+            shortCode: ps.shortCode,
         });
 
         await refreshServerSchemasForConnection(ps.serverId, connectionId);

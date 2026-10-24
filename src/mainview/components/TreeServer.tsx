@@ -3,7 +3,7 @@ import { computed, reactive } from 'vue';
 import type { ContextMenuEntry } from '../../directives/contextMenuTypes';
 import { Button } from '../../shared/components/Button.tsx';
 import { dbTypeIcons, type ServerRecord } from '../../shared/types';
-import { normalizeDbColor } from '../../shared/utils/dbColor';
+import { normalizeDbColor } from '../../shared/utils/dbAppearance';
 import { withMinLifetime } from '../../shared/utils/useMinLifetime';
 import { formatNumber } from '../../shared/utils/utils.ts';
 import { useConnections } from '../composables/useConnections';
@@ -15,7 +15,7 @@ import type { ConnectionRecord } from '../../shared/types';
 import type { ConnectionTreeItem, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
 import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
-import { DbColorDialog } from './DbColorDialog.tsx';
+import { DbAppearanceDialog } from './DbAppearanceDialog.tsx';
 import { DbCreateDatabaseModal } from './DbCreateDatabaseModal.tsx';
 import { DbMysqldumpExportModal } from './DbMysqldumpExportModal.tsx';
 import { DbRunSqlScriptModal } from './DbRunSqlScriptModal.tsx';
@@ -71,19 +71,25 @@ export const TreeServer = component(
         const refreshingServerIds = reactive<Record<number, boolean>>({});
         const isServerRefreshing = (serverId: number) => refreshingServerIds[serverId] === true;
 
-        /** The color dialog a connection or file-source row opens; both keep the color on a row. */
-        const colorDialog = reactive({
+        /** The appearance dialog a connection or file-source row opens; both keep it on a row. */
+        const appearanceDialog = reactive({
             open: false,
-            title: 'Color',
-            value: undefined as string | undefined,
-            save: (_color: string | null) => {},
+            title: 'Appearance',
+            color: undefined as string | undefined,
+            shortCode: undefined as string | undefined,
+            save: (_appearance: { color: string | null; shortCode: string | null }) => {},
         });
 
-        function openColorDialog(title: string, value: string | undefined, save: (color: string | null) => void | Promise<void>) {
-            colorDialog.title = title;
-            colorDialog.value = value;
-            colorDialog.save = save;
-            colorDialog.open = true;
+        function openAppearanceDialog(
+            title: string,
+            appearance: { color?: string; shortCode?: string },
+            save: (appearance: { color: string | null; shortCode: string | null }) => void | Promise<void>
+        ) {
+            appearanceDialog.title = title;
+            appearanceDialog.color = appearance.color;
+            appearanceDialog.shortCode = appearance.shortCode;
+            appearanceDialog.save = save;
+            appearanceDialog.open = true;
         }
 
         function getFileServerConnection(serverId: number) {
@@ -250,9 +256,12 @@ export const TreeServer = component(
                     connectionReadOnlyMenuItem(fileConnection),
                     {
                         id: `server-color:${server.id}`,
-                        label: 'Color...',
+                        label: 'Appearance...',
                         iconClass: 'icon-[mdi--palette-outline]',
-                        action: () => openColorDialog(`Color — ${server.name}`, server.color, (color) => servers.setServerColor(server.id, color)),
+                        action: () =>
+                            openAppearanceDialog(`Appearance — ${server.name}`, { color: server.color, shortCode: server.short_code }, (appearance) =>
+                                servers.setServerAppearance(server.id, appearance)
+                            ),
                     },
                     {
                         id: `server-create-table:${server.id}`,
@@ -364,9 +373,12 @@ export const TreeServer = component(
                 connectionReadOnlyMenuItem(connection),
                 {
                     id: `connection-color:${connection.id}`,
-                    label: 'Color...',
+                    label: 'Appearance...',
                     iconClass: 'icon-[mdi--palette-outline]',
-                    action: () => openColorDialog(`Color — ${connection.name}`, connection.color, (color) => connections.setConnectionColor(connection.id, color)),
+                    action: () =>
+                        openAppearanceDialog(`Appearance — ${connection.name}`, { color: connection.color, shortCode: connection.short_code }, (appearance) =>
+                            connections.setConnectionAppearance(connection.id, appearance)
+                        ),
                 },
                 // {
                 //     id: `connection-select:${connection.id}`,
@@ -600,12 +612,13 @@ export const TreeServer = component(
                 </div>
                 <DbServerSchemasModal {...vModel(servers.schemaSelectionModal, 'visible', 'open')} />
                 <DbServerFormModal open={servers.updateForm.visible} serverId={servers.updateForm.serverId} onClose={servers.closeUpdateForm} />
-                <DbColorDialog
-                    open={colorDialog.open}
-                    title={colorDialog.title}
-                    value={colorDialog.value}
-                    onSave={(color) => void colorDialog.save(color)}
-                    onClose={() => (colorDialog.open = false)}
+                <DbAppearanceDialog
+                    open={appearanceDialog.open}
+                    title={appearanceDialog.title}
+                    color={appearanceDialog.color}
+                    shortCode={appearanceDialog.shortCode}
+                    onSave={(appearance) => void appearanceDialog.save(appearance)}
+                    onClose={() => (appearanceDialog.open = false)}
                 />
                 <DbCreateDatabaseModal open={servers.createDatabaseModal.visible} serverId={servers.createDatabaseModal.serverId} onClose={servers.closeCreateDatabase} />
                 <DbMysqldumpExportModal
