@@ -35,6 +35,20 @@ export const APP_DB_MIGRATIONS: AppDbMigration[] = [
             }
         },
     },
+    {
+        version: 2,
+        name: 'database-colors',
+        migrate: (db) => {
+            // A server-based database is a connection row; a file source is a server row.
+            if (!hasColumn(db, 'servers', 'color')) {
+                db.exec('ALTER TABLE servers ADD COLUMN color TEXT;');
+            }
+
+            if (!hasColumn(db, 'connections', 'color')) {
+                db.exec('ALTER TABLE connections ADD COLUMN color TEXT;');
+            }
+        },
+    },
 ];
 
 export const APP_DB_SCHEMA_VERSION = APP_DB_MIGRATIONS.reduce((latest, migration) => Math.max(latest, migration.version), 0);
@@ -62,6 +76,7 @@ export function createAppDbTables(db: AppDbSchemaStore) {
             port INTEGER,
             schema_count INTEGER,
             username TEXT,
+            color TEXT,
             sequence INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -75,6 +90,7 @@ export function createAppDbTables(db: AppDbSchemaStore) {
             database_name TEXT,
             readonly INTEGER NOT NULL DEFAULT 0,
             hidden INTEGER NOT NULL DEFAULT 0,
+            color TEXT,
             sequence INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

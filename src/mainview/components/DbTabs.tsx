@@ -126,7 +126,18 @@ export const DbTabs = component(
                                             onAuxclick={prevented((ev) => onAuxClick(ev, e))}
                                             class={getClass(e, requiredClass)}
                                         >
-                                            <Icon icon={e.type === 'scratch' ? 'icon-[mdi--file-edit-outline]' : 'icon-[mdi--table-large]'} class="text-sm opacity-70" />
+                                            {e.type === 'table' ? (
+                                                // A table tab is named by its table only; the dot carries which
+                                                // database it belongs to (see the tooltip for the full path).
+                                                <span
+                                                    data-testid={`tab-color-${e.hash}`}
+                                                    aria-hidden="true"
+                                                    style={{ backgroundColor: e.color ?? 'transparent' }}
+                                                    class={['h-2.5 w-2.5 shrink-0 rounded-full border', e.color ? 'border-transparent' : 'border-x5']}
+                                                />
+                                            ) : (
+                                                <Icon icon={e.type === 'scratch' ? 'icon-[mdi--file-edit-outline]' : 'icon-[mdi--table-large]'} class="text-sm opacity-70" />
+                                            )}
                                             <span class="select-none pointer-events-none">{e.name}</span>
                                             <span
                                                 onClick={prevented(() => navState.closeTab(e))}

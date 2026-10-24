@@ -10,6 +10,8 @@ export type Tab = {
     name?: string;
     draftSql?: string;
     tooltip?: string;
+    /** A dot color the tab can show (the database it belongs to). */
+    color?: string;
 };
 
 type T = Tab;

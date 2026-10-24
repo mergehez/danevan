@@ -16,6 +16,8 @@ const isScriptTab = (tab: Tab) => tab.type === 'script' || tab.type === 'scratch
 
 type DisplayTab = Tab & {
     tooltip: string;
+    /** The database's tab color, as a dot next to the table name. */
+    color?: string;
 };
 
 type ScriptTabRuntimeState = {
@@ -244,6 +246,7 @@ const createNavState = () => {
             ...tab,
             name: resolveTabName(tab),
             tooltip: resolveTabTooltip(tab),
+            color: tab.type === 'table' ? conns.getConnectionColor(tab.connectionId) : undefined,
         } satisfies DisplayTab;
     }
 

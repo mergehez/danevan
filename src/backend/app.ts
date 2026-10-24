@@ -560,6 +560,7 @@ function normalizeServerPayload(params: CreateServerParams) {
             port: undefined as number | undefined,
             username: params.username?.trim() || undefined,
             password: undefined as string | undefined,
+            color: params.color,
         };
     }
 
@@ -578,6 +579,7 @@ function normalizeServerPayload(params: CreateServerParams) {
         username: params.username?.trim() || undefined,
         filePath: undefined as string | undefined,
         password: undefined as string | undefined,
+        color: params.color,
     };
 }
 
@@ -799,6 +801,7 @@ export const app = {
             port: normalizeConnectionPort(ps.port),
             databaseName: ps.databaseName?.trim(),
             readonly: ps.readonly,
+            color: ps.color,
         });
 
         await refreshServerSchemasForConnection(ps.serverId, connectionId);

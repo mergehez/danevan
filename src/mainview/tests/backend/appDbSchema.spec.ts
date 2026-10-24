@@ -108,6 +108,8 @@ describe('a fresh app database', () => {
 
             expect(readAppDbSchemaVersion(client)).toBe(APP_DB_SCHEMA_VERSION);
             expect(columnNames(client, 'connections')).toContain('hidden');
+            expect(columnNames(client, 'connections')).toContain('color');
+            expect(columnNames(client, 'servers')).toContain('color');
             expect(columnNames(client, 'servers')).toContain('sequence');
             expect(columnNames(client, 'scripts')).toContain('group_name');
         } finally {
@@ -138,6 +140,8 @@ describe('an app database from an older build', () => {
             expect(configureAppDbSchema(client)).toBe(APP_DB_SCHEMA_VERSION);
 
             expect(columnNames(client, 'connections')).toContain('hidden');
+            expect(columnNames(client, 'connections')).toContain('color');
+            expect(columnNames(client, 'servers')).toContain('color');
             expect(serverNames(client)).toEqual(['legacy source']);
             expect(client.prepare("SELECT value FROM settings WHERE key = 'selectedServerId'").get()).toEqual({ value: '1' });
         } finally {
@@ -153,6 +157,8 @@ describe('an app database from an older build', () => {
         try {
             expect(configureAppDbSchema(client)).toBe(APP_DB_SCHEMA_VERSION);
             expect(columnNames(client, 'connections')).toContain('hidden');
+            expect(columnNames(client, 'connections')).toContain('color');
+            expect(columnNames(client, 'servers')).toContain('color');
             expect(serverNames(client)).toEqual(['legacy source']);
         } finally {
             client.close();

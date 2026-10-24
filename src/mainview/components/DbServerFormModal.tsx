@@ -4,6 +4,7 @@ import { Alert } from '../../shared/components/Alert.tsx';
 import { Button } from '../../shared/components/Button.tsx';
 import { CenteredModal } from '../../shared/components/CenteredModal.tsx';
 import type { ServerRecord } from '../../shared/types';
+import { DbColorField } from './DbColorField.tsx';
 import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
 
@@ -22,6 +23,7 @@ export const DbServerFormModal = component(
             filePath: '',
             host: '',
             port: '' as '' | number,
+            color: null as string | null,
         });
 
         const status = reactive({
@@ -62,6 +64,7 @@ export const DbServerFormModal = component(
                 form.filePath = currentServer.file_path || '';
                 form.host = currentServer.host || '';
                 form.port = currentServer.port ?? '';
+                form.color = currentServer.color ?? null;
                 status.message = '';
             },
             { immediate: true }
@@ -99,6 +102,9 @@ export const DbServerFormModal = component(
                     port: isFileServer.value ? undefined : typeof form.port === 'number' ? form.port : undefined,
                     username: undefined,
                     password: undefined,
+                    // A file source's color is stored on the server row; a server entry's lives on
+                    // each of its connections.
+                    color: isFileServer.value ? form.color : undefined,
                 });
 
                 closeModal();
@@ -130,6 +136,12 @@ export const DbServerFormModal = component(
                                 class="w-full border border-x4 bg-x0 px-2.5 py-2 text-xs outline-none"
                             />
                         </label>
+                        {isFileServer.value ? (
+                            <div class="space-y-1">
+                                <span class="text-2xs uppercase tracking-[0.18em] opacity-60">Tab color</span>
+                                <DbColorField modelValue={form.color} onChange={(color) => (form.color = color)} />
+                            </div>
+                        ) : null}
                         {isFileServer.value ? (
                             <label class="block space-y-1">
                                 <span class="text-2xs uppercase tracking-[0.18em] opacity-60">Database File</span>

@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
+import { resolveDbColor } from '../../shared/utils/dbColor';
 import { _dbCoreState } from '../composables/dbCoreState';
 import { useDbCaches } from '../composables/useDbCaches';
 import { tasks } from '../composables/useTasks';
@@ -301,6 +302,38 @@ export function _useConnections() {
             state.runSqlScriptModal.visible = false;
             state.runSqlScriptModal.connectionId = -1;
             state.runSqlScriptModal.scriptPath = '';
+        },
+        /** The dot a tab shows for this connection: file sources carry the color on their server. */
+        getConnectionColor(connectionId: number | undefined) {
+            const connection = connectionId === undefined ? undefined : _dbCoreState.connections.find((entry) => entry.id === connectionId);
+
+            if (!connection) {
+                return undefined;
+            }
+
+            const server = _dbCoreState.servers.find((entry) => entry.id === connection.server_id);
+
+            return resolveDbColor({
+                serverColor: server?.kind === 'file' ? server.color : undefined,
+                connectionColor: connection.color,
+            });
+        },
+        async setConnectionColor(connectionId: number, color: string | null) {
+            const connection = _dbCoreState.connections.find((entry) => entry.id === connectionId);
+
+            if (!connection) {
+                return;
+            }
+
+            await this.updateConnection(connectionId, {
+                serverId: connection.server_id,
+                name: connection.name,
+                host: connection.host,
+                port: connection.port,
+                databaseName: connection.database_name,
+                readonly: connection.readonly === 1,
+                color,
+            });
         },
         async createConnection(connection: CreateConnectionParams) {
             _dbCoreState.applyBootstrap(await tasks.createConnection.run(connection));

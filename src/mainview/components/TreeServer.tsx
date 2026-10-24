@@ -14,6 +14,7 @@ import type { ConnectionRecord } from '../../shared/types';
 import type { ConnectionTreeItem, TableCollectionKind, TableCollectionTreeItem, TreeServerItem } from '../composables/useServerTree';
 import { useServerTree } from '../composables/useServerTree';
 import { tasks } from '../composables/useTasks';
+import { DbColorDialog } from './DbColorDialog.tsx';
 import { DbCreateDatabaseModal } from './DbCreateDatabaseModal.tsx';
 import { DbMysqldumpExportModal } from './DbMysqldumpExportModal.tsx';
 import { DbRunSqlScriptModal } from './DbRunSqlScriptModal.tsx';
@@ -68,6 +69,21 @@ export const TreeServer = component(
         const fileServers = computed(() => serverTree.value.filter((server) => server.kind === 'file'));
         const refreshingServerIds = reactive<Record<number, boolean>>({});
         const isServerRefreshing = (serverId: number) => refreshingServerIds[serverId] === true;
+
+        /** The color dialog a connection or file-source row opens; both keep the color on a row. */
+        const colorDialog = reactive({
+            open: false,
+            title: 'Color',
+            value: undefined as string | undefined,
+            save: (_color: string | null) => {},
+        });
+
+        function openColorDialog(title: string, value: string | undefined, save: (color: string | null) => void | Promise<void>) {
+            colorDialog.title = title;
+            colorDialog.value = value;
+            colorDialog.save = save;
+            colorDialog.open = true;
+        }
 
         function getFileServerConnection(serverId: number) {
             const connection = connections.connections.find((entry) => entry.server_id === serverId);
@@ -229,17 +245,26 @@ export const TreeServer = component(
                     items.push({ type: 'title', id: `server-readonly:${server.id}`, title: 'Read-only connection' });
                 }
 
-                items.push(connectionReadOnlyMenuItem(fileConnection), {
-                    id: `server-create-table:${server.id}`,
-                    label: 'Create new table...',
-                    iconClass: 'icon-[mdi--table-plus]',
-                    action: async () => {
-                        await modifyTable.openModal({
-                            connectionId: fileConnection.id,
-                            mode: 'create',
-                        });
+                items.push(
+                    connectionReadOnlyMenuItem(fileConnection),
+                    {
+                        id: `server-color:${server.id}`,
+                        label: 'Color...',
+                        iconClass: 'icon-[mdi--palette-outline]',
+                        action: () => openColorDialog(`Color — ${server.name}`, server.color, (color) => servers.setServerColor(server.id, color)),
                     },
-                });
+                    {
+                        id: `server-create-table:${server.id}`,
+                        label: 'Create new table...',
+                        iconClass: 'icon-[mdi--table-plus]',
+                        action: async () => {
+                            await modifyTable.openModal({
+                                connectionId: fileConnection.id,
+                                mode: 'create',
+                            });
+                        },
+                    }
+                );
             } else {
                 items.push(
                     {
@@ -336,6 +361,12 @@ export const TreeServer = component(
 
             items.push(
                 connectionReadOnlyMenuItem(connection),
+                {
+                    id: `connection-color:${connection.id}`,
+                    label: 'Color...',
+                    iconClass: 'icon-[mdi--palette-outline]',
+                    action: () => openColorDialog(`Color — ${connection.name}`, connection.color, (color) => connections.setConnectionColor(connection.id, color)),
+                },
                 // {
                 //     id: `connection-select:${connection.id}`,
                 //     label: 'Select connection',
@@ -566,6 +597,13 @@ export const TreeServer = component(
                 </div>
                 <DbServerSchemasModal {...vModel(servers.schemaSelectionModal, 'visible', 'open')} />
                 <DbServerFormModal open={servers.updateForm.visible} serverId={servers.updateForm.serverId} onClose={servers.closeUpdateForm} />
+                <DbColorDialog
+                    open={colorDialog.open}
+                    title={colorDialog.title}
+                    value={colorDialog.value}
+                    onSave={(color) => void colorDialog.save(color)}
+                    onClose={() => (colorDialog.open = false)}
+                />
                 <DbCreateDatabaseModal open={servers.createDatabaseModal.visible} serverId={servers.createDatabaseModal.serverId} onClose={servers.closeCreateDatabase} />
                 <DbMysqldumpExportModal
                     open={connections.mysqldumpExportModal.visible}

@@ -889,3 +889,37 @@ describe('batched metadata reads', () => {
         expect(after[0]?.columns.map((column) => column.name)).toEqual(['id', 'label', 'note']);
     });
 });
+
+describe('database colors', () => {
+    it('stores a file source color (on the server) and a connection color, and keeps it when updating', async () => {
+        const source = await createFileSource('Colored source');
+
+        const withServerColor = await app.updateServer({
+            serverId: source.serverId,
+            server: createServerParams({ name: 'Colored source', filePath: source.filePath, color: '#3b82f6' }),
+        });
+        expect(withServerColor.servers.find((server) => server.id === source.serverId)?.color).toBe('#3b82f6');
+
+        const withColor = await app.updateConnection({ connectionId: source.connectionId, connection: { name: 'Colored source connection', color: '#22c55e' } });
+        expect(withColor.connections.find((connection) => connection.id === source.connectionId)?.color).toBe('#22c55e');
+
+        // Renaming without a color keeps the existing one.
+        const renamed = await app.updateConnection({ connectionId: source.connectionId, connection: { name: 'Renamed' } });
+        expect(renamed.connections.find((connection) => connection.id === source.connectionId)?.color).toBe('#22c55e');
+
+        // A value that is not `#rrggbb` is dropped rather than stored.
+        const invalid = await app.updateConnection({ connectionId: source.connectionId, connection: { name: 'Renamed', color: 'red' } });
+        expect(invalid.connections.find((connection) => connection.id === source.connectionId)?.color).toBeUndefined();
+
+        // `null` clears it, and the stored row agrees with the bootstrap.
+        const cleared = await app.updateConnection({ connectionId: source.connectionId, connection: { name: 'Renamed', color: null } });
+        expect(cleared.connections.find((connection) => connection.id === source.connectionId)?.color).toBeUndefined();
+    });
+
+    it('carries the color on a new connection from the create call', async () => {
+        const { serverId } = await createFileSource('Color on create');
+        const bootstrap = await app.createConnection(createConnectionParams(serverId, { name: 'Tagged', color: '#ec4899' }));
+
+        expect(bootstrap.connections.find((connection) => connection.name === 'Tagged')?.color).toBe('#ec4899');
+    });
+});

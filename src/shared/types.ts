@@ -95,6 +95,7 @@ export type ServerRecord = {
     created_at: string;
     updated_at: string;
     username: string | undefined;
+    color?: string;
 };
 
 export type ConnectionRecord = {
@@ -109,6 +110,7 @@ export type ConnectionRecord = {
     created_at: string;
     updated_at: string;
     last_used_at: string | undefined;
+    color?: string;
 };
 
 export type ScriptRecord = {
@@ -144,6 +146,8 @@ export type CreateServerParams = {
     port: number | undefined;
     username: string | undefined;
     password: string | undefined;
+    /** A palette color; `null` clears it, `undefined` leaves an existing one alone. */
+    color?: string | null;
 };
 
 export type UpdateServerParams = CreateServerParams;
@@ -155,6 +159,8 @@ export type CreateConnectionParams = {
     port: number | undefined;
     databaseName: string | undefined;
     readonly: boolean | undefined;
+    /** A palette color; `null` clears it, `undefined` leaves an existing one alone. */
+    color?: string | null;
 };
 
 export type UpdateConnectionParams = {
@@ -164,6 +170,8 @@ export type UpdateConnectionParams = {
     port?: number;
     databaseName?: string;
     readonly?: boolean;
+    /** A palette color; `null` clears it, `undefined` leaves an existing one alone. */
+    color?: string | null;
 };
 
 export type TestConnectionParams = {
@@ -471,6 +479,7 @@ export type ServerRow = {
     sequence: number | bigint;
     created_at: string;
     updated_at: string;
+    color?: string;
 };
 
 export type ConnectionRow = {
@@ -486,6 +495,7 @@ export type ConnectionRow = {
     created_at: string;
     updated_at: string;
     last_used_at: string | undefined;
+    color?: string;
 };
 
 export type MysqldumpExportOptions = {

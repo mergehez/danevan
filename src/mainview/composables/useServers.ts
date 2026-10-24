@@ -131,6 +131,26 @@ export function _useServers() {
         async updateServer(serverId: number, server: UpdateServerParams) {
             _dbCoreState.applyBootstrap(await tasks.updateServer.run({ serverId, server }));
         },
+        /** Tags a file source with a tab color; server entries keep the color on their connections. */
+        async setServerColor(serverId: number, color: string | null) {
+            const server = _dbCoreState.servers.find((entry) => entry.id === serverId);
+
+            if (!server) {
+                return;
+            }
+
+            await this.updateServer(serverId, {
+                name: server.name,
+                kind: server.kind,
+                driver: server.driver,
+                filePath: server.file_path,
+                host: server.host,
+                port: server.port,
+                username: server.username,
+                password: undefined,
+                color,
+            });
+        },
         async deleteServer(serverId: number) {
             const server = _dbCoreState.servers.find((entry) => entry.id === serverId);
 
