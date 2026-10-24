@@ -3,15 +3,7 @@ import type { SqlDiagnosticMarker } from '../../shared/types';
 import { strToNumber, uniqueId } from '../../shared/utils/utils';
 import { _dbCoreState } from './dbCoreState';
 import { useConnections } from './useConnections';
-import {
-    dropQueryStateForTab,
-    markQueryTextSeeded,
-    moveQueryStateForTab,
-    queryStateTabHashes,
-    seedQueryTextForTab,
-    useQuery,
-    useQueryForTab,
-} from './useQuery';
+import { dropQueryStateForTab, markQueryTextSeeded, moveQueryStateForTab, queryStateTabHashes, seedQueryTextForTab, useQuery, useQueryForTab } from './useQuery';
 import { useScriptsDb } from './useScriptsDb';
 import { useServers } from './useServers';
 import { type Tab, useSettings } from './useSettings';
@@ -319,40 +311,44 @@ const createNavState = () => {
         }
     }
 
-    async function hydrateTableTabConnections() {
-        if (!hasHydratedBootstrap.value) {
+    /**
+     * Refetches the table list of the tab being activated, and only that tab's connection. Every
+     * table tab used to be verified on every activation, so switching to (or opening) a tab of one
+     * database refreshed the metadata of every other one the session held a tab for — a dead server
+     * among them failed here and raised its "connection lost" error over the table the user was
+     * looking at. A tab's own connection is verified when its tab activates instead.
+     */
+    async function hydrateTableTabConnection(tab: Tab | undefined) {
+        if (!hasHydratedBootstrap.value || tab?.type !== 'table') {
             return;
         }
 
-        const tableTabConnectionIds = [...new Set(settings.tabs.filter((tab) => tab.type === 'table').map((tab) => tab.connectionId))].filter((connectionId) =>
-            conns.connections.some((connection) => connection.id === connectionId)
-        );
+        const connectionId = tab.connectionId;
 
-        await Promise.all(
-            tableTabConnectionIds.map(async (connectionId) => {
-                const tableState = conns.getConnectionTablesState(connectionId);
-                // Refetch the table list once per session: it may come from a
-                // stale on-disk schema cache, and a table that no longer exists
-                // must lose its tab rather than error on every visit.
-                const force = !verifiedTableTabConnectionIds.has(connectionId);
+        if (!conns.connections.some((connection) => connection.id === connectionId)) {
+            return;
+        }
 
-                if (hydratingTableTabConnectionIds[connectionId] || (!force && (tableState.loaded || tableState.loading))) {
-                    return;
-                }
+        const tableState = conns.getConnectionTablesState(connectionId);
+        // Refetch the table list once per session: it may come from a stale on-disk schema cache,
+        // and a table that no longer exists must lose its tab rather than error on every visit.
+        const force = !verifiedTableTabConnectionIds.has(connectionId);
 
-                hydratingTableTabConnectionIds[connectionId] = true;
+        if (hydratingTableTabConnectionIds[connectionId] || (!force && (tableState.loaded || tableState.loading))) {
+            return;
+        }
 
-                try {
-                    await conns.ensureConnectionTables(connectionId, force);
+        hydratingTableTabConnectionIds[connectionId] = true;
 
-                    if (conns.getConnectionTablesState(connectionId).loaded) {
-                        verifiedTableTabConnectionIds.add(connectionId);
-                    }
-                } finally {
-                    delete hydratingTableTabConnectionIds[connectionId];
-                }
-            })
-        );
+        try {
+            await conns.ensureConnectionTables(connectionId, force);
+
+            if (conns.getConnectionTablesState(connectionId).loaded) {
+                verifiedTableTabConnectionIds.add(connectionId);
+            }
+        } finally {
+            delete hydratingTableTabConnectionIds[connectionId];
+        }
     }
 
     const selectedTabs = computed(() => settings.tabs.map((tab) => toDisplayTab(tab)));
@@ -617,13 +613,14 @@ const createNavState = () => {
         for (let attempt = 0; attempt < 5; attempt += 1) {
             const targetTab = settings.tabs.find((tab) => tab.hash === settings.activeTabHash);
 
-            // Raw SQL can drop or rename tables, so a table tab's list has to be
-            // refetched before this activation validates the tab against it.
-            if (query.isTableDataStale && targetTab?.type === 'table' && conns.selectedConnectionId !== undefined) {
-                verifiedTableTabConnectionIds.delete(conns.selectedConnectionId);
+            // Raw SQL can drop or rename tables, so the table tab's own list has to be refetched
+            // before this activation validates the tab against it. The stale flag belongs to the tab
+            // that ran the SQL, but the list that may have changed is the one this tab reads.
+            if (query.isTableDataStale && targetTab?.type === 'table') {
+                verifiedTableTabConnectionIds.delete(targetTab.connectionId);
             }
 
-            await hydrateTableTabConnections();
+            await hydrateTableTabConnection(targetTab);
             sanitizeTabs();
             ensureActiveTabExists();
 
@@ -676,9 +673,7 @@ const createNavState = () => {
             }
 
             const rememberedHash = lastTabHashByConnection.get(connectionId);
-            const rememberedTab = rememberedHash
-                ? settings.tabs.find((tab) => tab.hash === rememberedHash && tab.connectionId === connectionId)
-                : undefined;
+            const rememberedTab = rememberedHash ? settings.tabs.find((tab) => tab.hash === rememberedHash && tab.connectionId === connectionId) : undefined;
             const nextTab = rememberedTab ?? [...settings.tabs].reverse().find((tab) => tab.connectionId === connectionId);
 
             if (nextTab) {
