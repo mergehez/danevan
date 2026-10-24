@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 42 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
+**Status:** 43 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1087 unit tests (88 files) · 152 browser tests
-(41 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **49.1 % statements / 41.4 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+settings blob, T11, T12, T14's tree work) · suite: **1094 unit tests (89 files) · 156 browser tests
+(43 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
+file **49.2 % statements / 41.5 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -295,6 +295,27 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   depend on the sidebar having loaded it. Guarded by `resolveForeignKeyTargetTable` cases in
   `useModifyTable.spec.ts` and two browser cases in `modify-table-popup.spec.ts` (a `user_id` column
   pre-fills `users` and its name; a NOT NULL `created_by` cascades; an index starts on `path`).
+
+### 2026-10-24 database colors
+
+- **U19 — tag a database with a color and show it on its table tabs.** A table tab is named by its
+  table only, so two databases with a `users` table were indistinguishable; the icon is now a dot in
+  the database's color (neutral outline when none). The color is stored in the app DB — `servers.color`
+  for a file source, `connections.color` for a server-based database — added by app-DB migration **v2**
+  (`database-colors`, guarded by `hasColumn`, so a half-upgraded DB boots). It is edited through:
+  - the **add connection** form and the **Update Source** form (a swatch field with the picker),
+  - a **Color...** item on a connection row and on a file-source row, opening a small dialog.
+  The picker is the editor's `VuelorPicker` (ported to `src/shared/components/colorPicker/`), not a
+  hand-picked palette: canvas, hue/RGB sliders, hex input and the eye dropper, emitting `#rrggbb`
+  (`ColorPicker` composes it; `DbColorField` is the form field, `DbColorDialog` the row-menu dialog).
+  An update without a `color` keeps the stored one; `null` clears it (`normalizeDbColor` only accepts
+  `#rrggbb`, and `resolveDbColor` prefers the server row for file sources).
+
+  Guarded by `appDbSchema.spec.ts` (both columns on a fresh and an upgraded DB including the
+  half-finished case), `appApi.spec.ts` (round trip on server and connection, keep-on-rename,
+  invalid value dropped, `null` clears, create-with-color), `DbColorField.spec.ts` (free-form hex,
+  clear, dialog save/clear) and `db-colors.spec.ts` (row menu → dot, update form → dot, two databases
+  with the same table name get different dots, MySQL connection row → dot).
 
 ### 2026-10-24 a tab refresh touched another database
 

@@ -217,6 +217,17 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   `nulls-low` everywhere except PostgreSQL), so the grid agrees with the server order it just
   loaded. Guarded by `grid-sort-nulls.spec.ts`.
 
+Suggested from the 2026-10-24 database-colour request:
+
+- **A user-chosen value is free-form, not a palette you picked.** Database colours are chosen with the
+  shared picker (`src/shared/components/colorPicker/`, the editor's `VuelorPicker`), stored as
+  `#rrggbb` in the app DB and shown as the table-tab dot. Twelve swatches were a detour: when the app
+  already has a picker, reuse it (`DbColorField` for forms, `DbColorDialog` for row menus) instead of
+  enumerating values.
+- **An update distinguishes "not provided" from "cleared".** `updateServer`/`updateConnection` keep the
+  stored colour when `color` is `undefined` and clear it on `null`; a rename or a read-only toggle must
+  not wipe a tag. Normalise (and drop) invalid values in the store, not only in the form.
+
 Suggested from the 2026-10-24 "refresh loads another database" report:
 
 - **Activation refreshes the tab's own context, never every tab's.** `useNavState` used to verify the

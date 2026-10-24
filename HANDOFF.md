@@ -8,10 +8,10 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-24, after a foreign key started from a column row (source, target, cascade).
-Before that today: tab activation scoped to its own connection. Before that, 2026-10-23: the Modify
-Table split, generated index/foreign-key names and the grid's last-column resize fix, and the index
-fixes before them._
+_Last verified: 2026-10-24, after database colors (app DB migration v2, tab dots, the shared colour
+picker). Before that today: a foreign key started from a column row, and tab activation scoped to its
+own connection. Before that, 2026-10-23: the Modify Table split, generated index/foreign-key names
+and the grid's last-column resize fix, and the index fixes before them._
 
 ## 1. What this is
 
@@ -47,7 +47,7 @@ browser dev API, Vite + Electron, Bun as runtime/package manager.
 | `src/backend/` | `app.ts` (~47 async handlers, the whole API), `db-tools.ts` (driver dispatch + metadata caches), `useMySqlDriver.ts` / `usePostgresDriver.ts` / `useSqliteDriver.ts` / `useSqlServerDriver.ts` / `useMsAccessDriver.ts`, `useRemoteDriverTools.ts` (shared remote query/exec), `remoteDataSourcePool.ts` (one pooled DataSource per server/connection), `db-app.ts` (the app's own SQLite store), `auth.ts` (keychain secrets), `sqlScriptRunner.ts`, `devServer.ts` (Express mount for browser mode) |
 | `src/mainview/` | `App.tsx` (shell), `components/` (`DbSidebar`, `DbTabs`, `DbData`, `DbScripts`, `MonacoEditor`, modals…), `composables/` (all renderer state, see §5), `lib/` (Monaco setup, menus, formatting), `tests/` (unit, components, e2e, electron). **Modify Table** is a folder each: `composables/modifyTable/` (types, drafts, column DDL, create/alter previews per dialect, validation, apply, history, navigation) with `useModifyTable.ts` as the store, and `components/modifyTable/` (sidebar with its item menu, form helpers, one form per entity) with `ModifyTableModal.tsx` as the shell |
 | `src/datagrid/` | The canvas data grid (`DataGrid.tsx`, `useDataGrid.ts`, navigation, clipboard, layout persistence). Editors are DOM overlays on the canvas. |
-| `src/shared/` | Types (`types.ts` — `AppBootstrapApi`, `QueryExecutionResult`, …), components (`Button`, `CenteredModal`, `Splitter`, `ListBox`…), utils (`sqlStatements`, `sqlSourceTable`, `sqlIdentifiers`, `valueFormatting`, `tsxHelpers`, `useCache`…) |
+| `src/shared/` | Types (`types.ts` — `AppBootstrapApi`, `QueryExecutionResult`, …), components (`Button`, `CenteredModal`, `Splitter`, `ListBox`, the colour picker in `components/colorPicker/`…), utils (`sqlStatements`, `sqlSourceTable`, `sqlIdentifiers`, `valueFormatting`, `dbColor`, `tsxHelpers`, `useCache`…) |
 | `src/electron/` | `main.ts` (window + native handlers), `preload.ts` (IPC bridge), `bridge.ts` |
 | `src/electronUtils/` | **Project-agnostic: byte-identical to `gitvan/src/electronUtils`** (see AGENTS.md). `vite-plugin.ts` (mounts `devServer` in browser mode, auto-generates `apiMethods.ts`, dev ports), `mainviewHelpers.ts` (`createAppClientPpc`), `browserOnlyHelpers.ts` (browser dev server; app specifics come in as options), `helpers.ts`/`appDataDir.ts`, `useDatabase.ts`, `executeCommand.ts`/`requestContext.ts`, `signMacApp.ts`/`installMacApp.ts` and `releaseHelpers.ts`/`electronConfig.ts` (release chain, loaded by Node's ESM loader — keep `.ts` extensions there) |
 | `src/directives/` | `v-tooltip`, `v-context-menu`, `v-loading`, `v-error` |
@@ -214,9 +214,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1087 unit tests (88 files)**, **152 browser tests (41 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.1 % statements / 41.4 % branches** with
-the floors green. The full browser suite is 152 passed + 0 failed; that green run also assumes the local
+Snapshot at the last verification: **1094 unit tests (89 files)**, **156 browser tests (43 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.2 % statements / 41.5 % branches** with
+the floors green. The full browser suite is 156 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
 packaged suites were not re-run after these fixes (renderer-only changes).
