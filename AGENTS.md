@@ -234,7 +234,10 @@ Suggested from the 2026-10-23 "I never have to type the name" request:
   `FK_<table>_<columns>_<target>`) and the name is re-derived on every change to the table, columns or
   target — until the user types one, which clears the draft's `autoName` and is never overwritten.
   A hand-typed `new_index` that the form then ignores (or renames) is worse than no default at all.
-  Guarded by the naming cases in `useModifyTable.spec.ts` and `modify-table-popup.spec.ts`.
+  An action started from a row starts on that row and pre-fills what the row already says: a foreign
+  key from `user_id` covers `user_id`, targets `users` when that table exists, cascades when the
+  column is NOT NULL, and the name follows. Guarded by the naming cases in `useModifyTable.spec.ts`
+  and `modify-table-popup.spec.ts`.
 
 Suggested from the 2026-10-23 grid-resize report:
 

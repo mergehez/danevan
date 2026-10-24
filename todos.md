@@ -1,9 +1,9 @@
 # todos — findings, fix list and test audit
 
-**Status:** 41 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
+**Status:** 42 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1085 unit tests (88 files) · 150 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1087 unit tests (88 files) · 152 browser tests
 (41 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
 file **49.1 % statements / 41.4 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
@@ -279,6 +279,22 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   edit with a reason. Guarded by `src/shared/utils/sqlSourceTable.spec.ts` and
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
+
+### 2026-10-24 a foreign key started from a column row
+
+- **U18 — "New › Foreign Key" from a column's context menu started on the wrong column.** The menu
+  action called `addForeignKey()` with no context, so it always started on the first column. It now
+  starts on the row that was right-clicked (the same for New › Index and New › Unique Key), and
+  pre-fills the rest from that column:
+  - the target table, when the column names one: `user_id` finds `users` (also `_es`, `y → ies`,
+    and the bare name, matched case-insensitively) — no table means no guess;
+  - `on delete = cascade` when the column is `NOT NULL` (a reference it needs cannot disappear);
+  - the generated name follows both through the existing sync (`FK_<table>_<column>_<target>`).
+  The target column defaults to the target's primary key rather than its first column. The dialog
+  also ensures the connection's table list on open, so the target names (and the rename check) do not
+  depend on the sidebar having loaded it. Guarded by `resolveForeignKeyTargetTable` cases in
+  `useModifyTable.spec.ts` and two browser cases in `modify-table-popup.spec.ts` (a `user_id` column
+  pre-fills `users` and its name; a NOT NULL `created_by` cascades; an index starts on `path`).
 
 ### 2026-10-24 a tab refresh touched another database
 

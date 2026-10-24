@@ -8,9 +8,10 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-24, after tab activation was scoped to its own connection. Before that,
-2026-10-23: the Modify Table split, generated index/foreign-key names and the grid's last-column
-resize fix, and the index fixes before them._
+_Last verified: 2026-10-24, after a foreign key started from a column row (source, target, cascade).
+Before that today: tab activation scoped to its own connection. Before that, 2026-10-23: the Modify
+Table split, generated index/foreign-key names and the grid's last-column resize fix, and the index
+fixes before them._
 
 ## 1. What this is
 
@@ -213,9 +214,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1085 unit tests (88 files)**, **150 browser tests (41 files)**,
+Snapshot at the last verification: **1087 unit tests (88 files)**, **152 browser tests (41 files)**,
 **14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.1 % statements / 41.4 % branches** with
-the floors green. The full browser suite is 150 passed + 0 failed; that green run also assumes the local
+the floors green. The full browser suite is 152 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
 packaged suites were not re-run after these fixes (renderer-only changes).
