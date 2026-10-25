@@ -287,8 +287,10 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   starts on the row that was right-clicked (the same for New › Index and New › Unique Key), and
   pre-fills the rest from that column:
   - the target table, when the column names one:
-    - `_by` / `By` (`created_by`, `createdBy`, `updatedBy`) → `users`;
-    - `_user_id` / `UserId` (`assigned_user_id`, `assignedUserId`, `foo_user_id`) → `users`;
+    - `_by` / `By` (`created_by`, `createdBy`, `createdBY`) → `users`;
+    - `_user_id` / `UserId` (`assigned_user_id`, `assignedUserId`, `userID`, `foo_user_id`) → `users`;
+    - camel forms need the capital boundary with a **lower-case letter before it**: `createdBy`,
+      `createdBY`, `userID` and `userId` match, `createDBy` and `USERID` do not;
     - `_er_id` / `_ee_id` / `_or_id` and their camel forms (`receiver_id`, `employee_id`, `authorId`):
       the **dedicated table first** (`receivers`, `employees`, `authors`), `users` only when there is
       none — these words usually describe a person, but the specific table wins;

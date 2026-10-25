@@ -259,7 +259,8 @@ Suggested from the 2026-10-23 "I never have to type the name" request:
   An action started from a row starts on that row and pre-fills what the row already says: a foreign
   key from `user_id` covers `user_id`, targets `users` when that table exists, cascades when the
   column is NOT NULL, and the name follows. The reference conventions are named, not inferred loosely:
-  `_by`/`By` and `_user_id`/`UserId` → `users`; `_er_id`/`_ee_id`/`_or_id` (receiver/employee/author)
+  `_by`/`By` and `_user_id`/`UserId` → `users` (camel needs a capital boundary after a lower-case
+  letter: `createdBy`/`createdBY`/`userID` match, `createDBy` does not); `_er_id`/`_ee_id`/`_or_id` (receiver/employee/author)
   → their own table when it exists, `users` when it does not; `_id`/`Id` → the plural (`imdb_id` →
   `imdbs`); `parent_id`/`previous_id`/`next_id` → the table itself; glued `userid`/`receiverid` are not
   guessed. Guarded by the naming cases in `useModifyTable.spec.ts`

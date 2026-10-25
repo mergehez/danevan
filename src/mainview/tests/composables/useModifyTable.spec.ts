@@ -459,6 +459,11 @@ describe('resolveForeignKeyTargetTable', () => {
         expect(resolveForeignKeyTargetTable('updated_by', ['users'])).toBe('users');
         expect(resolveForeignKeyTargetTable('deleted_by', ['Users'])).toBe('Users');
         expect(resolveForeignKeyTargetTable('createdBy', ['posts', 'users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('createdBY', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('userID', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('receiverID', ['users'])).toBe('users');
+        // The capital is the boundary: an upper-case letter before it is not camel case.
+        expect(resolveForeignKeyTargetTable('createDBy', ['users'])).toBeUndefined();
         expect(resolveForeignKeyTargetTable('assigned_user_id', ['users'])).toBe('users');
         expect(resolveForeignKeyTargetTable('assignedUserId', ['users'])).toBe('users');
         expect(resolveForeignKeyTargetTable('foo_user_id', ['users'])).toBe('users');
@@ -481,6 +486,7 @@ describe('resolveForeignKeyTargetTable', () => {
         expect(resolveForeignKeyTargetTable('receiverId', ['users'])).toBe('users');
         expect(resolveForeignKeyTargetTable('authorId', ['users'])).toBe('users');
         expect(resolveForeignKeyTargetTable('bookId', ['books'])).toBe('books');
+        expect(resolveForeignKeyTargetTable('bookID', ['books'])).toBe('books');
     });
 
     it('takes the same table for parent/previous/next', () => {

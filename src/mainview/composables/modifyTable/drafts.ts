@@ -526,8 +526,9 @@ const SELF_REFERENCE_BASES = ['parent', 'previous', 'next'];
  *   `books`), also `_es` and `y → ies`, then the bare name.
  * - `parent_id` / `previous_id` / `next_id` (and camel forms) → the table itself.
  *
- * Only a table that exists is returned, and no `userid`/`receiverid` forms: without a separator the
- * name is too ambiguous. The optional current table resolves the self references.
+ * Only a table that exists is returned, and camel forms need a capital boundary whose preceding
+ * letter is lower case (`createdBy`, `createdBY`, `userID`, `userId`) — `createDBy` and glued
+ * `userid`/`receiverid` are not guessed. The optional current table resolves the self references.
  */
 export function resolveForeignKeyTargetTable(columnName: string, tableNames: string[], currentTableName?: string) {
     const normalizedName = columnName.trim();
@@ -561,12 +562,13 @@ export function resolveForeignKeyTargetTable(columnName: string, tableNames: str
         return PERSON_SUFFIXES.some((suffix) => base.toLowerCase().endsWith(suffix)) ? users : undefined;
     }
 
-    // camelCase: the capital is the word boundary, and the letter before it must be lower case.
-    if (/[a-z]By$/.test(normalizedName)) {
+    // camelCase: the suffix starts with a capital, and the letter before it must be lower case, so
+    // `createdBy`/`createdBY` and `userID`/`userId` match while `createDBy` and `USERID` do not.
+    if (/^.+[a-z]B[Yy]$/.test(normalizedName)) {
         return users;
     }
 
-    const camelId = /^(.*[a-z])Id$/.exec(normalizedName);
+    const camelId = /^(.*[a-z])I[Dd]$/.exec(normalizedName);
 
     if (camelId?.[1]) {
         const base = camelId[1];

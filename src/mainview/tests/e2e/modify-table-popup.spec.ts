@@ -620,7 +620,7 @@ test.describe('Modify table popup (e2e)', () => {
         // `receiverId` is a person (`users`), `imdbId` its own table, `parent_id` this table.
         await post(request, 'runQuery', {
             connectionId,
-            sql: `ALTER TABLE \`${tableName}\` ADD COLUMN \`receiverId\` bigint unsigned DEFAULT NULL, ADD COLUMN \`imdb_id\` bigint unsigned DEFAULT NULL, ADD COLUMN \`parent_id\` bigint unsigned DEFAULT NULL, ADD COLUMN \`createdBy\` bigint unsigned DEFAULT NULL`,
+            sql: `ALTER TABLE \`${tableName}\` ADD COLUMN \`receiverId\` bigint unsigned DEFAULT NULL, ADD COLUMN \`userID\` bigint unsigned DEFAULT NULL, ADD COLUMN \`imdb_id\` bigint unsigned DEFAULT NULL, ADD COLUMN \`parent_id\` bigint unsigned DEFAULT NULL, ADD COLUMN \`createdBy\` bigint unsigned DEFAULT NULL`,
         });
         await post(request, 'runQuery', { connectionId, sql: 'CREATE TABLE IF NOT EXISTS `imdbs` (id bigint unsigned NOT NULL, PRIMARY KEY (id))' });
 
@@ -638,6 +638,10 @@ test.describe('Modify table popup (e2e)', () => {
 
             // A camel-case person column, an `imdbs` reference, a self reference and a camel `_by`.
             await addForeignKeyFrom('receiverId');
+            await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
+
+            // An all-caps suffix is still camel case (`userID`), unlike `createDBy`.
+            await addForeignKeyFrom('userID');
             await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
 
             await addForeignKeyFrom('imdb_id');
