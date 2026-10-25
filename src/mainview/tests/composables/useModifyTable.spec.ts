@@ -446,24 +446,58 @@ describe('resolveForeignKeyTargetTable', () => {
         expect(resolveForeignKeyTargetTable('customer_id', ['customers'])).toBe('customers');
         expect(resolveForeignKeyTargetTable('address_id', ['addresses'])).toBe('addresses');
         expect(resolveForeignKeyTargetTable('category_id', ['categories'])).toBe('categories');
+        // A reference exists because a table exists: user_id -> users, imdb_id -> imdbs.
+        expect(resolveForeignKeyTargetTable('imdb_id', ['imdbs'])).toBe('imdbs');
         // Sometimes the table is the bare name.
         expect(resolveForeignKeyTargetTable('tenant_id', ['tenant'])).toBe('tenant');
         // Matched case-insensitively, returning the catalog's own spelling.
         expect(resolveForeignKeyTargetTable('user_id', ['Users'])).toBe('Users');
     });
 
-    it('points a <name>_by column at users', () => {
+    it('points _by and *_user_id at users, in snake and camel case', () => {
         expect(resolveForeignKeyTargetTable('created_by', ['posts', 'users'])).toBe('users');
         expect(resolveForeignKeyTargetTable('updated_by', ['users'])).toBe('users');
         expect(resolveForeignKeyTargetTable('deleted_by', ['Users'])).toBe('Users');
-        // No users table, or not the suffix: no guess.
+        expect(resolveForeignKeyTargetTable('createdBy', ['posts', 'users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('assigned_user_id', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('assignedUserId', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('foo_user_id', ['users'])).toBe('users');
+        // No users table: no guess.
         expect(resolveForeignKeyTargetTable('created_by', ['posts'])).toBeUndefined();
-        expect(resolveForeignKeyTargetTable('createdBy', ['users'])).toBeUndefined();
+        expect(resolveForeignKeyTargetTable('createdBy', ['posts'])).toBeUndefined();
+    });
+
+    it('prefers a dedicated table for a person word, then users', () => {
+        // er / ee / or name a person; the specific table wins when the schema has one.
+        expect(resolveForeignKeyTargetTable('receiver_id', ['receivers'])).toBe('receivers');
+        expect(resolveForeignKeyTargetTable('receiver_id', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('employee_id', ['employees', 'users'])).toBe('employees');
+        expect(resolveForeignKeyTargetTable('employee_id', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('author_id', ['authors', 'users'])).toBe('authors');
+        expect(resolveForeignKeyTargetTable('author_id', ['users'])).toBe('users');
+        // `customer` also ends in `er`: customers first, then users.
+        expect(resolveForeignKeyTargetTable('customer_id', ['customers', 'users'])).toBe('customers');
+        expect(resolveForeignKeyTargetTable('customer_id', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('receiverId', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('authorId', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('bookId', ['books'])).toBe('books');
+    });
+
+    it('takes the same table for parent/previous/next', () => {
+        expect(resolveForeignKeyTargetTable('parent_id', ['categories', 'users'], 'categories')).toBe('categories');
+        expect(resolveForeignKeyTargetTable('previous_id', ['pages'], 'pages')).toBe('pages');
+        expect(resolveForeignKeyTargetTable('next_id', ['pages'], 'pages')).toBe('pages');
+        expect(resolveForeignKeyTargetTable('parentId', ['categories'], 'categories')).toBe('categories');
+        // Without a current table there is nothing to point at.
+        expect(resolveForeignKeyTargetTable('parent_id', ['categories'])).toBeUndefined();
     });
 
     it('leaves the target alone when no table matches or the name is not a reference', () => {
-        expect(resolveForeignKeyTargetTable('foo_user_id', ['users'])).toBeUndefined();
         expect(resolveForeignKeyTargetTable('id', ['users'])).toBeUndefined();
         expect(resolveForeignKeyTargetTable('user_id', [])).toBeUndefined();
+        expect(resolveForeignKeyTargetTable('status', ['users'])).toBeUndefined();
+        // Glued lower-case names are not a convention we guess from.
+        expect(resolveForeignKeyTargetTable('userid', ['users'])).toBeUndefined();
+        expect(resolveForeignKeyTargetTable('receiverid', ['users'])).toBeUndefined();
     });
 });

@@ -652,7 +652,7 @@ export function _useModifyTable() {
         addForeignKey(columnName?: string) {
             const sourceColumn = columnName ?? state.activeColumnNames[0] ?? '';
             const foreignKey = createNewForeignKey(state.foreignKeys, [sourceColumn], state.table.name.trim() || state.tableName);
-            const targetTable = resolveForeignKeyTargetTable(sourceColumn, state.existingTableNames);
+            const targetTable = resolveForeignKeyTargetTable(sourceColumn, state.existingTableNames, state.tableName ?? (state.table.name.trim() || undefined));
             const column = getActiveColumns(state.columns).find((entry) => entry.name === sourceColumn);
 
             if (targetTable) {

@@ -493,34 +493,99 @@ export function syncAutoEntityNames(state: AutoNameHost) {
     });
 }
 
-/**
- * The table a reference column points at, when the connection has one: a `_by` column is whoever did
- * it (`created_by`/`updated_by` → `users`), and `<name>_id` finds the plural (`user_id` → `users`,
- * also `_es`/`y → ies`, then the bare name). Only a candidate that exists is used, so an ambiguous
- * name leaves the target empty rather than guessing.
- */
-export function resolveForeignKeyTargetTable(columnName: string, tableNames: string[]) {
-    const normalizedName = columnName.trim();
+function pluralCandidates(base: string) {
+    return [...new Set([base + 's', base + 'es', base.replace(/y$/i, 'ies'), base])];
+}
 
-    if (/_by$/i.test(normalizedName)) {
-        return tableNames.find((tableName) => tableName.toLowerCase() === 'users');
-    }
-
-    const match = /^(.+)_id$/i.exec(normalizedName);
-
-    if (!match?.[1]) {
-        return undefined;
-    }
-
-    const base = match[1];
-    const candidates = [base + 's', base + 'es', base.replace(/y$/i, 'ies'), base];
-
-    for (const candidate of new Set(candidates)) {
+function findTable(tableNames: string[], candidates: string[]) {
+    for (const candidate of candidates) {
         const found = tableNames.find((tableName) => tableName.toLowerCase() === candidate.toLowerCase());
 
         if (found) {
             return found;
         }
+    }
+
+    return undefined;
+}
+
+/** `er` / `ee` / `or` endings name a person: `receiver`, `employee`, `author`, `owner`, … */
+const PERSON_SUFFIXES = ['er', 'ee', 'or'];
+/** A reference to the same table, as a hierarchy does with its parent. */
+const SELF_REFERENCE_BASES = ['parent', 'previous', 'next'];
+
+/**
+ * The table a reference column points at, when the connection has one.
+ *
+ * - `*_by` / `*By` (created_by, createdBy) is the user who did it → `users`.
+ * - `*_user_id` / `*UserId` (assigned_user_id, assignedUserId) → `users`.
+ * - `*_er_id` / `*_ee_id` / `*_or_id` and their camel forms (receiver_id, employee_id, authorId):
+ *   the specific table first (`receivers`, `employees`, `authors`), `users` when there is none —
+ *   these words usually describe a person, but a dedicated table wins.
+ * - `*_id` / `*Id`: the plural of the base (`user_id` → `users`, `imdb_id` → `imdbs`, `bookId` →
+ *   `books`), also `_es` and `y → ies`, then the bare name.
+ * - `parent_id` / `previous_id` / `next_id` (and camel forms) → the table itself.
+ *
+ * Only a table that exists is returned, and no `userid`/`receiverid` forms: without a separator the
+ * name is too ambiguous. The optional current table resolves the self references.
+ */
+export function resolveForeignKeyTargetTable(columnName: string, tableNames: string[], currentTableName?: string) {
+    const normalizedName = columnName.trim();
+    const users = findTable(tableNames, ['users']);
+    const selfTable = currentTableName ? findTable(tableNames, [currentTableName]) : undefined;
+
+    // snake_case
+    if (/_by$/i.test(normalizedName)) {
+        return users;
+    }
+
+    if (/_user_id$/i.test(normalizedName)) {
+        return users;
+    }
+
+    const snakeId = /^(.+)_id$/i.exec(normalizedName);
+
+    if (snakeId?.[1]) {
+        const base = snakeId[1];
+
+        if (SELF_REFERENCE_BASES.includes(base.toLowerCase())) {
+            return selfTable;
+        }
+
+        const specificTable = findTable(tableNames, pluralCandidates(base));
+
+        if (specificTable) {
+            return specificTable;
+        }
+
+        return PERSON_SUFFIXES.some((suffix) => base.toLowerCase().endsWith(suffix)) ? users : undefined;
+    }
+
+    // camelCase: the capital is the word boundary, and the letter before it must be lower case.
+    if (/[a-z]By$/.test(normalizedName)) {
+        return users;
+    }
+
+    const camelId = /^(.*[a-z])Id$/.exec(normalizedName);
+
+    if (camelId?.[1]) {
+        const base = camelId[1];
+
+        if (SELF_REFERENCE_BASES.includes(base.toLowerCase())) {
+            return selfTable;
+        }
+
+        if (/User$/.test(base) || /_user$/i.test(base)) {
+            return users;
+        }
+
+        const specificTable = findTable(tableNames, pluralCandidates(base));
+
+        if (specificTable) {
+            return specificTable;
+        }
+
+        return PERSON_SUFFIXES.some((suffix) => base.toLowerCase().endsWith(suffix)) ? users : undefined;
     }
 
     return undefined;

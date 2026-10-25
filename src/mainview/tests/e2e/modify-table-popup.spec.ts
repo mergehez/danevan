@@ -616,6 +616,43 @@ test.describe('Modify table popup (e2e)', () => {
         await expect(page.locator('[data-testid="modify-foreign-key-name"]')).toHaveValue(`FK_${tableName}_created_by_users`);
     });
 
+    test('points person and reference columns at their table, parent at the same table', async ({ page, request }) => {
+        // `receiverId` is a person (`users`), `imdbId` its own table, `parent_id` this table.
+        await post(request, 'runQuery', {
+            connectionId,
+            sql: `ALTER TABLE \`${tableName}\` ADD COLUMN \`receiverId\` bigint unsigned DEFAULT NULL, ADD COLUMN \`imdb_id\` bigint unsigned DEFAULT NULL, ADD COLUMN \`parent_id\` bigint unsigned DEFAULT NULL, ADD COLUMN \`createdBy\` bigint unsigned DEFAULT NULL`,
+        });
+        await post(request, 'runQuery', { connectionId, sql: 'CREATE TABLE IF NOT EXISTS `imdbs` (id bigint unsigned NOT NULL, PRIMARY KEY (id))' });
+
+        try {
+            await page.goto('/');
+            await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+            await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+            const navItem = (title: string) => page.locator(`[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="${title}"]`);
+            async function addForeignKeyFrom(title: string) {
+                await navItem(title).click({ button: 'right' });
+                await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'New' }).hover();
+                await page.locator('.v-menu-children .v-menu-panel').first().getByRole('menuitem', { name: 'Foreign Key' }).click();
+            }
+
+            // A camel-case person column, an `imdbs` reference, a self reference and a camel `_by`.
+            await addForeignKeyFrom('receiverId');
+            await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
+
+            await addForeignKeyFrom('imdb_id');
+            await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('imdbs');
+
+            await addForeignKeyFrom('parent_id');
+            await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue(tableName);
+
+            await addForeignKeyFrom('createdBy');
+            await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
+        } finally {
+            await request.post(`${API}/runQuery`, { data: { connectionId, sql: 'DROP TABLE IF EXISTS `imdbs`' } }).catch(() => {});
+        }
+    });
+
     test('starts an index from the right-clicked column', async ({ page }) => {
         await page.goto('/');
         await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
