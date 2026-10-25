@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { buildPreviewStatements, hasExtendedSchemaChanges, resolveForeignKeyDraftName, type ModifyTablePreviewState } from '../../composables/useModifyTable';
-import { createIndexColumnDraft, createNewForeignKey, createNewIndex, resolveForeignKeyTargetTable, syncAutoEntityNames } from '../../composables/modifyTable/drafts';
+import {
+    createIndexColumnDraft,
+    createNewForeignKey,
+    createNewIndex,
+    resolveForeignKeyTargetTable,
+    suggestForeignKeyTargetTables,
+    syncAutoEntityNames,
+} from '../../composables/modifyTable/drafts';
 
 describe('resolveForeignKeyDraftName', () => {
     it('prefers the matching foreign index name when mysql foreign key rows are unnamed', () => {
@@ -505,5 +512,53 @@ describe('resolveForeignKeyTargetTable', () => {
         // Glued lower-case names are not a convention we guess from.
         expect(resolveForeignKeyTargetTable('userid', ['users'])).toBeUndefined();
         expect(resolveForeignKeyTargetTable('receiverid', ['users'])).toBeUndefined();
+    });
+});
+
+describe('suggestForeignKeyTargetTables', () => {
+    it('ranks every table that ends with the reference word, nearest to the edited table first', () => {
+        const { target, suggestions } = suggestForeignKeyTargetTables('product_id', ['bla_products', 'plugin_ecommerce_products', 'bla_bla_products'], 'bla_orders');
+
+        // Three tables fit equally well: the dialog must not pick one for the user.
+        expect(target).toBeUndefined();
+        expect(suggestions).toEqual(['bla_products', 'bla_bla_products', 'plugin_ecommerce_products']);
+    });
+
+    it('picks the prefixed table when the edited table shares its prefix', () => {
+        expect(suggestForeignKeyTargetTables('template_id', ['page_templates', 'mail_templates'], 'pages').target).toBe('page_templates');
+        expect(suggestForeignKeyTargetTables('question_id', ['z_pesbirk_questions', 'questions'], 'z_pesbirk_answers').target).toBe('z_pesbirk_questions');
+    });
+
+    it('keeps the weaker candidates as suggestions behind the chosen table', () => {
+        const suggestions = suggestForeignKeyTargetTables('receiver_id', ['receivers', 'users']);
+
+        expect(suggestions.target).toBe('receivers');
+        expect(suggestions.suggestions).toEqual(['receivers', 'users']);
+    });
+
+    it('points a user reference at the table whose name ends with user, without noisy suggestions', () => {
+        expect(suggestForeignKeyTargetTables('CreatedBy', ['SysSubscriptionUser', 'SysUser', 'SysTenant'])).toEqual({
+            target: 'SysUser',
+            suggestions: ['SysUser'],
+        });
+    });
+
+    it('prefers an exact plural over a table that merely ends with the word', () => {
+        expect(suggestForeignKeyTargetTables('order_id', ['orders', 'shop_orders'], 'items')).toEqual({
+            target: 'orders',
+            suggestions: ['orders', 'shop_orders'],
+        });
+    });
+
+    it('never suggests the edited table for an ordinary reference', () => {
+        // `post_tags.tag_id` points at `tags`, not back at the row's own table.
+        expect(suggestForeignKeyTargetTables('tag_id', ['post_tags', 'tags'], 'post_tags')).toEqual({
+            target: 'tags',
+            suggestions: ['tags'],
+        });
+    });
+
+    it('has nothing to suggest for a column that is not a reference', () => {
+        expect(suggestForeignKeyTargetTables('status', ['users'])).toEqual({ target: undefined, suggestions: [] });
     });
 });

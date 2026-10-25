@@ -30,6 +30,8 @@ export const ModifyTableForeignKeyForm = component(
                 return null;
             }
 
+            const suggestedTables = modifyTable.getForeignKeyTargetSuggestions(selFk);
+
             return (
                 <div class="space-y-3">
                     <div>
@@ -44,6 +46,25 @@ export const ModifyTableForeignKeyForm = component(
                                 disabled={selFk.status === 'deleted'}
                                 small={true}
                             />
+                            {suggestedTables.length > 0 && selFk.status !== 'deleted' ? (
+                                <>
+                                    <div class={rowLabelClass}>Suggested</div>
+                                    <div class="flex flex-wrap items-center gap-1" data-testid="modify-foreign-key-suggestions">
+                                        {suggestedTables.slice(0, 6).map((tableName) => (
+                                            <button
+                                                type="button"
+                                                key={tableName}
+                                                data-testid={`modify-foreign-key-suggestion-${tableName}`}
+                                                v-tooltip={{ value: `Use ${tableName} as the target table`, xs: true, nowrap: true }}
+                                                onClick={() => modifyTable.setForeignKeyTarget(selFk, tableName)}
+                                                class="inline-flex items-center rounded-full border border-x4 bg-x3 px-2 py-0.5 text-2xs transition hover:bg-x4"
+                                            >
+                                                {tableName}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : null}
                             <div class={getLabelClass(isForeignKeyFieldDirty('onDelete'))}>On Delete</div>
                             <Select
                                 {...vModel(selFk, 'onDelete')}

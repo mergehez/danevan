@@ -265,6 +265,15 @@ Suggested from the 2026-10-23 "I never have to type the name" request:
   `imdbs`); `parent_id`/`previous_id`/`next_id` → the table itself; glued `userid`/`receiverid` are not
   guessed. Guarded by the naming cases in `useModifyTable.spec.ts`
   and `modify-table-popup.spec.ts`.
+- **A reference the app cannot pin down becomes a suggestion, never a silent guess.** The target table
+  is filled only when one table is the unique best fit; otherwise it stays empty and the candidate
+  tables are listed under Target Table, most probable first, one click each. A table that ends with the
+  reference word at a real boundary (`_`, `-`, a camel hump: `plugin_ecommerce_products`, `SysTenant`)
+  is a candidate, and one sharing a substantial affix with the table being edited beats an exact
+  generic plural (`pages.template_id` → `page_templates`). The edited table is never a candidate unless
+  the column is `parent`/`previous`/`next`. Measured over six local schemas: 206 → 337 of 382 real
+  foreign keys, 2 wrong. Guarded by `suggestForeignKeyTargetTables` in `useModifyTable.spec.ts` and the
+  suggestion row case in `modify-table-popup.spec.ts`.
 
 Suggested from the 2026-10-23 grid-resize report:
 

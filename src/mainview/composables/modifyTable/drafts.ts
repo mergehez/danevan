@@ -509,88 +509,186 @@ function findTable(tableNames: string[], candidates: string[]) {
     return undefined;
 }
 
+/** A table name that ends with the candidate at a real word boundary (`_`, `-` or a camel hump). */
+function endsWithWord(name: string, candidate: string) {
+    if (name.length <= candidate.length || !name.toLowerCase().endsWith(candidate.toLowerCase())) {
+        return false;
+    }
+
+    const boundary = name[name.length - candidate.length - 1];
+    const firstSuffixLetter = name[name.length - candidate.length];
+
+    return boundary === '_' || boundary === '-' || (boundary !== boundary.toUpperCase() && firstSuffixLetter === firstSuffixLetter.toUpperCase());
+}
+
+/** The shortest table whose name ends with one of the candidates, when a single one does. */
+function findSuffixedTable(tableNames: string[], candidates: string[]) {
+    const matches = [...new Set(tableNames.filter((tableName) => candidates.some((candidate) => endsWithWord(tableName, candidate))))].sort(
+        (left, right) => left.length - right.length || left.localeCompare(right)
+    );
+
+    if (matches.length === 0 || (matches.length > 1 && matches[0]!.length === matches[1]!.length)) {
+        return undefined;
+    }
+
+    return matches[0];
+}
+
+/** `users`, `SysUser`, `AppUsers`, … — the table a person column points at. */
+function findUserTable(tableNames: string[]) {
+    return findTable(tableNames, ['users']) ?? findSuffixedTable(tableNames, ['user', 'users']);
+}
+
 /** `er` / `ee` / `or` endings name a person: `receiver`, `employee`, `author`, `owner`, … */
 const PERSON_SUFFIXES = ['er', 'ee', 'or'];
 /** A reference to the same table, as a hierarchy does with its parent. */
 const SELF_REFERENCE_BASES = ['parent', 'previous', 'next'];
 
-/**
- * The table a reference column points at, when the connection has one.
- *
- * - `*_by` / `*By` (created_by, createdBy) is the user who did it → `users`.
- * - `*_user_id` / `*UserId` (assigned_user_id, assignedUserId) → `users`.
- * - `*_er_id` / `*_ee_id` / `*_or_id` and their camel forms (receiver_id, employee_id, authorId):
- *   the specific table first (`receivers`, `employees`, `authors`), `users` when there is none —
- *   these words usually describe a person, but a dedicated table wins.
- * - `*_id` / `*Id`: the plural of the base (`user_id` → `users`, `imdb_id` → `imdbs`, `bookId` →
- *   `books`), also `_es` and `y → ies`, then the bare name.
- * - `parent_id` / `previous_id` / `next_id` (and camel forms) → the table itself.
- *
- * Only a table that exists is returned, and camel forms need a capital boundary whose preceding
- * letter is lower case (`createdBy`, `createdBY`, `userID`, `userId`) — `createDBy` and glued
- * `userid`/`receiverid` are not guessed. The optional current table resolves the self references.
- */
-export function resolveForeignKeyTargetTable(columnName: string, tableNames: string[], currentTableName?: string) {
-    const normalizedName = columnName.trim();
-    const users = findTable(tableNames, ['users']);
-    const selfTable = currentTableName ? findTable(tableNames, [currentTableName]) : undefined;
-
-    // snake_case
-    if (/_by$/i.test(normalizedName)) {
-        return users;
+/** How much a table shares with the table being edited, as a tie-breaking hint. */
+function sharedAffixLength(left: string | undefined, right: string | undefined) {
+    if (!left || !right) {
+        return 0;
     }
 
-    if (/_user_id$/i.test(normalizedName)) {
-        return users;
+    const leftLower = left.toLowerCase();
+    const rightLower = right.toLowerCase();
+    let prefix = 0;
+
+    while (prefix < leftLower.length && prefix < rightLower.length && leftLower[prefix] === rightLower[prefix]) {
+        prefix += 1;
     }
 
-    const snakeId = /^(.+)_id$/i.exec(normalizedName);
-
-    if (snakeId?.[1]) {
-        const base = snakeId[1];
-
-        if (SELF_REFERENCE_BASES.includes(base.toLowerCase())) {
-            return selfTable;
-        }
-
-        const specificTable = findTable(tableNames, pluralCandidates(base));
-
-        if (specificTable) {
-            return specificTable;
-        }
-
-        return PERSON_SUFFIXES.some((suffix) => base.toLowerCase().endsWith(suffix)) ? users : undefined;
+    // A separator that only happens to line up is not affinity: `bla_products` and `bla_bla_products`
+    // share `bla`, not `bla_`.
+    if (prefix > 0 && !/[a-z0-9]/i.test(leftLower[prefix - 1]!)) {
+        prefix -= 1;
     }
 
-    // camelCase: the suffix starts with a capital, and the letter before it must be lower case, so
-    // `createdBy`/`createdBY` and `userID`/`userId` match while `createDBy` and `USERID` do not.
-    if (/^.+[a-z]B[Yy]$/.test(normalizedName)) {
-        return users;
+    let suffix = 0;
+
+    while (suffix < leftLower.length - prefix && suffix < rightLower.length && leftLower[leftLower.length - 1 - suffix] === rightLower[rightLower.length - 1 - suffix]) {
+        suffix += 1;
     }
 
-    const camelId = /^(.*[a-z])I[Dd]$/.exec(normalizedName);
+    return Math.max(prefix, suffix);
+}
 
-    if (camelId?.[1]) {
-        const base = camelId[1];
+export type ForeignKeyTargetSuggestions = {
+    /** The table the current rules pick; empty when several tables fit equally. */
+    target: string | undefined;
+    /** Every plausible table, most probable first (the target included). */
+    suggestions: string[];
+};
 
-        if (SELF_REFERENCE_BASES.includes(base.toLowerCase())) {
-            return selfTable;
-        }
+type ForeignKeyBase = {
+    /** `user` references (a `_by`, `_user_id` or a person-role id). */
+    kind: 'user' | 'self' | 'reference';
+    base: string;
+};
 
-        if (/User$/.test(base) || /_user$/i.test(base)) {
-            return users;
-        }
+function readForeignKeyBase(columnName: string): ForeignKeyBase | undefined {
+    const name = columnName.trim();
 
-        const specificTable = findTable(tableNames, pluralCandidates(base));
+    if (/_by$/i.test(name) || /^.+[a-z]B[Yy]$/.test(name)) {
+        return { kind: 'user', base: name };
+    }
 
-        if (specificTable) {
-            return specificTable;
-        }
+    if (/_user_id$/i.test(name)) {
+        return { kind: 'user', base: name };
+    }
 
-        return PERSON_SUFFIXES.some((suffix) => base.toLowerCase().endsWith(suffix)) ? users : undefined;
+    const snake = /^(.+)_id$/i.exec(name);
+
+    if (snake?.[1]) {
+        return SELF_REFERENCE_BASES.includes(snake[1].toLowerCase()) ? { kind: 'self', base: snake[1] } : { kind: 'reference', base: snake[1] };
+    }
+
+    const camel = /^(.*[a-z])I[Dd]$/.exec(name);
+
+    if (camel?.[1]) {
+        const base = camel[1];
+        return SELF_REFERENCE_BASES.includes(base.toLowerCase()) ? { kind: 'self', base } : /User$/.test(base) ? { kind: 'user', base } : { kind: 'reference', base };
     }
 
     return undefined;
+}
+
+/**
+ * Ranked candidate tables for a reference column, with the one the dialog auto-fills.
+ *
+ * A table ending with the reference word is a candidate (`plugin_ecommerce_products` for
+ * `product_id`), a table close to the edited one outranks a generic exact plural (`page_templates` for
+ * `pages`), and the edited table itself only fits `parent`/`previous`/`next`.
+ */
+export function suggestForeignKeyTargetTables(columnName: string, tableNames: string[], currentTableName?: string): ForeignKeyTargetSuggestions {
+    const parsed = readForeignKeyBase(columnName);
+
+    if (!parsed) {
+        return { target: undefined, suggestions: [] };
+    }
+
+    const users = findUserTable(tableNames);
+    const selfTable = currentTableName ? tableNames.find((tableName) => tableName.toLowerCase() === currentTableName.toLowerCase()) : undefined;
+    const scores = new Map<string, number>();
+
+    const score = (tableName: string | undefined, value: number) => {
+        if (tableName && (scores.get(tableName) ?? -1) < value) {
+            scores.set(tableName, value);
+        }
+    };
+
+    if (parsed.kind === 'user') {
+        score(users, 100);
+    } else if (parsed.kind === 'self') {
+        score(selfTable, 100);
+    } else {
+        const candidates = pluralCandidates(parsed.base);
+        // How close a table sits to the edited one, e.g. `z_pesbirk_questions` for `z_pesbirk_answers`.
+        const affinity = (tableName: string) => Math.min(30, sharedAffixLength(tableName, currentTableName) * 3);
+
+        for (const tableName of tableNames) {
+            // A reference points elsewhere: only parent/previous/next name the edited table itself.
+            if (tableName.toLowerCase() === currentTableName?.toLowerCase()) {
+                continue;
+            }
+
+            if (candidates.some((candidate) => tableName.toLowerCase() === candidate.toLowerCase())) {
+                // An exact plural/bare name is decisive.
+                score(tableName, 100 + affinity(tableName));
+                continue;
+            }
+
+            if (candidates.some((candidate) => endsWithWord(tableName, candidate))) {
+                // A prefixed sibling of the edited table is as likely as an exact name (`page_templates`
+                // for `pages`); another table that merely ends with the word is only a hint.
+                score(tableName, (sharedAffixLength(tableName, currentTableName) >= 4 ? 100 : 60) + affinity(tableName));
+            }
+        }
+
+        if (PERSON_SUFFIXES.some((suffix) => parsed.base.toLowerCase().endsWith(suffix))) {
+            score(users, 70);
+        }
+    }
+
+    const ranked = [...scores.entries()]
+        .sort(
+            ([leftName, leftScore], [rightName, rightScore]) =>
+                rightScore - leftScore ||
+                sharedAffixLength(rightName, currentTableName) - sharedAffixLength(leftName, currentTableName) ||
+                leftName.length - rightName.length ||
+                leftName.localeCompare(rightName)
+        )
+        .map(([tableName]) => tableName);
+
+    const topScore = scores.get(ranked[0] ?? '') ?? 0;
+    const topTables = ranked.filter((tableName) => scores.get(tableName) === topScore);
+
+    return { target: topTables.length === 1 ? topTables[0] : undefined, suggestions: ranked };
+}
+
+/** The table a reference column points at, when the dialog can tell without asking. */
+export function resolveForeignKeyTargetTable(columnName: string, tableNames: string[], currentTableName?: string) {
+    return suggestForeignKeyTargetTables(columnName, tableNames, currentTableName).target;
 }
 
 export function createNewKey(keys: ModifyTableKeyDraft[], columnNames: string[]) {

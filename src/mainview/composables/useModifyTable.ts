@@ -25,6 +25,7 @@ import {
     getPrimaryKeyDraft,
     moveArrayEntry,
     resolveForeignKeyTargetTable,
+    suggestForeignKeyTargetTables,
     syncAutoEntityNames,
     syncColumnsWithPrimaryKeyDraft,
 } from './modifyTable/drafts';
@@ -648,6 +649,20 @@ export function _useModifyTable() {
         },
         moveSelectedKeyColumnDown() {
             moveArrayEntry(state.selectedKey?.columns ?? [], state.selectedKeyColumn, 'down');
+        },
+        /** The tables a foreign key's source column might point at, minus the one already chosen. */
+        getForeignKeyTargetSuggestions(foreignKey: ModifyTableForeignKeyDraft, columnName?: string) {
+            const sourceColumn = columnName ?? foreignKey.columns[0]?.columnName ?? '';
+            const { suggestions } = suggestForeignKeyTargetTables(sourceColumn, state.existingTableNames, state.tableName ?? (state.table.name.trim() || undefined));
+
+            return suggestions.filter((tableName) => tableName !== foreignKey.targetTable);
+        },
+        setForeignKeyTarget(foreignKey: ModifyTableForeignKeyDraft, targetTable: string) {
+            if (foreignKey.status === 'deleted') {
+                return;
+            }
+
+            foreignKey.targetTable = targetTable;
         },
         addForeignKey(columnName?: string) {
             const sourceColumn = columnName ?? state.activeColumnNames[0] ?? '';

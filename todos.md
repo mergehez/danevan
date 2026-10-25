@@ -280,6 +280,24 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
 
+### 2026-10-26 foreign-key target suggestions (U33)
+
+- **U33 — the dialog picked a foreign-key target silently when the schema had several plausible tables.**
+  Resolution now returns a ranked list (`suggestForeignKeyTargetTables`) and the form shows it:
+  - a table whose name ends with the reference word at a real boundary (`_`, `-` or a camel hump) is a
+    candidate: `plugin_ecommerce_products`, `page_templates`, `SysTenant`, `z_pesbirk_questions`;
+  - a candidate sharing a substantial affix with the table being edited beats an exact generic plural
+    (`pages.template_id` → `page_templates`, `z_pesbirk_answers.question_id` → `z_pesbirk_questions`);
+  - the edited table itself is never a candidate (`post_tags.tag_id` → `tags`), except
+    `parent`/`previous`/`next`, which mean it;
+  - "user" resolves by suffix, shortest match (`SysUser` for `CreatedBy`, not `SysSubscriptionUser`),
+    with no alternative suggestions — those are junction tables, not people;
+  - a tied top score leaves the target empty and the suggestions in place, so the user decides.
+  The row of chips under Target Table lists them most probable first, the chosen table drops out, and it
+  is absent when only one table fits. Measured on the six local schemas: 206 → **337 of 382** real
+  foreign keys matched, 2 wrong (0.5 %). Guarded by the `suggestForeignKeyTargetTables` cases in
+  `useModifyTable.spec.ts` and the browser case in `modify-table-popup.spec.ts`.
+
 ### 2026-10-24 a foreign key started from a column row
 
 - **U18 — "New › Foreign Key" from a column's context menu started on the wrong column.** The menu

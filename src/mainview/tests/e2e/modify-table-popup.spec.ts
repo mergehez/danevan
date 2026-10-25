@@ -602,6 +602,8 @@ test.describe('Modify table popup (e2e)', () => {
         await expect(page.locator('[data-testid="modify-foreign-key-column"] select')).toHaveValue('user_id');
         await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
         await expect(page.locator('[data-testid="modify-foreign-key-name"]')).toHaveValue(`FK_${tableName}_user_id_users`);
+        // `users` is the only table that fits, so there is nothing to suggest.
+        await expect(page.locator('[data-testid="modify-foreign-key-suggestions"]')).toBeHidden();
         // The column is nullable, so the reference keeps the database's "no action".
         await expect(page.locator('[data-testid="modify-foreign-key-on-delete"] select')).toHaveValue('no_action');
 
@@ -654,6 +656,53 @@ test.describe('Modify table popup (e2e)', () => {
             await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
         } finally {
             await request.post(`${API}/runQuery`, { data: { connectionId, sql: 'DROP TABLE IF EXISTS `imdbs`' } }).catch(() => {});
+        }
+    });
+
+    test('suggests the tables a reference column might point at, most probable first', async ({ page, request }) => {
+        // Three tables end with `products`, and the edited table is next to none of them.
+        // Short names: the generated foreign-key name has to stay inside MySQL's 64 characters.
+        const candidates = ['bla_products', 'bla_bla_products', 'shop_products'];
+        await post(page.request, 'runQuery', {
+            connectionId,
+            sql: `ALTER TABLE \`${tableName}\` ADD COLUMN \`product_id\` bigint unsigned DEFAULT NULL`,
+        });
+
+        for (const candidate of candidates) {
+            await post(page.request, 'runQuery', { connectionId, sql: `CREATE TABLE IF NOT EXISTS \`${candidate}\` (id bigint unsigned NOT NULL, PRIMARY KEY (id))` });
+        }
+
+        try {
+            await page.goto('/');
+            await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+            await openModifyTablePopup(page, { serverId, connectionId }, tableName);
+
+            await page.locator('[data-testid="modify-nav-item"][data-nav-kind="column"][data-nav-title="product_id"]').click({ button: 'right' });
+            await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'New' }).hover();
+            await page.locator('.v-menu-children .v-menu-panel').first().getByRole('menuitem', { name: 'Foreign Key' }).click();
+
+            // No single table is the best fit, so the dialog asks: the target stays empty and every
+            // candidate is offered, shortest (most generic) name first.
+            await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('');
+            await expect(page.locator('[data-testid="modify-foreign-key-suggestions"] button')).toHaveText(['bla_products', 'shop_products', 'bla_bla_products']);
+
+            // Choosing one fills the target, its column and the generated name.
+            await page.locator('[data-testid="modify-foreign-key-suggestion-shop_products"]').click();
+            await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('shop_products');
+            await expect(page.locator('[data-testid="modify-foreign-key-name"]')).toHaveValue(`FK_${tableName}_product_id_shop_products`);
+            // The chosen table is no longer offered as a suggestion.
+            await expect(page.locator('[data-testid="modify-foreign-key-suggestions"] button')).toHaveText(['bla_products', 'bla_bla_products']);
+
+            await page.locator('[data-testid="modify-apply"]').click();
+            await expect(page.locator('[data-testid="modify-apply"]')).toBeHidden();
+
+            const info = await post(page.request, 'getTableInfo', { connectionId, tableName });
+            const foreignKey = info.foreignKeys.find((entry: any) => entry.name === `FK_${tableName}_product_id_shop_products`);
+            expect([foreignKey?.table, foreignKey?.from]).toEqual(['shop_products', 'product_id']);
+        } finally {
+            for (const candidate of candidates) {
+                await request.post(`${API}/runQuery`, { data: { connectionId, sql: `DROP TABLE IF EXISTS \`${candidate}\`` } }).catch(() => {});
+            }
         }
     });
 
