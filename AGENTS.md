@@ -258,7 +258,8 @@ Suggested from the 2026-10-23 "I never have to type the name" request:
   A hand-typed `new_index` that the form then ignores (or renames) is worse than no default at all.
   An action started from a row starts on that row and pre-fills what the row already says: a foreign
   key from `user_id` covers `user_id`, targets `users` when that table exists, cascades when the
-  column is NOT NULL, and the name follows. Guarded by the naming cases in `useModifyTable.spec.ts`
+  column is NOT NULL, and the name follows; a `_by` column (`created_by`, `updated_by`) targets
+  `users` the same way. Guarded by the naming cases in `useModifyTable.spec.ts`
   and `modify-table-popup.spec.ts`.
 
 Suggested from the 2026-10-23 grid-resize report:

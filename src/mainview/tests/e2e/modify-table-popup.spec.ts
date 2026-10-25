@@ -605,14 +605,15 @@ test.describe('Modify table popup (e2e)', () => {
         // The column is nullable, so the reference keeps the database's "no action".
         await expect(page.locator('[data-testid="modify-foreign-key-on-delete"] select')).toHaveValue('no_action');
 
-        // A NOT NULL column cascades instead: a reference to it cannot disappear.
+        // A `_by` column belongs to whoever did it (users), and a NOT NULL column cascades.
         await navItem('created_by').click({ button: 'right' });
         await page.locator('.v-menu-panel').first().getByRole('menuitem', { name: 'New' }).hover();
         await page.locator('.v-menu-children .v-menu-panel').first().getByRole('menuitem', { name: 'Foreign Key' }).click();
 
         await expect(page.locator('[data-testid="modify-foreign-key-column"] select')).toHaveValue('created_by');
+        await expect(page.locator('[data-testid="modify-foreign-key-target"] select')).toHaveValue('users');
         await expect(page.locator('[data-testid="modify-foreign-key-on-delete"] select')).toHaveValue('cascade');
-        await expect(page.locator('[data-testid="modify-foreign-key-name"]')).toHaveValue(`FK_${tableName}_created_by`);
+        await expect(page.locator('[data-testid="modify-foreign-key-name"]')).toHaveValue(`FK_${tableName}_created_by_users`);
     });
 
     test('starts an index from the right-clicked column', async ({ page }) => {

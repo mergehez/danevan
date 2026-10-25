@@ -452,9 +452,17 @@ describe('resolveForeignKeyTargetTable', () => {
         expect(resolveForeignKeyTargetTable('user_id', ['Users'])).toBe('Users');
     });
 
+    it('points a <name>_by column at users', () => {
+        expect(resolveForeignKeyTargetTable('created_by', ['posts', 'users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('updated_by', ['users'])).toBe('users');
+        expect(resolveForeignKeyTargetTable('deleted_by', ['Users'])).toBe('Users');
+        // No users table, or not the suffix: no guess.
+        expect(resolveForeignKeyTargetTable('created_by', ['posts'])).toBeUndefined();
+        expect(resolveForeignKeyTargetTable('createdBy', ['users'])).toBeUndefined();
+    });
+
     it('leaves the target alone when no table matches or the name is not a reference', () => {
         expect(resolveForeignKeyTargetTable('foo_user_id', ['users'])).toBeUndefined();
-        expect(resolveForeignKeyTargetTable('created_by', ['users'])).toBeUndefined();
         expect(resolveForeignKeyTargetTable('id', ['users'])).toBeUndefined();
         expect(resolveForeignKeyTargetTable('user_id', [])).toBeUndefined();
     });

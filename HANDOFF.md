@@ -8,8 +8,9 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-24, after database short codes (migration v3) and table-tab grouping (a row per
-server/database, the tag once on the row header).
+_Last verified: 2026-10-25, after a `_by` foreign-key column pointing at `users`. Before that,
+2026-10-24: database short codes (migration v3) and table-tab grouping (a row per server/database,
+the tag once on the row header).
 Before that today: database colours, a foreign key started from a column row, and tab activation
 scoped to its own connection. Before that, 2026-10-23: the Modify Table split, generated
 index/foreign-key names and the grid's last-column resize fix, and the index fixes before them._
@@ -215,7 +216,7 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1108 unit tests (90 files)**, **158 browser tests (44 files)**,
+Snapshot at the last verification: **1109 unit tests (90 files)**, **158 browser tests (44 files)**,
 **14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.2 % statements / 41.7 % branches** with
 the floors green. The full browser suite is 158 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition

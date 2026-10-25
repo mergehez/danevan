@@ -3,7 +3,7 @@
 **Status:** 45 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
 2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1108 unit tests (90 files) · 158 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1109 unit tests (90 files) · 158 browser tests
 (44 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
 file **49.2 % statements / 41.7 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
@@ -287,7 +287,8 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   starts on the row that was right-clicked (the same for New › Index and New › Unique Key), and
   pre-fills the rest from that column:
   - the target table, when the column names one: `user_id` finds `users` (also `_es`, `y → ies`,
-    and the bare name, matched case-insensitively) — no table means no guess;
+    and the bare name, matched case-insensitively), and a `_by` column is whoever did it
+    (`created_by`/`updated_by` → `users`) — no matching table means no guess;
   - `on delete = cascade` when the column is `NOT NULL` (a reference it needs cannot disappear);
   - the generated name follows both through the existing sync (`FK_<table>_<column>_<target>`).
   The target column defaults to the target's primary key rather than its first column. The dialog

@@ -494,12 +494,19 @@ export function syncAutoEntityNames(state: AutoNameHost) {
 }
 
 /**
- * The table a `<name>_id` column points at, when the connection has one: `user_id` finds `users`
- * (then `useres`/`usery`-style plurals, then `user` itself). Only the first candidate that exists is
- * used, so an ambiguous name leaves the target empty rather than guessing.
+ * The table a reference column points at, when the connection has one: a `_by` column is whoever did
+ * it (`created_by`/`updated_by` → `users`), and `<name>_id` finds the plural (`user_id` → `users`,
+ * also `_es`/`y → ies`, then the bare name). Only a candidate that exists is used, so an ambiguous
+ * name leaves the target empty rather than guessing.
  */
 export function resolveForeignKeyTargetTable(columnName: string, tableNames: string[]) {
-    const match = /^(.+)_id$/i.exec(columnName.trim());
+    const normalizedName = columnName.trim();
+
+    if (/_by$/i.test(normalizedName)) {
+        return tableNames.find((tableName) => tableName.toLowerCase() === 'users');
+    }
+
+    const match = /^(.+)_id$/i.exec(normalizedName);
 
     if (!match?.[1]) {
         return undefined;
