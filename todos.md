@@ -5,7 +5,7 @@
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
 settings blob, T11, T12, T14's tree work) · suite: **1109 unit tests (90 files) · 158 browser tests
 (44 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **49.2 % statements / 41.7 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+file **49.3 % statements / 41.8 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -286,16 +286,27 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   action called `addForeignKey()` with no context, so it always started on the first column. It now
   starts on the row that was right-clicked (the same for New › Index and New › Unique Key), and
   pre-fills the rest from that column:
-  - the target table, when the column names one: `user_id` finds `users` (also `_es`, `y → ies`,
-    and the bare name, matched case-insensitively), and a `_by` column is whoever did it
-    (`created_by`/`updated_by` → `users`) — no matching table means no guess;
+  - the target table, when the column names one:
+    - `_by` / `By` (`created_by`, `createdBy`, `updatedBy`) → `users`;
+    - `_user_id` / `UserId` (`assigned_user_id`, `assignedUserId`, `foo_user_id`) → `users`;
+    - `_er_id` / `_ee_id` / `_or_id` and their camel forms (`receiver_id`, `employee_id`, `authorId`):
+      the **dedicated table first** (`receivers`, `employees`, `authors`), `users` only when there is
+      none — these words usually describe a person, but the specific table wins;
+    - `_id` / `Id` → the plural of the base (`user_id` → `users`, `imdb_id` → `imdbs`, `bookId` →
+      `books`), also `_es`, `y → ies` and the bare name;
+    - `parent_id` / `previous_id` / `next_id` (and camel forms) → the table itself;
+    - glued lower-case names (`userid`, `receiverid`) are not guessed: no separator, no convention;
+    - no matching table means no guess;
   - `on delete = cascade` when the column is `NOT NULL` (a reference it needs cannot disappear);
   - the generated name follows both through the existing sync (`FK_<table>_<column>_<target>`).
   The target column defaults to the target's primary key rather than its first column. The dialog
   also ensures the connection's table list on open, so the target names (and the rename check) do not
   depend on the sidebar having loaded it. Guarded by `resolveForeignKeyTargetTable` cases in
-  `useModifyTable.spec.ts` and two browser cases in `modify-table-popup.spec.ts` (a `user_id` column
-  pre-fills `users` and its name; a NOT NULL `created_by` cascades; an index starts on `path`).
+  `useModifyTable.spec.ts` (plural, `_by`, `_user_id`, person suffixes with the dedicated table first,
+  camel forms, self references, glued names ignored) and three browser cases in
+  `modify-table-popup.spec.ts` (a `user_id` column pre-fills `users` and its name; a NOT NULL
+  `created_by` cascades; camel `receiverId`/`imdb_id`/`parent_id`/`createdBy` pre-fill
+  `users`/`imdbs`/the same table/`users`; an index starts on `path`).
 
 ### 2026-10-24 database short codes and tab grouping
 

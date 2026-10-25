@@ -216,9 +216,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1109 unit tests (90 files)**, **158 browser tests (44 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.2 % statements / 41.7 % branches** with
-the floors green. The full browser suite is 158 passed + 0 failed; that green run also assumes the local
+Snapshot at the last verification: **1111 unit tests (90 files)**, **159 browser tests (44 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.3 % statements / 41.8 % branches** with
+the floors green. The full browser suite is 159 passed + 0 failed; that green run also assumes the local
 MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and
 packaged suites were not re-run after these fixes (renderer-only changes).
