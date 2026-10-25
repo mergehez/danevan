@@ -62,6 +62,7 @@ export const ModifyTableForeignKeyForm = component(
                                                 {tableName}
                                             </button>
                                         ))}
+                                        {suggestedTables.length > 6 ? <span class="text-2xs opacity-60">{`+${suggestedTables.length - 6} more`}</span> : null}
                                     </div>
                                 </>
                             ) : null}
