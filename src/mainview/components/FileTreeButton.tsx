@@ -18,6 +18,8 @@ type Props<T extends Pick<FileTreeItem, 'id' | 'rightText' | 'subtitle'> & { tit
     children?: () => TChild[];
     isLoading?: boolean;
     tooltip?: string;
+    /** Explains a right-aligned value (the count next to a table) on hover. */
+    rightTextTooltip?: string;
     class?: string;
     selected?: boolean;
     skipTitle?: boolean;
@@ -189,7 +191,11 @@ export const FileTreeButton = componentGeneric(
                                     {props.slots?.text?.({ text: props.item.title ?? props.item.name }) ?? <>{props.item.title ?? props.item.name}</>}
                                 </span>
                                 {props.item.subtitle ? <span class="pl-2 text-2xs opacity-70 select-none">{props.item.subtitle}</span> : null}
-                                {props.item.rightText ? <span class="pl-2 ml-auto text-2xs opacity-80 font-semibold select-none">{props.item.rightText}</span> : null}
+                                {props.item.rightText ? (
+                                    <span data-sidebar-right-text="true" title={props.rightTextTooltip} class="pl-2 ml-auto text-2xs opacity-80 font-semibold select-none">
+                                        {props.item.rightText}
+                                    </span>
+                                ) : null}
                             </span>
                             {props.slots?.rightPrefix?.()}
                         </span>
@@ -223,6 +229,7 @@ export const FileTreeButton = componentGeneric(
             'children',
             'isLoading',
             'tooltip',
+            'rightTextTooltip',
             'class',
             'selected',
             'skipTitle',

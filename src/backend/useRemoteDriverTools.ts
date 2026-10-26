@@ -212,6 +212,7 @@ export function useRemoteDriverTools(deps: RemoteDriverToolsDeps): DriverTools {
             indexes,
             foreignKeys,
             rowCount: count.rowCount,
+            rowCountIsEstimated: count.rowCountIsEstimated,
             ...tableMetadata,
         } satisfies TableInfo;
     }

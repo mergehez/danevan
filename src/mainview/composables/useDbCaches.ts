@@ -194,6 +194,29 @@ export function _useDbCaches() {
         };
     }
 
+    /**
+     * Replaces one table's count in the cached list, so the sidebar's number survives a
+     * reload from the cache. Without this a fresh exact count reverted to the estimate the
+     * list was first cached with.
+     */
+    function applyTableRowCountToCache(connectionId: number, tableName: string, rowCount: number, rowCountIsEstimated?: boolean) {
+        const existingCache = connectionSchemaCacheState.value[connectionId];
+        const index = existingCache?.tables.findIndex((table) => table.name === tableName) ?? -1;
+
+        if (!existingCache || index < 0) {
+            return;
+        }
+
+        const tables = [...existingCache.tables];
+        tables[index] = { ...tables[index], rowCount, rowCountIsEstimated: rowCountIsEstimated || undefined };
+
+        connectionSchemaCacheState.value[connectionId] = {
+            ...existingCache,
+            cachedAt: new Date().toISOString(),
+            tables,
+        };
+    }
+
     // --- Global cache clearing ---
 
     function clearSidebarExpansionState() {
@@ -244,6 +267,7 @@ export function _useDbCaches() {
         applyConnectionSchemaCache,
         applyConnectionSnapshotToCache,
         applyTableInfoToCache,
+        applyTableRowCountToCache,
 
         // Tree persistence
         getPersistedTreeState,

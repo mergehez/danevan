@@ -1,7 +1,7 @@
 // loadSelectedTable: the persisted grid sort must not be sent for a column the
 // table does not have (renamed/dropped columns behind a stale layout), and a
 // database rejection of the ordered column must not fail the grid.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 type TableDetailsState = { loaded: boolean; loading: boolean; info?: { columns: Array<{ name: string }> } };
 
@@ -9,6 +9,7 @@ const holders = vi.hoisted(() => ({
     tableDetails: {} as Record<string, TableDetailsState>,
     fetchedInfo: undefined as TableDetailsState['info'],
     getTableData: undefined as unknown as { run: (params: Record<string, unknown>) => Promise<unknown> },
+    applyTableRowCount: undefined as unknown as Mock<(...args: unknown[]) => void>,
 }));
 
 vi.mock('../../composables/useConnections', async () => {
@@ -25,6 +26,7 @@ vi.mock('../../composables/useConnections', async () => {
             },
             getConnectionTablesState: () => ({ loaded: true, loading: false, tables: [] }),
             getTableDetailsState: (connectionId: number, tableName: string) => holders.tableDetails[`${connectionId}:${tableName}`] ?? { loaded: false, loading: false },
+            applyTableRowCount: (...args: unknown[]) => holders.applyTableRowCount(...args),
             ensureTableDetails: vi.fn(async (connectionId: number, tableName: string) => {
                 if (holders.fetchedInfo) {
                     holders.tableDetails[`${connectionId}:${tableName}`] = { loaded: true, loading: false, info: holders.fetchedInfo };
@@ -69,6 +71,29 @@ describe('loadSelectedTable order by', () => {
         holders.tableDetails = {};
         holders.fetchedInfo = { columns: [{ name: 'id' }] };
         holders.getTableData = { run: vi.fn(async () => tableDataResult([])) };
+        holders.applyTableRowCount = vi.fn();
+    });
+
+    it('reports the count of the rows it just loaded to the sidebar list', async () => {
+        // The table was emptied elsewhere: the list's cached count is stale and the panel
+        // measured zero rows, which is what the sidebar must show.
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
+        holders.getTableData = { run: vi.fn(async () => ({ ...tableDataResult([]), rowCount: 0 })) };
+
+        const query = _useQuery();
+        await query.loadSelectedTable(1, 'logins');
+
+        expect(holders.applyTableRowCount).toHaveBeenCalledWith(1, 'logins', 0, false);
+    });
+
+    it('keeps a count the backend only estimated marked as an estimate', async () => {
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
+        holders.getTableData = { run: vi.fn(async () => ({ ...tableDataResult([{ id: 1 }]), rowCount: 4_000_000, rowCountIsEstimated: true })) };
+
+        const query = _useQuery();
+        await query.loadSelectedTable(1, 'logins');
+
+        expect(holders.applyTableRowCount).toHaveBeenCalledWith(1, 'logins', 4_000_000, true);
     });
 
     it('does not send a persisted sort for a column the table does not have', async () => {

@@ -21,6 +21,12 @@ type Props = {
     parentId: string;
 };
 
+/**
+ * A table list is answered from the catalog, never with one `COUNT(*)` per table, so the number
+ * is an estimate until the table is opened or its metadata is refreshed.
+ */
+const ESTIMATED_ROW_COUNT_TOOLTIP = 'Approximate row count from the database catalog. Open the table or refresh its metadata for an exact count.';
+
 export const TreeTableRow = component(
     (props: Props) => {
         const connections = useConnections();
@@ -329,6 +335,7 @@ export const TreeTableRow = component(
                 dataTestid={`file-tree-item-${props.table.id}`}
                 dataNodeId={state.getTableNodeId(props.table.connectionId, props.table.name)}
                 dataParentId={props.parentId}
+                rightTextTooltip={props.table.rowCountIsEstimated ? ESTIMATED_ROW_COUNT_TOOLTIP : undefined}
                 draggable={true}
                 collapsed={state.isGroupCollapsed(props.server.id, String(props.table.id), true)}
                 isLoading={state.isTableLoading(props.table.connectionId, props.table.name)}

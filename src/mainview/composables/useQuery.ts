@@ -175,6 +175,9 @@ export function _useQuery() {
             tableInfo.value = tableInfo2;
             tableData.value = tableData2;
             isTableDataStale.value = false;
+            // The load just measured this table (`rowCount` is an exact COUNT(*) unless the
+            // table is too large to count), so the sidebar row stops showing the list's estimate.
+            connections.applyTableRowCount(connectionId, tableName, tableData2.rowCount, tableData2.rowCountIsEstimated === true);
             console.log(
                 `[perf][ui] loadSelectedTable ${Math.round(performance.now() - startedAt)}ms ${JSON.stringify({ connectionId, tableName, getTableInfo: infoDurationMs, getTableData: dataDurationMs })}`
             );

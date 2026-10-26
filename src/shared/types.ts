@@ -349,6 +349,8 @@ export type TableInfo = {
     indexes: TableIndexInfo[];
     foreignKeys: TableForeignKeyInfo[];
     rowCount: number;
+    /** Set when rowCount is the catalog estimate (a batched sweep never pays for a COUNT(*)). */
+    rowCountIsEstimated?: boolean;
     comment?: string | null;
     engine?: string | null;
     collation?: string | null;

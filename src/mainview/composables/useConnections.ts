@@ -129,6 +129,32 @@ export function _useConnections() {
             tableState.loading = false;
 
             dbCaches.applyTableInfoToCache(connectionId, tableName, tableInfo, state.getConnectionTablesState(connectionId).tables);
+            // The details carry this table's own count (a single-table read counts exactly), so the
+            // sidebar row takes it instead of the estimate the list was drawn with.
+            state.applyTableRowCount(connectionId, tableName, tableInfo.rowCount, tableInfo.rowCountIsEstimated === true);
+        },
+        /**
+         * Keeps the sidebar's count for one table current. Any path that learns a better number
+         * (a table load, a save, a metadata refresh) reports it here, in one place, so the tree
+         * row, the cached list and the panel all agree.
+         *
+         * An exact count is never traded back for a catalog estimate: the estimate is what
+         * showed `~20` next to an emptied table, and a sweep would otherwise restore it after
+         * the table had already been counted.
+         */
+        applyTableRowCount(connectionId: number, tableName: string, rowCount: number, rowCountIsEstimated: boolean) {
+            const table = state.getConnectionTablesState(connectionId).tables.find((entry) => entry.name === tableName);
+            const estimated = rowCountIsEstimated || undefined;
+
+            // A later catalog estimate never trades an exact count back, and an unchanged number
+            // must not rewrite the cache (a sweep reports every table it touches).
+            if (!table || (estimated && !table.rowCountIsEstimated) || (table.rowCount === rowCount && table.rowCountIsEstimated === estimated)) {
+                return;
+            }
+
+            table.rowCount = rowCount;
+            table.rowCountIsEstimated = estimated;
+            dbCaches.applyTableRowCountToCache(connectionId, tableName, rowCount, estimated);
         },
         async ensureConnectionTables(connectionId: number, force = false) {
             const tableState = state.getConnectionTablesState(connectionId);

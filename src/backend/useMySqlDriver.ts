@@ -715,6 +715,9 @@ export function useMySqlSchemaHelper(deps: MySqlSchemaHelperDeps) {
                 indexes: mapMySqlIndexes(indexGroups.get(name) ?? []),
                 foreignKeys: mapMySqlForeignKeys(foreignKeyGroups.get(name) ?? []),
                 rowCount: normalizeCountValue(tableRow.tableRows),
+                // `information_schema.tables.table_rows` is an InnoDB estimate: a sweep
+                // never pays for a count, so the caller knows the number is approximate.
+                rowCountIsEstimated: true,
                 comment: deps.normalizeOptionalText(tableRow.comment),
                 engine: deps.normalizeOptionalText(tableRow.engine),
                 collation: deps.normalizeOptionalText(tableRow.collation),
