@@ -1,11 +1,11 @@
 # todos — findings, fix list and test audit
 
-**Status:** 45 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
-2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35) · 8 open (T15, T19, T25,
+**Status:** 46 fix-list entries closed (T1, T2a, T3b, T4, T5, T6, T7, T9, T10, T13, T14, U1–U12, then the
+2026-10-11 audit: T16, T17, T18, T20, T21, T22, T23, T24, T26, T30, then T33–T35 and U34) · 8 open (T15, T19, T25,
 T27–T29, T31, T32) · 3 blocked (T2b, e2e-13, unit-10) · 6 deliberately not planned (T3a, T8, the T10
-settings blob, T11, T12, T14's tree work) · suite: **1109 unit tests (90 files) · 158 browser tests
+settings blob, T11, T12, T14's tree work) · suite: **1125 unit tests (91 files) · 162 browser tests
 (44 files) · 13 Electron shell tests** (dev build ×12 + the packaged `.app`) · coverage over every source
-file **49.3 % statements / 41.8 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
+file **49.5 % statements / 42.1 % branches**, and unit-only: the browser suite is not instrumented (T19) ·
 aggregate and per-area floors enforced in `vitest.config.js` · a run that skips a precondition fails · the
 audit also measured the gate itself: neither Electron suite can fail it (T15), a complete browser run
 could not be reproduced in the session that closed T18 (T31), and one unit spec sits close enough to the
@@ -279,6 +279,27 @@ directly. All timings from one machine (macOS arm64, local MySQL 8.1.0).
   edit with a reason. Guarded by `src/shared/utils/sqlSourceTable.spec.ts` and
   `src/mainview/tests/e2e/result-save-target.spec.ts` (script editor and custom query, each asserting
   the preview names the table and only that table's row changed).
+
+### 2026-10-26 sidebar row counts (U34)
+
+- **U34 — the count next to a table never followed its rows, and `~` was unexplained.** Reported: every
+  row of a table was deleted and the sidebar kept `~20`; "Refresh metadata" (database or table) did not
+  move the number either. Three causes:
+  - the tree row read only `TableSummary.rowCount` from the table-list query, and nothing wrote a
+    measured count back into that list — the grid knew the new count, the sidebar did not;
+  - the table-level refresh updated `TableInfo` (via `getTableInfoFresh`, which counts exactly) but the
+    tree never read it;
+  - MySQL's list count is `information_schema.tables.table_rows`, an InnoDB **estimate**, which is what
+    the `~` marks and why it stayed at 20 after a `DELETE` (InnoDB recomputes its statistics lazily).
+  Now `connections.applyTableRowCount` is the single writer of a table's sidebar count: a table load
+  (`loadSelectedTable`, so also every save, which reloads), a table metadata refresh, and any detail
+  load report it, and it updates the tree row *and* the cached list (a cache reload used to restore the
+  stale estimate). An exact count is never traded back for a later estimate (a sweep answers with the
+  estimate); a connection refresh replaces the list, so it shows fresh estimates by design. `~` keeps
+  marking estimates and now says what it means on hover (`rightTextTooltip`). Measured cost of counting
+  at list time: 191 tables 546 ms, 163 tables 394 ms, 39 tables 77 ms versus 15–19 ms for the catalog
+  alone, so the list stays on the estimate. Guarded by `useConnections.spec.ts`, the two sidebar-count
+  cases in `useQuery.spec.ts`, and `row-mutations.spec.ts` (delete all rows → `-`, insert one → `1`).
 
 ### 2026-10-26 foreign-key target suggestions (U33)
 

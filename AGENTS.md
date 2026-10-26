@@ -310,3 +310,20 @@ Suggested from the 2026-10-23 "index changes are not detected" report:
   `sqlite-modify-table.spec.ts`.
 
 
+
+Suggested from the 2026-10-26 "the sidebar count is stale" report:
+
+- **Counters are owned by the panel that measures them, and a list's number is only a fallback.** A
+  table list is answered from the database catalog (MySQL: `information_schema.tables.table_rows`, an
+  InnoDB estimate — that is what the `~` marks), so it is stale the moment rows are written and it was
+  what kept `~20` next to an emptied table. Every path that learns the real count (opening the table,
+  saving the grid, a table metadata refresh) reports it to `connections.applyTableRowCount`, the single
+  writer of the sidebar count: it patches the tree row and the cached list together, and an exact count
+  is never traded back for a later estimate. Adding a count to a new surface means routing it through
+  that writer, not reading the list again. Guarded by `useConnections.spec.ts`, `useQuery.spec.ts` and
+  `row-mutations.spec.ts` (delete every row, then insert one).
+- **An unexplained marker is a bug report waiting to happen.** `~20` is honest (an estimate), but the
+  fix is not to drop the marker: say what it means where it is shown (`rightTextTooltip`), and make it
+  disappear as soon as the exact number is known. Measure before paying for exactness: counting every
+  small table at list time cost 546 ms for 191 tables and 394 ms for 163, against 15–19 ms for the
+  catalog alone.
