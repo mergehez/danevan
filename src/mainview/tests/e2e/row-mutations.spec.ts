@@ -1,5 +1,17 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { API, MYSQL, createFileSource, createMySqlServerAndConnection, openMySqlTable, openSidebarTable, post, reloadSidebarRow, requireMySqlDatabase } from './helpers';
+import {
+    API,
+    MYSQL,
+    createFileSource,
+    createMySqlServerAndConnection,
+    menuItem,
+    openMySqlTable,
+    openSidebarRowMenu,
+    openSidebarTable,
+    post,
+    reloadSidebarRow,
+    requireMySqlDatabase,
+} from './helpers';
 
 /** The row-number gutter, then the first body row and its height, as the canvas draws them. */
 const ROW_HEADER_X = 20;
@@ -327,6 +339,88 @@ test.describe('Row mutations on MySQL', () => {
         } finally {
             await request.post(`${API}/runQuery`, { data: { connectionId: source.connectionId, sql: `DROP TABLE IF EXISTS \`${childTable}\`` } }).catch(() => {});
             await request.post(`${API}/runQuery`, { data: { connectionId: source.connectionId, sql: `DROP TABLE IF EXISTS \`${parentTable}\`` } }).catch(() => {});
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
+        }
+    });
+
+    test('keeps the sidebar row count in step with what the grid saves', async ({ page, request }) => {
+        // Reported: every row of a table was deleted, and the sidebar kept saying `~20` — it was
+        // showing the catalog estimate the list was drawn with, and nothing wrote the new count back.
+        const tableName = `e2e_count_${Date.now()}`;
+        const source = await mysqlSource(request, 'sidebar-count');
+        const rowCount = page.locator(`[data-node-id="table:${source.connectionId}:${tableName}"] [data-sidebar-right-text]`);
+
+        try {
+            await runSql(request, source.connectionId, `CREATE TABLE \`${tableName}\` (id int NOT NULL, name varchar(50), PRIMARY KEY (id))`);
+            await runSql(request, source.connectionId, `INSERT INTO \`${tableName}\` VALUES (1, 'Ada'), (2, 'Grace'), (3, 'Alan')`);
+
+            await page.goto('/');
+            await openMySqlTable(page, source, tableName);
+
+            // Opening the table counts it exactly, so the list's estimate gives way to the real
+            // number and the `~` goes with it.
+            await expect(rowCount).toHaveText('3');
+            await expect(rowCount).not.toHaveAttribute('title');
+
+            // Empty the table: three rows from the row-number gutter, one pending delete.
+            const anchor = await rowHeaderPoint(page, 0);
+            await page.mouse.click(anchor.x, anchor.y);
+            const lastRow = await rowHeaderPoint(page, 2);
+            await page.keyboard.down('Shift');
+            await page.mouse.click(lastRow.x, lastRow.y);
+            await page.keyboard.up('Shift');
+            await openRowMenu(page, 1);
+            await page.getByRole('menuitem', { name: 'Delete 3 Rows' }).click();
+            await expect(page.getByText('3 pending changes')).toBeVisible();
+
+            await saveChanges(page);
+
+            // An emptied table reports no count at all, and certainly not the estimate it started with.
+            await expect(rowCount).toHaveText('-');
+
+            // Inserting a row reports the new count just the same.
+            await page.getByTestId('grid-add-row').click();
+            const form = page.getByTestId('add-row-form');
+            await form.getByTestId('add-row-value-id').fill('4');
+            await form.getByTestId('add-row-value-name').fill('Edsger');
+            await form.getByTestId('add-row-submit').click();
+            await expect(page.getByText('1 pending change')).toBeVisible();
+
+            await saveChanges(page);
+
+            await expect(rowCount).toHaveText('1');
+        } finally {
+            await request.post(`${API}/runQuery`, { data: { connectionId: source.connectionId, sql: `DROP TABLE IF EXISTS \`${tableName}\`` } }).catch(() => {});
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
+        }
+    });
+
+    test("refreshes a table's count from its metadata menu", async ({ page, request }) => {
+        // The other half of the report: "Refresh metadata" on a table answered with fresh details
+        // (counted exactly) that the tree never read, so the number did not move.
+        const tableName = `e2e_count_refresh_${Date.now()}`;
+        const source = await mysqlSource(request, 'sidebar-count-refresh');
+        const tableRow = page.locator(`[data-node-id="table:${source.connectionId}:${tableName}"]`);
+        const rowCount = tableRow.locator('[data-sidebar-right-text]');
+
+        try {
+            await runSql(request, source.connectionId, `CREATE TABLE \`${tableName}\` (id int NOT NULL, PRIMARY KEY (id))`);
+            await runSql(request, source.connectionId, `INSERT INTO \`${tableName}\` VALUES (1), (2), (3)`);
+
+            await page.goto('/');
+            await openMySqlTable(page, source, tableName);
+            await expect(rowCount).toHaveText('3');
+
+            // Rows leave behind the app's back (a script, another client): the sidebar cannot know.
+            await runSql(request, source.connectionId, `DELETE FROM \`${tableName}\` WHERE id = 1`);
+            await expect(rowCount).toHaveText('3');
+
+            await openSidebarRowMenu(tableRow);
+            await menuItem(page, 'Refresh metadata').click();
+
+            await expect(rowCount).toHaveText('2');
+        } finally {
+            await request.post(`${API}/runQuery`, { data: { connectionId: source.connectionId, sql: `DROP TABLE IF EXISTS \`${tableName}\`` } }).catch(() => {});
             await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
         }
     });
