@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { createFileSource, openSidebarTable, post } from './helpers';
+import { createFileSource, openSidebarTable, post, useManualQueryBar } from './helpers';
 
 /**
  * The data tab's grid is one shared instance behind every tab: a custom query's rows, a staged
@@ -43,7 +43,7 @@ async function openTable(page: Page, source: Source, tableName: string) {
 
 /** Runs the data tab's custom query and waits for the answer, so the grid below is its result. */
 async function runCustomQuery(page: Page, sql: string) {
-    const customQuery = page.getByPlaceholder('select * from myTable limit 100;');
+    const customQuery = await useManualQueryBar(page);
     await customQuery.fill(sql);
 
     const queryRan = page.waitForResponse((response) => response.url().endsWith('/api/runQuery'));

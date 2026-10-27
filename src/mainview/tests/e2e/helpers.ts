@@ -420,6 +420,16 @@ export async function openMySqlTable(page: Page, source: { serverId: number; con
     await openSidebarTable(page, source.connectionId, tableName);
 }
 
+/** The data tab's query bar opens in Interactive mode; its free-text field is the Manual one. */
+export async function useManualQueryBar(page: Page) {
+    await page.getByTestId('query-bar-mode-trigger').click();
+    await page.getByTestId('query-bar-mode-manual').click();
+
+    const input = page.getByTestId('query-bar-manual-input');
+    await expect(input).toBeVisible();
+    return input;
+}
+
 /** Creates a saved script for a connection and returns its id. */
 export async function createScript(request: APIRequestContext, connectionId: number, name: string, sqlText: string) {
     const bootstrap = await post(request, 'createScript', { connectionId, name, sqlText });

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { API, createFileSource, openSidebarTable, post, reloadSidebarRow } from './helpers';
+import { API, createFileSource, openSidebarTable, post, reloadSidebarRow, useManualQueryBar } from './helpers';
 
 /** The first body cell of a one-column result set, as the canvas draws it. */
 const FIRST_COLUMN_X = 78;
@@ -134,12 +134,12 @@ test.describe('Grid toolbar', () => {
             await expect(toolbar.getByRole('button', { name: /^1-10 of 31$/ })).toBeVisible();
 
             // A custom query replaces the generated one, and its result is what the grid draws.
-            const customQuery = page.getByPlaceholder('select * from myTable limit 100;');
+            const customQuery = await useManualQueryBar(page);
             await customQuery.fill('SELECT nickname FROM people WHERE id = 4');
             await customQuery.press('Enter');
 
             await expect(toolbar.getByText('Filters are disabled. To re-enable: click the "Reset to generated query" button.')).toBeVisible();
-            await expect(toolbar.locator('button:has(i[class*="mdi--backup-restore"])')).toBeVisible();
+            await expect(page.getByTestId('query-bar-reset')).toBeVisible();
 
             // One row of one column: the cell holds `nickname 4`, which `SELECT *` would never show first.
             const viewportBox = await page.getByTestId('data-grid-viewport').boundingBox();

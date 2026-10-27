@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
-import { createFileSource, openSidebarTable, post, reloadSidebarRow } from './helpers';
+import { createFileSource, openSidebarTable, post, reloadSidebarRow, useManualQueryBar } from './helpers';
 
 /**
  * Two tables with the same shape: a `select * from people` result carries `id` and `name`, and so
@@ -142,7 +142,7 @@ test.describe('Saving an edited result', () => {
             await openTable(page, source, 'people');
             await openTable(page, source, 'accounts');
 
-            const customQuery = page.getByPlaceholder('select * from myTable limit 100;');
+            const customQuery = await useManualQueryBar(page);
             await customQuery.fill('select * from people;');
 
             // Wait for the query to come back: the grid below still shows the open table until then.
