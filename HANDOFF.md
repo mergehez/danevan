@@ -8,8 +8,9 @@ known failure or the open-task snapshot.
 Two files split the job: **this one is orientation**, `todos.md` is the task ledger (what is done, what
 is open, and what a green run proves). Git history is the changelog — do not duplicate it here.
 
-_Last verified: 2026-10-26, after the sidebar row count was wired to the rows that are measured. Before
-that today: foreign-key target suggestions; on 2026-10-25 a `_by` foreign-key column pointing at `users`;
+_Last verified: 2026-10-27, after the data tab's query bar gained its interactive control set. Before
+that today: the sidebar row count was wired to the rows that are measured. On 2026-10-26: foreign-key
+target suggestions; on 2026-10-25 a `_by` foreign-key column pointing at `users`;
 2026-10-24 database short codes (migration v3) and table-tab grouping (a row per server/database, the tag
 once on the row header); 2026-10-23 the Modify Table split, generated index/foreign-key names and the
 grid's last-column resize fix._
@@ -80,7 +81,7 @@ live in one of them unless it is keyed by the tab.
 | `_dbCoreState` (`dbCoreState.ts`) | servers, connections, scripts, `selectedServerId/ConnectionId/ScriptId`, `bootstrapVersion` | The only writer of the snapshot; `applyBootstrap` drops older versions |
 | `useSettings` (`useSettings.ts`) | `tabs`, `activeTabHash`, UI prefs, tab grouping/sort and the per-mode display orders (`tabOrders`) | Persisted in `localStorage` via `useCache` under `settings`; `tabOrdering.ts` orders a copy (and splits grouped rows) — never `tabs` itself |
 | `useNavState` (`useNavState.ts`) | Tab activation (serialized), per-script-tab runtime state (result panel, problems, history), the selection→tab watcher, closed-tab stack | Tab actions call `activateActiveTab()`; activation retries up to 5× and coalesces |
-| `useQuery` (`useQuery.ts`) | **Per tab**: rows, table metadata, selected table, grid SQL, custom query + its source SQL, editor text, result, running flag. **Shared**: `isTableDataStale` | `useQueryForTab(hash)` creates/returns a tab's state; `useQuery()` is a proxy that resolves the active tab on every read/write. Never capture it at setup and assume it is one tab. `loadSelectedTable` re-runs the custom query when the restored cache says custom mode, so a reload/save/reactivation shows the custom rows, not the base table. |
+| `useQuery` (`useQuery.ts`) | **Per tab**: rows, table metadata, selected table, grid SQL, custom query + its source SQL, editor text, result, running flag, the query bar's editor mode and its interactive draft. **Shared**: `isTableDataStale` | `useQueryForTab(hash)` creates/returns a tab's state; `useQuery()` is a proxy that resolves the active tab on every read/write. Never capture it at setup and assume it is one tab. `loadSelectedTable` re-runs the custom query when the restored cache says custom mode, so a reload/save/reactivation shows the custom rows, not the base table. `runInteractiveQuery(dialect)` builds the statement from the draft (`src/shared/utils/interactiveSelectQuery.ts`, which quotes and pages per dialect) and runs it through `runCustomQuery`, so the rows, the manual field's text and the grid's edit target are one statement; the draft is remembered per table with the text (in-memory deep watcher). The bar itself is `components/DbQueryBar.tsx`. |
 | `useConnections` (`useConnections.ts`) | Per-connection table list, per-table details cache, selection actions | Loaders are keyed and guarded; `ensureTableDetailsBatch` is the batched sweep. `applyTableRowCount` is the **only** writer of a table's sidebar count (tree row *and* cached list): a table load, a save and a table metadata refresh report there, and an exact count is never traded for the catalog estimate that `~` marks. |
 | `useServers`, `useScriptsDb`, `useDbCaches` | Server schemas, script CRUD/selection, persisted tree collapse state | All by explicit id |
 | `useGridFormatters` | Custom formatter templates + the **current context** (connection+table) | Context loads are sequence-guarded; the grid loads the context of its own table |
@@ -224,13 +225,12 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1125 unit tests (91 files)**, **162 browser tests (44 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.5 % statements / 42.1 % branches** with
-the floors green. The full browser suite ran 161 passed + 0 failed (the second sidebar-count case was
-added right after and passes with its file, and both specs were green in isolation), and that green run
-also assumes the local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine
-the precondition guards will fail loudly instead — read the message, it names what is missing. The
-dev-shell and packaged suites were not re-run after this renderer-only change.
+Snapshot at the last verification: **1143 unit tests (92 files)**, **164 browser tests (45 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.4 % statements / 42.1 % branches** with
+the floors green. The full browser suite ran 164 passed + 0 failed, and that green run also assumes the
+local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
+guards will fail loudly instead — read the message, it names what is missing. The dev-shell and packaged
+suites were not re-run after this renderer-only change.
 
 Open tasks live in `todos.md` (`## Open`): **T15** (release gate misses the Electron suites), **T19**
 (browser suite contributes no coverage; no `src/mainview` floor), **T25** (MySQL specs depend on local

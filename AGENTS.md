@@ -311,6 +311,17 @@ Suggested from the 2026-10-23 "index changes are not detected" report:
 
 
 
+Suggested from the 2026-10-27 interactive query bar:
+
+- **One panel, one statement.** The data tab's query bar has two control sets (the interactive chips
+  and the manual field) but a single result: an interactive run writes the generated SQL into
+  `customQueryText`, so the rows on screen, the text in the manual field and the table an edit is
+  written to are the same statement. The statement is built per dialect in
+  `src/shared/utils/interactiveSelectQuery.ts` — MySQL needs a LIMIT before its OFFSET, SQL Server's
+  OFFSET/FETCH needs an ORDER BY and MS Access only has TOP — and the draft lives in the tab's own
+  state (`useQuery`), never in the bar, or switching tabs would drop what the user was building.
+  Guarded by `query-bar.spec.ts` and `interactiveSelectQuery.spec.ts`.
+
 Suggested from the 2026-10-26 "the sidebar count is stale" report:
 
 - **Counters are owned by the panel that measures them, and a list's number is only a fallback.** A
