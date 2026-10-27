@@ -1,4 +1,4 @@
-import { component, ensureAllTsxProps, prevented, preventedKeys, vModel } from '#shared/utils/tsxHelpers.tsx';
+import { component, ensureAllTsxProps, prevented, vModel } from '#shared/utils/tsxHelpers.tsx';
 import { computed, effectScope, onBeforeUnmount, ref, watch, type EffectScope } from 'vue';
 import { useEditableDataGridState, type EditableDataGridState } from '../../datagrid';
 import { DataGrid } from '../../datagrid/DataGrid.tsx';
@@ -16,8 +16,8 @@ import { formatUsageRelationColumns, isFkPeekRowsView, isFkUsageListView, useFor
 import { useNavState } from '../composables/useNavState';
 import { useQuery } from '../composables/useQuery';
 import { useResultSourceTable } from '../composables/useResultSourceTable';
-import { useServers } from '../composables/useServers';
 import { DbGridToolbar } from './DbGridToolbar.tsx';
+import { DbQueryBar } from './DbQueryBar.tsx';
 import { DbSaveBar } from './DbSaveBar.tsx';
 import { MonacoEditor } from './MonacoEditor.tsx';
 
@@ -28,7 +28,6 @@ export const DbData = component(
         const settings = useDbSettings();
         const connections = useConnections();
         const query = useQuery();
-        const servers = useServers();
         // Declared with the other state: the grid below reads the active tab in its own setup.
         const navState = useNavState();
 
@@ -107,11 +106,7 @@ export const DbData = component(
             selectedTableName: computed(() => query.selectedTableName),
             ensureTableDetails: (connectionId, tableName) => connections.ensureTableDetails(connectionId, tableName),
             getTableInfo: (connectionId, tableName) => connections.getTableDetailsState(connectionId, tableName).info,
-            getSqlDialect: (connectionId) => {
-                const connection = connections.connections.find((entry) => entry.id === connectionId);
-                const server = servers.servers.find((entry) => entry.id === connection?.server_id);
-                return server?.driver || 'sqlite';
-            },
+            getSqlDialect: (connectionId) => connections.getConnectionDialect(connectionId),
         });
         const customQuerySourceTable = useResultSourceTable({
             connectionId: () => query.loadedConnectionId,
@@ -414,37 +409,7 @@ export const DbData = component(
                             <div class="border border-x4 bg-x2 px-3 py-2 text-xs text-reverse">Loading table data...</div>
                         </div>
                     ) : null}
-                    {query.selectedTableName ? (
-                        <div class="flex items-center gap-2 border-b border-x4 bg-x0 px-2 py-1">
-                            <div class="flex-1 min-w-0">
-                                <input
-                                    value={query.customQueryText}
-                                    onInput={(e: any) => query.setCustomQueryText(e.target.value)}
-                                    placeholder="select * from myTable limit 100;"
-                                    onKeydown={preventedKeys(() => query.runCustomQuery(), ['enter'])}
-                                    class="w-full border border-x4 bg-x1 px-2 py-1 text-xs font-mono outline-none transition focus:border-x5"
-                                />
-                            </div>
-                            {query.isCustomQueryMode ? (
-                                <IconButton
-                                    icon="icon-[mdi--backup-restore]"
-                                    v-tooltip={{ value: 'Reset to generated query', xs: true, nowrap: true }}
-                                    smaller={true}
-                                    severity="secondary"
-                                    onClick={() => query.clearCustomQuery()}
-                                />
-                            ) : null}
-                            <IconButton
-                                icon="icon-[mdi--play]"
-                                v-tooltip={{ value: 'Run query', xs: true, nowrap: true }}
-                                smaller={true}
-                                severity="primary"
-                                disabled={!query.customQueryText.trim() || query.isRunningQuery}
-                                onClick={() => query.runCustomQuery()}
-                            />
-                            {/* /> */}
-                        </div>
-                    ) : null}
+                    {query.selectedTableName ? <DbQueryBar /> : null}
                     <div class={['h-full w-full flex flex-col overflow-auto', isLoading.value ? 'pointer-events-none opacity-60' : '']}>
                         <DataGrid
                             state={dataGridState}
