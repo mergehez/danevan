@@ -2,6 +2,7 @@
 // table does not have (renamed/dropped columns behind a stale layout), and a
 // database rejection of the ordered column must not fail the grid.
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { nextTick } from 'vue';
 
 type TableDetailsState = { loaded: boolean; loading: boolean; info?: { columns: Array<{ name: string }> } };
 
@@ -213,5 +214,80 @@ describe('loadSelectedTable order by', () => {
         expect(query.isCustomQueryMode).toBe(false);
         expect(runQuery).not.toHaveBeenCalled();
         expect(query.tableData.rows).toEqual([{ id: 1 }]);
+    });
+});
+
+describe('interactive query bar state', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        holders.tableDetails = {};
+        holders.fetchedInfo = { columns: [{ name: 'id' }, { name: 'email' }] };
+        holders.getTableData = { run: vi.fn(async () => tableDataResult([])) };
+        holders.applyTableRowCount = vi.fn();
+    });
+
+    it('starts on the table columns and the grid row limit', async () => {
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        expect(query.customQueryEditorMode).toBe('interactive');
+        expect(query.interactiveDraft).toMatchObject({ selectMode: 'all', columns: ['id', 'email'], limit: 100, offset: '', where: [] });
+    });
+
+    it('runs the statement its controls describe and keeps it as the grid target', async () => {
+        const runQuery = vi.fn();
+        const { tasks } = await import('../../composables/useTasks');
+        (tasks.runQuery as { run: unknown }).run = runQuery;
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        query.interactiveDraft.selectMode = 'custom';
+        query.interactiveDraft.columns = ['email'];
+        query.interactiveDraft.where = ['id = 2'];
+        query.interactiveDraft.orderBy = [{ column: 'email', direction: 'DESC' }];
+        query.interactiveDraft.limit = 10;
+        query.interactiveDraft.offset = 5;
+
+        expect(query.buildInteractiveQuerySql('sqlite')).toBe('SELECT "email" FROM "logins" WHERE (id = 2) ORDER BY "email" DESC LIMIT 10 OFFSET 5');
+
+        await query.runInteractiveQuery('sqlite');
+
+        expect(runQuery).toHaveBeenCalledWith({ connectionId: 1, sql: 'SELECT "email" FROM "logins" WHERE (id = 2) ORDER BY "email" DESC LIMIT 10 OFFSET 5' });
+        expect(query.customQueryText).toBe('SELECT "email" FROM "logins" WHERE (id = 2) ORDER BY "email" DESC LIMIT 10 OFFSET 5');
+    });
+
+    it('remembers the controls per table, so switching tabs does not drop them', async () => {
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        query.interactiveDraft.where = ['id = 2'];
+        await nextTick();
+
+        query.selectedTableName = 'users';
+        await query.loadSelectedTable(1, 'users');
+        expect(query.interactiveDraft.where).toEqual([]);
+
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+        expect(query.interactiveDraft.where).toEqual(['id = 2']);
+    });
+
+    it('resets the controls to the generated query', async () => {
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        query.interactiveDraft.where = ['id = 2'];
+        query.interactiveDraft.selectMode = 'custom';
+        query.interactiveDraft.columns = ['email'];
+
+        query.clearCustomQuery();
+        await nextTick();
+
+        expect(query.interactiveDraft).toMatchObject({ selectMode: 'all', columns: ['id', 'email'], where: [] });
     });
 });

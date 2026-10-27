@@ -1,6 +1,7 @@
-import { reactive, ref } from 'vue';
+import { effectScope, reactive, ref, watch, type EffectScope } from 'vue';
 import { clearPersistedGridSort, isInvalidSortColumnError, readPersistedGridSort } from '../../datagrid/dataGridLayoutStorage';
-import type { QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateColumnParams } from '../../shared/types';
+import type { DbType, QueryExecutionResult, TableData, TableInfo, TableSummary, UpdateColumnParams } from '../../shared/types';
+import { buildInteractiveSelectSql, cloneInteractiveSelectDraft, createInteractiveSelectDraft, type InteractiveSelectDraft } from '../../shared/utils/interactiveSelectQuery';
 import { splitSqlStatements } from '../../shared/utils/sqlStatements';
 import { useConnections } from './useConnections';
 import { useDbSettings } from './useDbSettings';
@@ -16,6 +17,17 @@ type SortOrder = {
 type LoadSelectedTableOptions = {
     offset?: number;
     orderBy?: SortOrder;
+};
+
+/** Which control set the data tab's query bar shows. */
+export type CustomQueryEditorMode = 'interactive' | 'manual';
+
+type CustomQueryCacheEntry = {
+    text: string;
+    isCustomQueryMode: boolean;
+    sourceSql?: string;
+    editorMode: CustomQueryEditorMode;
+    draft: InteractiveSelectDraft;
 };
 
 /**
@@ -53,11 +65,14 @@ export function _useQuery() {
     const customQuerySourceSql = ref(undefined as string | undefined);
     /** SQL returned by the backend for the current grid view. */
     const gridQueryText = ref('');
+    const customQueryEditorMode = ref<CustomQueryEditorMode>('interactive');
+    /** The interactive bar's controls; turned into SQL only when the query is run. */
+    const interactiveDraft = ref(createInteractiveSelectDraft());
 
-    // Per-table cache of the custom query text + custom-query mode, so a user's
-    // custom query is restored when they return to a table. Written explicitly by
-    // the paths that change it instead of by a watcher on the refs.
-    const customQueryCache: Record<string, { text: string; isCustomQueryMode: boolean; sourceSql?: string }> = {};
+    // Per-table cache of the custom query (typed text, generated interactive draft, the mode it
+    // was run in), so returning to a table restores what its panel was showing. Written explicitly
+    // by the paths that change them instead of by a watcher on the refs.
+    const customQueryCache: Record<string, CustomQueryCacheEntry> = {};
     /** Incremented per table load; only the newest load may apply its result. */
     let loadSequence = 0;
 
@@ -75,8 +90,14 @@ export function _useQuery() {
             text: customQueryText.value,
             isCustomQueryMode: isCustomQueryMode.value,
             sourceSql: customQuerySourceSql.value,
+            editorMode: customQueryEditorMode.value,
+            draft: cloneInteractiveSelectDraft(interactiveDraft.value),
         };
     }
+
+    // Draft edits are unrun state: they belong to the table too, or switching tabs (which reloads
+    // the table) would silently drop the filters the user was building.
+    watch([interactiveDraft, customQueryEditorMode], rememberCustomQuery, { deep: true });
 
     function setCustomQueryText(text: string) {
         customQueryText.value = text;
@@ -126,6 +147,27 @@ export function _useQuery() {
         }
     }
 
+    /** The statement the interactive bar's controls describe right now, for its popover previews. */
+    function buildInteractiveQuerySql(dialect: DbType) {
+        return buildInteractiveSelectSql({ tableName: selectedTableName.value, draft: interactiveDraft.value, dialect });
+    }
+
+    /**
+     * Runs what the interactive controls describe. The statement is built here rather than in the
+     * panel so the rows on screen, the text in the manual field and the grid's edit target are all
+     * the same statement.
+     */
+    async function runInteractiveQuery(dialect: DbType) {
+        const sql = buildInteractiveQuerySql(dialect);
+
+        if (!sql) {
+            return;
+        }
+
+        customQueryText.value = sql;
+        await runCustomQuery();
+    }
+
     async function loadSelectedTable(connectionId: number, tableName: string, options?: LoadSelectedTableOptions) {
         // Only the newest load may write: an older table's slow response used to land after a newer
         // one and show the previous table's rows under the new table's name.
@@ -172,6 +214,15 @@ export function _useQuery() {
             customQueryText.value = cachedCustomQuery?.text ?? gridQueryText.value;
             isCustomQueryMode.value = cachedCustomQuery?.isCustomQueryMode ?? false;
             customQuerySourceSql.value = cachedCustomQuery?.sourceSql;
+            customQueryEditorMode.value = cachedCustomQuery?.editorMode ?? 'interactive';
+            // The draft names this table's columns: a restored one is the user's own filters, a
+            // new one starts on every column with the grid's own row limit.
+            interactiveDraft.value = cachedCustomQuery?.draft
+                ? cloneInteractiveSelectDraft(cachedCustomQuery.draft)
+                : createInteractiveSelectDraft({
+                      columns: tableInfo2.columns.map((column) => column.name),
+                      limit: settings.state.queryRowLimit,
+                  });
             tableInfo.value = tableInfo2;
             tableData.value = tableData2;
             isTableDataStale.value = false;
@@ -196,6 +247,7 @@ export function _useQuery() {
             customQueryText.value = '';
             isCustomQueryMode.value = false;
             customQuerySourceSql.value = undefined;
+            interactiveDraft.value = createInteractiveSelectDraft({ limit: settings.state.queryRowLimit });
             tableInfo.value = undefined;
             tableData.value = getEmptyTableData();
         } finally {
@@ -312,6 +364,9 @@ export function _useQuery() {
         /** The statement the custom query last ran; names the table an edit is written to. */
         customQuerySourceSql: customQuerySourceSql,
         gridQueryText: gridQueryText,
+        /** Which control set the query bar shows; the interactive one is the default. */
+        customQueryEditorMode: customQueryEditorMode,
+        interactiveDraft: interactiveDraft,
         isLoadingTables: isLoadingTables,
         isLoadingSelectedTable: isLoadingSelectedTable,
         isRunningQuery: isRunningQuery,
@@ -392,6 +447,8 @@ export function _useQuery() {
             }
         },
         runCustomQuery: runCustomQuery,
+        buildInteractiveQuerySql: buildInteractiveQuerySql,
+        runInteractiveQuery: runInteractiveQuery,
         setCustomQueryText: setCustomQueryText,
         clearCustomQuery() {
             const connId = loadedConnectionId.value;
@@ -404,6 +461,11 @@ export function _useQuery() {
             customQueryText.value = '';
             isCustomQueryMode.value = false;
             customQuerySourceSql.value = undefined;
+            // The controls go back to the table they name, not to the previous table's filters.
+            interactiveDraft.value = createInteractiveSelectDraft({
+                columns: tableInfo.value?.columns.map((column) => column.name) ?? [],
+                limit: settings.state.queryRowLimit,
+            });
             rememberCustomQuery();
 
             if (connId && tableName) {
@@ -423,7 +485,10 @@ export function _useQuery() {
 export type TQueryState = ReturnType<typeof _useQuery>;
 
 const queryStatesByTabHash = new Map<string, TQueryState>();
+/** One scope per state: the store's watchers must stop with the tab that owns them. */
+const queryScopesByTabHash = new Map<string, EffectScope>();
 let detachedQueryState: TQueryState | undefined;
+let detachedQueryScope: EffectScope | undefined;
 
 /**
  * The query state a tab owns: created on first use and kept while the tab is open, so two tabs can
@@ -433,15 +498,21 @@ let detachedQueryState: TQueryState | undefined;
  */
 export function useQueryForTab(tabHash: string | undefined): TQueryState {
     if (!tabHash) {
-        detachedQueryState ??= _useQuery();
+        if (!detachedQueryState) {
+            detachedQueryScope = effectScope(true);
+            detachedQueryState = detachedQueryScope.run(() => _useQuery())!;
+        }
+
         return detachedQueryState;
     }
 
     let state = queryStatesByTabHash.get(tabHash);
 
     if (!state) {
-        state = _useQuery();
+        const scope = effectScope(true);
+        state = scope.run(() => _useQuery())!;
         queryStatesByTabHash.set(tabHash, state);
+        queryScopesByTabHash.set(tabHash, scope);
     }
 
     return state;
@@ -472,6 +543,9 @@ export function markQueryTextSeeded(tabHash: string | undefined) {
 
 export function dropQueryStateForTab(tabHash: string) {
     queryStatesByTabHash.delete(tabHash);
+    // The state's own watchers keep its rows reachable until the scope stops.
+    queryScopesByTabHash.get(tabHash)?.stop();
+    queryScopesByTabHash.delete(tabHash);
     seededTextTabs.delete(tabHash);
 }
 
@@ -489,6 +563,13 @@ export function moveQueryStateForTab(fromHash: string, toHash: string) {
 
     queryStatesByTabHash.set(toHash, state);
     queryStatesByTabHash.delete(fromHash);
+
+    const scope = queryScopesByTabHash.get(fromHash);
+
+    if (scope) {
+        queryScopesByTabHash.set(toHash, scope);
+        queryScopesByTabHash.delete(fromHash);
+    }
 
     if (seededTextTabs.delete(fromHash)) {
         seededTextTabs.add(toHash);

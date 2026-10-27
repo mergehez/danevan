@@ -1,5 +1,5 @@
 import { reactive } from 'vue';
-import type { ConnectionSchemaCache, CreateConnectionParams, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
+import type { ConnectionSchemaCache, CreateConnectionParams, DbType, TableInfo, TableSummary, UpdateConnectionParams } from '../../shared/types';
 import { resolveDbAppearance } from '../../shared/utils/dbAppearance';
 import { _dbCoreState } from '../composables/dbCoreState';
 import { useDbCaches } from '../composables/useDbCaches';
@@ -328,6 +328,13 @@ export function _useConnections() {
             state.runSqlScriptModal.visible = false;
             state.runSqlScriptModal.connectionId = -1;
             state.runSqlScriptModal.scriptPath = '';
+        },
+        /** The SQL dialect a connection's server speaks; the query bars and the grid quote with it. */
+        getConnectionDialect(connectionId: number | undefined): DbType {
+            const connection = connectionId === undefined ? undefined : _dbCoreState.connections.find((entry) => entry.id === connectionId);
+            const server = _dbCoreState.servers.find((entry) => entry.id === connection?.server_id);
+
+            return server?.driver || 'sqlite';
         },
         /** The tag a tab shows for this connection: file sources carry both on their server row. */
         getConnectionAppearance(connectionId: number | undefined) {
