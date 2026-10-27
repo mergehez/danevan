@@ -44,21 +44,26 @@ export const DbData = component(
         const pageRangeEnd = computed(() => (currentPageRowCount.value > 0 ? currentPageOffset.value + currentPageRowCount.value : 0));
         const canGoToPreviousPage = computed(() => currentPageOffset.value > 0 && !isLoading.value);
         const canGoToNextPage = computed(() => !isLoading.value && !isUnlimitedDataLimit.value && pageRangeEnd.value < totalRowCount.value);
-        const pageSizeMenuOptions = computed(() =>
-            PAGE_SIZE_OPTIONS.map((value) => ({
-                value,
-                label: value < 0 ? 'All' : String(value),
-                isDefault: value === DEFAULT_PAGE_SIZE,
-            }))
-        );
+        const pageSizeMenuOptions = computed(() => {
+            // The bar's LIMIT can be any number; a page size the fixed list does not name must still
+            // be listed, or the menu would show no selection while the grid pages by it.
+            const values = new Set<number>(PAGE_SIZE_OPTIONS);
+
+            if (settings.state.queryRowLimit > 0) {
+                values.add(settings.state.queryRowLimit);
+            }
+
+            return [...values]
+                .sort((left, right) => (left < 0 ? 1 : right < 0 ? -1 : left - right))
+                .map((value) => ({
+                    value,
+                    label: value < 0 ? 'All' : String(value),
+                    isDefault: value === DEFAULT_PAGE_SIZE,
+                }));
+        });
 
         async function applyDataLimit(limit: number) {
-            await settings.setQueryRowLimit(limit);
-
-            const connId = query.loadedConnectionId;
-            if (connId && query.selectedTableName) {
-                await query.loadSelectedTable(connId, query.selectedTableName, { offset: 0, orderBy: orderBy.value });
-            }
+            await query.setPageLimit(limit, orderBy.value);
         }
 
         async function selectPageSize(limit: number) {
@@ -80,11 +85,8 @@ export const DbData = component(
                 return;
             }
 
-            const connId = query.loadedConnectionId;
             const nextOffset = Math.max(0, currentPageOffset.value - Math.max(currentPageLimit.value, 1));
-            if (connId && query.selectedTableName) {
-                await query.loadSelectedTable(connId, query.selectedTableName, { offset: nextOffset, orderBy: orderBy.value });
-            }
+            await query.setPageOffset(nextOffset, orderBy.value);
         }
 
         async function goToNextPage() {
@@ -92,11 +94,8 @@ export const DbData = component(
                 return;
             }
 
-            const connId = query.loadedConnectionId;
             const nextOffset = currentPageOffset.value + Math.max(currentPageLimit.value, 1);
-            if (connId && query.selectedTableName) {
-                await query.loadSelectedTable(connId, query.selectedTableName, { offset: nextOffset, orderBy: orderBy.value });
-            }
+            await query.setPageOffset(nextOffset, orderBy.value);
         }
 
         const hasResultColumns = computed(() => (query.tableData?.columns.length ?? 0) > 0);
@@ -242,6 +241,12 @@ export const DbData = component(
             const sort = currentSort.value;
             if (!sort) return undefined;
             return { column: sort.columnName, direction: sort.direction === 'asc' ? 'ASC' : 'DESC' } as const;
+        });
+
+        // A header sort that only repaints the loaded page (its context menu) never fetches rows, so
+        // the query bar's ORDER BY would keep naming the previous one.
+        watch(currentSort, (sort) => {
+            query.syncInteractiveOrderBy(sort ? { column: sort.columnName, direction: sort.direction === 'asc' ? 'ASC' : 'DESC' } : undefined);
         });
 
         // The grid calls onSortChange when the user clicks a column header.

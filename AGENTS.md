@@ -320,6 +320,10 @@ Suggested from the 2026-10-27 interactive query bar:
   `src/shared/utils/interactiveSelectQuery.ts` — MySQL needs a LIMIT before its OFFSET, SQL Server's
   OFFSET/FETCH needs an ORDER BY and MS Access only has TOP — and the draft lives in the tab's own
   state (`useQuery`), never in the bar, or switching tabs would drop what the user was building.
+  Its LIMIT and OFFSET are the grid's page size and page — the toolbar's page-size menu, paging and
+  the bar call the same `setPageLimit`/`setPageOffset`, and a load mirrors the loaded page and sort
+  back into the controls — so the two never state different pages. ORDER BY also mirrors a header
+  sort that only repaints the loaded page (its context menu) instead of refetching.
   Guarded by `query-bar.spec.ts` and `interactiveSelectQuery.spec.ts`.
 
 Suggested from the 2026-10-26 "the sidebar count is stale" report:

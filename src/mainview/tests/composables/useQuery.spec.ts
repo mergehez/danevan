@@ -11,6 +11,8 @@ const holders = vi.hoisted(() => ({
     fetchedInfo: undefined as TableDetailsState['info'],
     getTableData: undefined as unknown as { run: (params: Record<string, unknown>) => Promise<unknown> },
     applyTableRowCount: undefined as unknown as Mock<(...args: unknown[]) => void>,
+    /** The row limit a new settings store starts on, as the app DB would answer. */
+    rowLimit: 100,
 }));
 
 vi.mock('../../composables/useConnections', async () => {
@@ -41,7 +43,18 @@ vi.mock('../../composables/useConnections', async () => {
 vi.mock('../../composables/useDbSettings', async () => {
     const { reactive } = await import('vue');
 
-    return { useDbSettings: () => ({ state: reactive({ queryRowLimit: 100 }) }) };
+    return {
+        useDbSettings: () => {
+            const state = reactive({ queryRowLimit: holders.rowLimit });
+
+            return {
+                state,
+                setQueryRowLimit: async (limit: number) => {
+                    state.queryRowLimit = limit;
+                },
+            };
+        },
+    };
 });
 
 vi.mock('../../composables/useTasks', () => ({
@@ -222,6 +235,7 @@ describe('interactive query bar state', () => {
         localStorage.clear();
         holders.tableDetails = {};
         holders.fetchedInfo = { columns: [{ name: 'id' }, { name: 'email' }] };
+        holders.rowLimit = 100;
         holders.getTableData = { run: vi.fn(async () => tableDataResult([])) };
         holders.applyTableRowCount = vi.fn();
     });
@@ -289,5 +303,103 @@ describe('interactive query bar state', () => {
         await nextTick();
 
         expect(query.interactiveDraft).toMatchObject({ selectMode: 'all', columns: ['id', 'email'], where: [] });
+    });
+
+    it('mirrors the page and sort the grid loaded into the controls', async () => {
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
+        holders.getTableData = {
+            run: vi.fn(async (params: Record<string, any>) => ({ ...tableDataResult([{ id: 1 }]), limit: params.limit, offset: params.offset })),
+        };
+        persistSort('id');
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins', { offset: 10 });
+
+        // The toolbar shows page size 100 at offset 10, sorted by id DESC: the bar says the same.
+        expect(query.interactiveDraft).toMatchObject({ limit: 100, offset: 10, orderBy: [{ column: 'id', direction: 'DESC' }] });
+        expect(query.buildInteractiveQuerySql('sqlite')).toBe('SELECT * FROM "logins" ORDER BY "id" DESC LIMIT 100 OFFSET 10');
+    });
+
+    it('leaves a hand-built multi-column order alone when the grid reloads', async () => {
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }, { name: 'email' }] } };
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        query.interactiveDraft.orderBy = [
+            { column: 'email', direction: 'DESC' },
+            { column: 'id', direction: 'ASC' },
+        ];
+        await query.loadSelectedTable(1, 'logins');
+
+        expect(query.interactiveDraft.orderBy).toHaveLength(2);
+    });
+
+    it('mirrors a sort the grid applied without fetching rows', async () => {
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        query.syncInteractiveOrderBy({ column: 'email', direction: 'ASC' });
+        expect(query.interactiveDraft.orderBy).toEqual([{ column: 'email', direction: 'ASC' }]);
+
+        query.syncInteractiveOrderBy(undefined);
+        expect(query.interactiveDraft.orderBy).toEqual([]);
+    });
+
+    it('keeps the page size and the limit field the same number', async () => {
+        const run = vi.fn(async (params: Record<string, any>) => ({ ...tableDataResult([]), limit: params.limit, offset: params.offset }));
+        holders.getTableData = { run };
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        await query.setPageLimit(25);
+
+        expect(run).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 25, offset: 0 }));
+        expect(query.interactiveDraft.limit).toBe(25);
+        expect(query.buildInteractiveQuerySql('sqlite')).toBe('SELECT * FROM "logins" LIMIT 25');
+    });
+
+    it('pages from the offset field, and reports the page it loads', async () => {
+        const run = vi.fn(async (params: Record<string, any>) => ({ ...tableDataResult([]), limit: params.limit, offset: params.offset }));
+        holders.getTableData = { run };
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        await query.setPageOffset(20);
+
+        expect(run).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 100, offset: 20 }));
+        expect(query.interactiveDraft.offset).toBe(20);
+    });
+
+    it('keeps the paging of a restored custom query instead of the base page', async () => {
+        holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
+        holders.getTableData = {
+            run: vi.fn(async () => ({ ...tableDataResult([{ id: 1 }, { id: 2 }]), sql: 'SELECT * FROM "logins" LIMIT 100 OFFSET 0' })),
+        };
+        const runQuery = vi.fn(async () => ({ kind: 'rows', columns: ['id'], rows: [{ id: 2 }], columnStats: {} }));
+        const { tasks } = await import('../../composables/useTasks');
+        (tasks.runQuery as { run: unknown }).run = runQuery;
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+
+        query.interactiveDraft.where = ['id = 2'];
+        query.interactiveDraft.limit = 5;
+        await query.runInteractiveQuery('sqlite');
+        expect(query.isCustomQueryMode).toBe(true);
+
+        // A reload (save, tab activation) restores the custom rows and their own controls.
+        await query.loadSelectedTable(1, 'logins');
+
+        expect(query.isCustomQueryMode).toBe(true);
+        expect(query.interactiveDraft).toMatchObject({ where: ['id = 2'], limit: 5, offset: '' });
     });
 });

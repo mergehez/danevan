@@ -260,6 +260,29 @@ export const DbQueryBar = component(
             }
         }
 
+        /**
+         * While the grid shows its own query, its page size and page are this number in the toolbar
+         * too, so editing it reloads the grid instead of leaving the two controls disagreeing. Once
+         * a custom query is running the toolbar's paging is gone and the draft only applies on Run.
+         */
+        function setLimit(value: string) {
+            const limit = looseToNumber(value);
+            draft.value.limit = limit;
+
+            if (!query.isCustomQueryMode) {
+                void query.setPageLimit(typeof limit === 'number' ? limit : -1);
+            }
+        }
+
+        function setOffset(value: string) {
+            const offset = looseToNumber(value);
+            draft.value.offset = offset;
+
+            if (!query.isCustomQueryMode) {
+                void query.setPageOffset(typeof offset === 'number' ? offset : 0);
+            }
+        }
+
         function toggleOrderDirection(index: number) {
             const clause = draft.value.orderBy[index];
 
@@ -522,7 +545,7 @@ export const DbQueryBar = component(
                                 min="0"
                                 placeholder="all"
                                 value={draft.value.limit}
-                                onChange={(event: any) => (draft.value.limit = looseToNumber(event.target.value))}
+                                onChange={(event: any) => setLimit(event.target.value)}
                                 onKeydown={preventedKeys(runOnEnter, ['enter'])}
                                 class={NUMBER_CLASS}
                             />
@@ -535,7 +558,7 @@ export const DbQueryBar = component(
                                 min="0"
                                 placeholder="0"
                                 value={draft.value.offset}
-                                onChange={(event: any) => (draft.value.offset = looseToNumber(event.target.value))}
+                                onChange={(event: any) => setOffset(event.target.value)}
                                 onKeydown={preventedKeys(runOnEnter, ['enter'])}
                                 class={NUMBER_CLASS}
                             />

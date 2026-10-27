@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createFileSource, openSidebarTable, reloadSidebarRow } from './helpers';
+import { DATA_GRID_HEADER_HEIGHT } from '../../../datagrid/dataGrid';
+import { createFileSource, gridCellPoint, menuItem, openSidebarTable, reloadSidebarRow, API, post } from './helpers';
 
 /**
  * The data tab's query bar has two control sets: Manual is the free-text field it always had, and
@@ -67,12 +68,100 @@ async function closeChip(page: Page, chip: 'columns' | 'where' | 'order') {
     await expect(page.getByTestId(`query-bar-${chip}-panel`)).toHaveCount(0);
 }
 
+/** Types a page size into the bar and waits for the grid it reloads at that size. */
+async function setBarLimit(page: Page, limit: string) {
+    const reloaded = page.waitForResponse((response) => response.url().endsWith('/api/getTableData'));
+    const input = page.getByTestId('query-bar-limit');
+    await input.fill(limit);
+    await input.blur();
+    await reloaded;
+    await expect(input).toHaveValue(limit);
+}
+
+/** Types an offset into the bar and waits for the page it loads. */
+async function setBarOffset(page: Page, offset: string) {
+    const reloaded = page.waitForResponse((response) => response.url().endsWith('/api/getTableData'));
+    const input = page.getByTestId('query-bar-offset');
+    await input.fill(offset);
+    await input.blur();
+    await reloaded;
+    await expect(input).toHaveValue(offset);
+}
+
 test.describe('Query bar', () => {
-    test('builds a query from chips, limit and offset and runs it', async ({ page, request }) => {
-        const source = await createFileSource(request, { label: 'query-bar', schema: SCHEMA });
+    test('stays on the page, sort and page size the grid toolbar is showing', async ({ page, request }) => {
+        const source = await createFileSource(request, { label: 'query-bar-sync', schema: SCHEMA });
+        // The page size is persisted (and the bar writes it), so the spec restores the machine's.
+        const originalSettings = await post(request, 'getEditorSettings', undefined);
 
         try {
             await openPeopleTable(page, source);
+
+            const toolbar = page.locator('#dbdatapanel');
+            const pageSizeButton = () => toolbar.getByRole('button', { name: /^\d+-\d+ of \d+$/ });
+            const limitInput = page.getByTestId('query-bar-limit');
+            const offsetInput = page.getByTestId('query-bar-offset');
+
+            // The page size the toolbar pages by is the number the bar shows.
+            await pageSizeButton().click();
+            await page.getByTestId('grid-page-size-menu').getByRole('button', { name: /^10\b/ }).click();
+            await expect(pageSizeButton()).toHaveText(/^1-10\s*of\s*30$/);
+            await expect(limitInput).toHaveValue('10');
+
+            // Paging moves the bar's OFFSET with it (and back to 0 on the first page).
+            const nextPage = page.waitForResponse((response) => response.url().endsWith('/api/getTableData'));
+            await toolbar.locator('button:has(i[class*="mdi--chevron-right"])').click();
+            await nextPage;
+            await expect(offsetInput).toHaveValue('10');
+
+            // And an offset typed into the bar loads that page, which the toolbar then reports.
+            await setBarOffset(page, '20');
+            await expect(pageSizeButton()).toHaveText(/^21-30\s*of\s*30$/);
+
+            // A header click sorts (and reloads); the bar's ORDER BY is that sort. Column 3 is `age`.
+            const point = await gridCellPoint(page, 3);
+            const sorted = page.waitForResponse((response) => response.url().endsWith('/api/getTableData'));
+            await page.mouse.click(point.x, point.viewportTop + DATA_GRID_HEADER_HEIGHT / 2);
+            await sorted;
+            await expect(offsetInput).toHaveValue('');
+            await expect(page.getByTestId('query-bar-order-trigger')).toHaveText(/order by\s*1/);
+
+            await openChip(page, 'order');
+            await expect(page.getByTestId('query-bar-order-column-0').locator('select')).toHaveValue('age');
+            await expect(page.getByTestId('query-bar-order-direction-0').locator('select')).toHaveValue('DESC');
+            await expect(page.getByTestId('query-bar-sql-preview')).toHaveText('SELECT * FROM "people" ORDER BY "age" DESC LIMIT 10');
+            await closeChip(page, 'order');
+
+            // The header's own menu sorts without fetching rows, and the bar follows that too.
+            await page.mouse.click(point.x, point.viewportTop + DATA_GRID_HEADER_HEIGHT / 2, { button: 'right' });
+            await menuItem(page, 'Order By Asc').click();
+            await openChip(page, 'order');
+            await expect(page.getByTestId('query-bar-order-direction-0').locator('select')).toHaveValue('ASC');
+            await closeChip(page, 'order');
+
+            // And a page size typed into the bar is what the toolbar pages by.
+            await setBarLimit(page, '20');
+            await expect(pageSizeButton()).toHaveText(/^1-20\s*of\s*30$/);
+
+            await pageSizeButton().click();
+            await expect(page.getByTestId('grid-page-size-menu').getByRole('button', { name: /^20\b/ })).toBeVisible();
+        } finally {
+            await request.post(`${API}/updateEditorSettings`, { data: { settings: originalSettings } }).catch(() => {});
+            await source.cleanup();
+        }
+    });
+
+    test('builds a query from chips, limit and offset and runs it', async ({ page, request }) => {
+        const source = await createFileSource(request, { label: 'query-bar', schema: SCHEMA });
+        const originalSettings = await post(request, 'getEditorSettings', undefined);
+
+        try {
+            await openPeopleTable(page, source);
+
+            // The whole table fits one page, so the row counts below are the table's, not the page's.
+            if ((await page.getByTestId('query-bar-limit').inputValue()) !== '100') {
+                await setBarLimit(page, '100');
+            }
 
             // Interactive is the mode the bar opens in, and its statement is the table's own.
             await expect(page.getByTestId('query-bar-mode-trigger')).toContainText('Interactive');
@@ -124,26 +213,34 @@ test.describe('Query bar', () => {
             await openChip(page, 'order');
             await page.getByTestId('query-bar-order-direction-0').locator('select').selectOption('DESC');
             await closeChip(page, 'order');
+            // A custom query is running, so its page has no toolbar paging: these two only change the
+            // statement that Run will send.
             await page.getByTestId('query-bar-limit').fill('5');
             await page.getByTestId('query-bar-offset').fill('2');
+            await expect(page.getByTestId('query-bar-limit')).toHaveValue('5');
+            await expect(page.getByTestId('query-bar-offset')).toHaveValue('2');
 
             await runInteractiveQuery(page);
             // Newest first, skipping the first two rows of the filter: 30, 29 then 28.
             await expectResultRowCount(page, 5);
             await expect.poll(() => firstCellValue(page)).toBe('name 28');
 
-            // Reset drops the custom query and puts the controls back on the generated one.
+            // Reset drops the custom query and puts the controls back on the generated one, which
+            // pages by the grid's own page size again.
             const tableReloaded = page.waitForResponse((response) => response.url().endsWith('/api/getTableData'));
             await page.getByTestId('query-bar-reset').click();
             await tableReloaded;
 
             await expect(page.getByTestId('query-bar-columns-trigger')).toContainText('*');
+            await expect(page.getByTestId('query-bar-limit')).toHaveValue('100');
+            await expect(page.getByTestId('query-bar-offset')).toHaveValue('');
             await openChip(page, 'where');
             await expect(page.getByTestId('query-bar-where-0')).toHaveCount(0);
-            await expect(page.getByTestId('query-bar-sql-preview')).toHaveText(`SELECT * FROM "people"${limitClause}`);
+            await expect(page.getByTestId('query-bar-sql-preview')).toHaveText('SELECT * FROM "people" LIMIT 100');
             await closeChip(page, 'where');
             await expect.poll(() => firstCellValue(page)).toBe('1');
         } finally {
+            await request.post(`${API}/updateEditorSettings`, { data: { settings: originalSettings } }).catch(() => {});
             await source.cleanup();
         }
     });

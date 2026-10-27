@@ -168,6 +168,33 @@ export function _useQuery() {
         await runCustomQuery();
     }
 
+    /**
+     * Mirrors a sort the grid was given into the bar. A header sort that reloads also syncs through
+     * the load; this covers the ones that only repaint the loaded page (the header menu).
+     */
+    function syncInteractiveOrderBy(orderBy: SortOrder | undefined) {
+        if (isCustomQueryMode.value) {
+            return;
+        }
+
+        const draft = interactiveDraft.value;
+
+        // A hand-built multi-column order is the user's own draft and the grid cannot show it.
+        if (draft.orderBy.length > 1) {
+            return;
+        }
+
+        draft.orderBy = orderBy ? [{ column: orderBy.column, direction: orderBy.direction }] : [];
+    }
+
+    /** Points the bar's paging and sort at the page the grid just loaded; the toolbar shows the same. */
+    function syncDraftWithLoadedPage(tableData: TableData, orderBy: SortOrder | undefined) {
+        const draft = interactiveDraft.value;
+        draft.limit = tableData.limit < 0 ? '' : tableData.limit;
+        draft.offset = tableData.offset > 0 ? tableData.offset : '';
+        syncInteractiveOrderBy(orderBy);
+    }
+
     async function loadSelectedTable(connectionId: number, tableName: string, options?: LoadSelectedTableOptions) {
         // Only the newest load may write: an older table's slow response used to land after a newer
         // one and show the previous table's rows under the new table's name.
@@ -202,7 +229,8 @@ export function _useQuery() {
                 return result;
             })();
 
-            const [tableInfo2, tableData2] = await Promise.all([tableInfoPromise, tableDataPromise]);
+            const [tableInfo2, loadedPage] = await Promise.all([tableInfoPromise, tableDataPromise]);
+            const tableData2 = loadedPage.tableData;
 
             if (loadId !== loadSequence) {
                 return;
@@ -219,10 +247,15 @@ export function _useQuery() {
             // new one starts on every column with the grid's own row limit.
             interactiveDraft.value = cachedCustomQuery?.draft
                 ? cloneInteractiveSelectDraft(cachedCustomQuery.draft)
-                : createInteractiveSelectDraft({
-                      columns: tableInfo2.columns.map((column) => column.name),
-                      limit: settings.state.queryRowLimit,
-                  });
+                : createInteractiveSelectDraft({ columns: tableInfo2.columns.map((column) => column.name) });
+
+            // A base load is the grid showing its own query, so the bar's LIMIT/OFFSET/ORDER BY are
+            // the page just loaded — the toolbar's page size, page and sort. Restoring a custom
+            // query keeps the draft that produced those rows instead.
+            if (!isCustomQueryMode.value) {
+                syncDraftWithLoadedPage(tableData2, loadedPage.orderBy);
+            }
+
             tableInfo.value = tableInfo2;
             tableData.value = tableData2;
             isTableDataStale.value = false;
@@ -284,7 +317,9 @@ export function _useQuery() {
         };
 
         try {
-            return await tasks.getTableData.run({ ...request, orderBy: params.orderBy });
+            // The order that was really applied travels back: the bar mirrors it, and a rejected
+            // sort is retried unsorted.
+            return { tableData: await tasks.getTableData.run({ ...request, orderBy: params.orderBy }), orderBy: params.orderBy };
         } catch (error) {
             if (!params.orderBy || !isInvalidSortColumnError(error, params.orderBy.column)) {
                 throw error;
@@ -293,7 +328,29 @@ export function _useQuery() {
             // The table no longer has that column: forget the sort instead of
             // failing the whole grid, and load the rows unsorted.
             clearPersistedGridSort(connectionId, tableName);
-            return await tasks.getTableData.run({ ...request, orderBy: undefined });
+            return { tableData: await tasks.getTableData.run({ ...request, orderBy: undefined }), orderBy: undefined };
+        }
+    }
+
+    /** The grid's page size: the toolbar's page-size menu and the bar's LIMIT are the same number. */
+    async function setPageLimit(limit: number, orderBy?: SortOrder) {
+        await settings.setQueryRowLimit(limit);
+
+        const connId = loadedConnectionId.value;
+        const tableName = selectedTableName.value;
+
+        if (connId && tableName) {
+            await loadSelectedTable(connId, tableName, { offset: 0, orderBy });
+        }
+    }
+
+    /** The grid's page offset: the toolbar's paging and the bar's OFFSET are the same number. */
+    async function setPageOffset(offset: number, orderBy?: SortOrder) {
+        const connId = loadedConnectionId.value;
+        const tableName = selectedTableName.value;
+
+        if (connId && tableName) {
+            await loadSelectedTable(connId, tableName, { offset, orderBy });
         }
     }
 
@@ -449,6 +506,9 @@ export function _useQuery() {
         runCustomQuery: runCustomQuery,
         buildInteractiveQuerySql: buildInteractiveQuerySql,
         runInteractiveQuery: runInteractiveQuery,
+        setPageLimit: setPageLimit,
+        setPageOffset: setPageOffset,
+        syncInteractiveOrderBy: syncInteractiveOrderBy,
         setCustomQueryText: setCustomQueryText,
         clearCustomQuery() {
             const connId = loadedConnectionId.value;
