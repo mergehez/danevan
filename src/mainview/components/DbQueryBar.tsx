@@ -98,7 +98,15 @@ const QueryBarMenu = component(
 
         return () => (
             <span ref={triggerRef} class="relative inline-flex" data-query-bar-chip={props.testId} data-testid={props.testId ? `${props.testId}-trigger` : undefined}>
-                <span onClick={prevented(() => props.onUpdateOpen?.(!props.open))}>{props.slots?.trigger?.()}</span>
+                <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded={props.open}
+                    onClick={prevented(() => props.onUpdateOpen?.(!props.open))}
+                    class="inline-flex text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400/70"
+                >
+                    {props.slots?.trigger?.()}
+                </button>
                 {props.open ? (
                     <Teleport to="body">
                         <div
