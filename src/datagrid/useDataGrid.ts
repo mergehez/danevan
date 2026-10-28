@@ -258,15 +258,24 @@ function createTransposedState(options: UseDataGridFinalOptions, _state: DataGri
             }))
             .filter(({ rowIndex }) =>
                 _state.sourceOrderedColumns.some((columnName: string) => {
-                    const pendingValue = _state.pendingChanges[getCellKey(rowIndex, columnName)]?.nextValue;
-                    return (pendingValue ?? _getRawCellValue(rowIndex, columnName)) != null;
+                    // A staged NULL is a value, not an absent one: `??` would fall back to the row's
+                    // old value and keep a row the user just emptied in the transposed view.
+                    const pendingChange = _state.pendingChanges[getCellKey(rowIndex, columnName)];
+                    const value = pendingChange ? pendingChange.nextValue : _getRawCellValue(rowIndex, columnName);
+
+                    return value != null;
                 })
             )
     );
     function _getSourceCellValue(rowIndex: number, columnName: string) {
         if (options.getSourceCellValue) return options.getSourceCellValue(rowIndex, columnName);
 
-        return _state.pendingChanges[getCellKey(rowIndex, columnName)]?.nextValue ?? _getRawCellValue(rowIndex, columnName);
+        // `pendingChanges[...]?.nextValue ?? raw` read a staged NULL as "no change" and fell back to
+        // the old value, so "Set Value > (null)" counted a change in the save bar while the cell
+        // still drew what it held before.
+        const pendingChange = _state.pendingChanges[getCellKey(rowIndex, columnName)];
+
+        return pendingChange ? pendingChange.nextValue : _getRawCellValue(rowIndex, columnName);
     }
 
     const allColumns = computed(() => {
