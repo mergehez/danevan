@@ -934,6 +934,60 @@ describe('DataGrid', () => {
         expect(state.dirtyChanges[0]).toMatchObject({ columnName: 'score', nextValue: 43 });
     });
 
+    it('draws a staged NULL instead of the value the row still holds', async () => {
+        const rows = ref<DataGridRow[]>([{ id: 1, nickname: 'lovelace' }]);
+        // No `setSourceCellValue`, the way the data panel's grid is built: the displayed value comes
+        // from the pending change, so a staged NULL must not fall back to the row's old value.
+        const state = useDataGrid({
+            layoutStorageKey: `data-grid-staged-null-${layoutStorageCounter++}`,
+            editable: true,
+            enableTranspose: true,
+            tableData: computed(() => ({
+                columns: ['id', 'nickname'],
+                rows: rows.value,
+                rowCount: rows.value.length,
+                limit: 100,
+                offset: 0,
+                columnStats: {},
+            })),
+            createPendingChange: ({ rowIndex, columnName, nextValue, rawValue }) => ({ rowIndex, columnName, previousValue: rawValue, nextValue, rawValue }),
+        });
+
+        state.startEditingCell(0, 1);
+        state.setEditingValue('__NULL__');
+        state.commitEditingCell();
+
+        expect(state.dirtyChanges).toHaveLength(1);
+        expect(state.getDisplayedCellValue(0, 'nickname')).toBeNull();
+        // The row still holds the old value; only the pending change says otherwise.
+        expect(rows.value[0]?.nickname).toBe('lovelace');
+
+        const { wrapper, vm, bodyCanvas } = await mountGridViewHarness(state);
+        const bodyContext = canvasContexts.get(bodyCanvas);
+
+        if (!bodyContext) {
+            throw new Error('Expected body canvas context to be available.');
+        }
+
+        (vm.vs.viewportHelpers.updateViewportMetrics as (...args: unknown[]) => void)({ drawNow: true });
+        await nextTick();
+
+        const paintedTexts = bodyContext.fillTextCalls.map((entry) => entry.text);
+        expect(paintedTexts).toContain('NULL');
+        expect(paintedTexts).not.toContain('lovelace');
+
+        // A row the user emptied is not a column of the transposed view either: the `id` cell goes
+        // too, so no value is left to name the transposed row after.
+        state.startEditingCell(0, 0);
+        state.setEditingValue('__NULL__');
+        state.commitEditingCell();
+        state.toggleTranspose?.();
+        await nextTick();
+        expect(state.allColumns).not.toContain('Row 1');
+
+        wrapper.unmount();
+    });
+
     it('does not mark a binary cell changed when the editor is blurred without typing', () => {
         const binary = new Uint8Array([1, 2, 3]);
         const { rows, state } = createGridState({
