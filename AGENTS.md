@@ -311,6 +311,15 @@ Suggested from the 2026-10-23 "index changes are not detected" report:
 
 
 
+Suggested from the 2026-10-28 "Set Value > (null) doesn't update the cell" report:
+
+- **A NULL is a value; `??` cannot tell "no change" from "set to NULL".** The grid displayed
+  `pendingChanges[key]?.nextValue ?? sourceRow[column]`, so a staged NULL fell through to the row's old
+  value: the save bar counted the change while the canvas kept drawing what the cell held before, and
+  the transposed view kept a row the user had just emptied. Read the change itself —
+  `const change = pendingChanges[key]; change ? change.nextValue : raw` — wherever a pending value can
+  be null. Guarded by the staged-NULL case in `DataGrid.spec.ts` and `cell-set-value.spec.ts`.
+
 Suggested from the 2026-10-27 interactive query bar:
 
 - **One panel, one statement.** The data tab's query bar has two control sets (the interactive chips

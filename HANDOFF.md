@@ -175,6 +175,12 @@ guards it are the reference.
     table's sidebar count (it patches the tree row **and** the cached list), every path that measures
     rows reports there, and an exact count is never traded back for a later estimate. *Guards:*
     `useConnections.spec.ts`, `useQuery.spec.ts`, `row-mutations.spec.ts`.
+13. **A staged NULL was read as "no change".** The grid displayed
+    `pendingChanges[key]?.nextValue ?? sourceRow[column]`, so a pending change *to* NULL fell through to
+    the row's old value: `Set Value > (null)` counted a change in the save bar while the cell kept
+    drawing what it held before (and the transposed view kept a row the user had just emptied). *Rule:*
+    a NULL is a value — read the change, not a non-null value. *Guards:* the staged-NULL case in
+    `DataGrid.spec.ts`, `cell-set-value.spec.ts`.
 
 ## 7. Testing — the traps
 
@@ -225,9 +231,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1149 unit tests (92 files)**, **165 browser tests (45 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.4 % statements / 42.1 % branches** with
-the floors green. The full browser suite ran 165 passed + 0 failed, and that green run also assumes the
+Snapshot at the last verification: **1150 unit tests (92 files)**, **166 browser tests (46 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.5 % statements / 42.2 % branches** with
+the floors green. The full browser suite ran 166 passed + 0 failed, and that green run also assumes the
 local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and packaged
 suites were not re-run after this renderer-only change.
