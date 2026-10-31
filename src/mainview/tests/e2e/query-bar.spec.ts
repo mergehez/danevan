@@ -145,6 +145,27 @@ test.describe('Query bar', () => {
 
             await pageSizeButton().click();
             await expect(page.getByTestId('grid-page-size-menu').getByRole('button', { name: /^20\b/ })).toBeVisible();
+
+            // Enter commits the number the field holds. It used to snap back to the value it had
+            // before: the Enter handler cancelled the change event these fields commit on, and the
+            // re-render put the old value back while the new one was never applied.
+            await pageSizeButton().click();
+            const typedLimitReload = page.waitForResponse((response) => response.url().endsWith('/api/getTableData'));
+            await limitInput.fill('10');
+            await limitInput.press('Enter');
+            await typedLimitReload;
+            await expect(limitInput).toHaveValue('10');
+            await expect(offsetInput).toHaveValue('');
+            await expect(pageSizeButton()).toHaveText(/^1-10\s*of\s*30$/);
+            await expect(page.getByTestId('grid-page-label')).toHaveText('1/3');
+
+            const typedOffsetReload = page.waitForResponse((response) => response.url().endsWith('/api/getTableData'));
+            await offsetInput.fill('20');
+            await offsetInput.press('Enter');
+            await typedOffsetReload;
+            await expect(offsetInput).toHaveValue('20');
+            await expect(pageSizeButton()).toHaveText(/^21-30\s*of\s*30$/);
+            await expect(page.getByTestId('grid-page-label')).toHaveText('3/3');
         } finally {
             await request.post(`${API}/updateEditorSettings`, { data: { settings: originalSettings } }).catch(() => {});
             await source.cleanup();
@@ -224,6 +245,15 @@ test.describe('Query bar', () => {
             // Newest first, skipping the first two rows of the filter: 30, 29 then 28.
             await expectResultRowCount(page, 5);
             await expect.poll(() => firstCellValue(page)).toBe('name 28');
+
+            // A custom query has no grid paging to commit to, so Enter in a number field runs the
+            // statement the controls state.
+            await page.getByTestId('query-bar-offset').fill('4');
+            const reRan = page.waitForResponse((response) => response.url().endsWith('/api/runQuery'));
+            await page.getByTestId('query-bar-offset').press('Enter');
+            await reRan;
+            await expectResultRowCount(page, 5);
+            await expect.poll(() => firstCellValue(page)).toBe('name 26');
 
             // Reset drops the custom query and puts the controls back on the generated one, which
             // pages by the grid's own page size again.

@@ -354,6 +354,27 @@ export function _useQuery() {
         }
     }
 
+    /**
+     * The page the bar's LIMIT and OFFSET fields describe, applied as one load. Applying them one
+     * after the other would send two requests that race, and the second could still read the old
+     * page size.
+     */
+    async function applyPage(params: { limit: number; offset: number }, orderBy?: SortOrder) {
+        const limit = Math.round(params.limit);
+        const offset = Math.max(0, Math.round(params.offset));
+
+        if (limit !== settings.state.queryRowLimit) {
+            await settings.setQueryRowLimit(limit);
+        }
+
+        const connId = loadedConnectionId.value;
+        const tableName = selectedTableName.value;
+
+        if (connId && tableName) {
+            await loadSelectedTable(connId, tableName, { offset, orderBy });
+        }
+    }
+
     /** Splits a SQL script into statements and runs them in order. Returns the
      *  last row-returning result (so the grid shows data), falling back to the
      *  last result when there are no row-returning statements. */
@@ -508,6 +529,7 @@ export function _useQuery() {
         runInteractiveQuery: runInteractiveQuery,
         setPageLimit: setPageLimit,
         setPageOffset: setPageOffset,
+        applyPage: applyPage,
         syncInteractiveOrderBy: syncInteractiveOrderBy,
         setCustomQueryText: setCustomQueryText,
         clearCustomQuery() {

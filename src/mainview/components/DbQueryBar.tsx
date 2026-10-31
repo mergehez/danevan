@@ -261,26 +261,55 @@ export const DbQueryBar = component(
         }
 
         /**
-         * While the grid shows its own query, its page size and page are this number in the toolbar
-         * too, so editing it reloads the grid instead of leaving the two controls disagreeing. Once
-         * a custom query is running the toolbar's paging is gone and the draft only applies on Run.
+         * The number fields are edited into the draft, not applied per keystroke: typing `1000`
+         * would otherwise reload the grid four times.
          */
-        function setLimit(value: string) {
-            const limit = looseToNumber(value);
-            draft.value.limit = limit;
-
-            if (!query.isCustomQueryMode) {
-                void query.setPageLimit(typeof limit === 'number' ? limit : -1);
-            }
+        function setDraftLimit(value: string) {
+            draft.value.limit = looseToNumber(value);
         }
 
-        function setOffset(value: string) {
-            const offset = looseToNumber(value);
-            draft.value.offset = offset;
+        function setDraftOffset(value: string) {
+            draft.value.offset = looseToNumber(value);
+        }
 
-            if (!query.isCustomQueryMode) {
-                void query.setPageOffset(typeof offset === 'number' ? offset : 0);
+        /**
+         * While the grid shows its own query, its page size and page are these numbers in the
+         * toolbar too, so committing them reloads the grid instead of leaving the two controls
+         * disagreeing. Once a custom query is running the toolbar's paging is gone and the draft
+         * only applies on Run.
+         */
+        function commitPage() {
+            if (query.isCustomQueryMode) {
+                return;
             }
+
+            const loadedLimit = query.tableData?.limit ?? -1;
+            const loadedOffset = query.tableData?.offset ?? 0;
+            const limit = typeof draft.value.limit === 'number' ? Math.round(draft.value.limit) : -1;
+            // A new page size starts at the first page, the way the toolbar's page-size menu does;
+            // a typed offset only means anything while the page size stays the same.
+            const offset = limit === loadedLimit && typeof draft.value.offset === 'number' ? Math.max(0, Math.round(draft.value.offset)) : 0;
+
+            if (limit === loadedLimit && offset === loadedOffset) {
+                return;
+            }
+
+            void query.applyPage({ limit, offset });
+        }
+
+        /**
+         * Enter commits the numbers instead of running the draft: in interactive mode the fields
+         * *are* the grid's page, and running the draft would replace that paged grid with a custom
+         * query and take the toolbar's paging away. A custom query is already showing, so there its
+         * numbers only reach the database through a run.
+         */
+        function commitPageOnEnter() {
+            if (query.isCustomQueryMode) {
+                runInteractive();
+                return;
+            }
+
+            commitPage();
         }
 
         function toggleOrderDirection(index: number) {
@@ -545,8 +574,9 @@ export const DbQueryBar = component(
                                 min="0"
                                 placeholder="all"
                                 value={draft.value.limit}
-                                onChange={(event: any) => setLimit(event.target.value)}
-                                onKeydown={preventedKeys(runOnEnter, ['enter'])}
+                                onInput={(event: any) => setDraftLimit(event.target.value)}
+                                onChange={commitPage}
+                                onKeydown={preventedKeys(commitPageOnEnter, ['enter'])}
                                 class={NUMBER_CLASS}
                             />
                         </label>
@@ -558,8 +588,9 @@ export const DbQueryBar = component(
                                 min="0"
                                 placeholder="0"
                                 value={draft.value.offset}
-                                onChange={(event: any) => setOffset(event.target.value)}
-                                onKeydown={preventedKeys(runOnEnter, ['enter'])}
+                                onInput={(event: any) => setDraftOffset(event.target.value)}
+                                onChange={commitPage}
+                                onKeydown={preventedKeys(commitPageOnEnter, ['enter'])}
                                 class={NUMBER_CLASS}
                             />
                         </label>

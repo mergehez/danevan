@@ -378,6 +378,41 @@ describe('interactive query bar state', () => {
         expect(query.interactiveDraft.offset).toBe(20);
     });
 
+    it('applies the limit and offset the bar states as one page', async () => {
+        const run = vi.fn(async (params: Record<string, any>) => ({ ...tableDataResult([]), limit: params.limit, offset: params.offset }));
+        holders.getTableData = { run };
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+        run.mockClear();
+
+        await query.applyPage({ limit: 25, offset: 50 });
+
+        // One request with both numbers: applying them one after the other sent two loads that
+        // raced, and the offset load could still read the page size that was being changed.
+        expect(run).toHaveBeenCalledTimes(1);
+        expect(run).toHaveBeenCalledWith(expect.objectContaining({ limit: 25, offset: 50 }));
+        expect(query.interactiveDraft).toMatchObject({ limit: 25, offset: 50 });
+        expect(query.buildInteractiveQuerySql('sqlite')).toBe('SELECT * FROM "logins" LIMIT 25 OFFSET 50');
+    });
+
+    it('rounds the numbers the bar sends and keeps an unlimited page unlimited', async () => {
+        const run = vi.fn(async (params: Record<string, any>) => ({ ...tableDataResult([]), limit: params.limit, offset: params.offset }));
+        holders.getTableData = { run };
+        holders.rowLimit = 100;
+
+        const query = _useQuery();
+        query.selectedTableName = 'logins';
+        await query.loadSelectedTable(1, 'logins');
+        run.mockClear();
+
+        await query.applyPage({ limit: -1, offset: -3 });
+
+        expect(run).toHaveBeenCalledWith(expect.objectContaining({ limit: -1, offset: 0 }));
+        expect(query.interactiveDraft).toMatchObject({ limit: '', offset: '' });
+    });
+
     it('keeps the paging of a restored custom query instead of the base page', async () => {
         holders.tableDetails['1:logins'] = { loaded: true, loading: false, info: { columns: [{ name: 'id' }] } };
         holders.getTableData = {
