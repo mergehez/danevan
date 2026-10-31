@@ -81,7 +81,7 @@ live in one of them unless it is keyed by the tab.
 | `_dbCoreState` (`dbCoreState.ts`) | servers, connections, scripts, `selectedServerId/ConnectionId/ScriptId`, `bootstrapVersion` | The only writer of the snapshot; `applyBootstrap` drops older versions |
 | `useSettings` (`useSettings.ts`) | `tabs`, `activeTabHash`, UI prefs, tab grouping/sort and the per-mode display orders (`tabOrders`) | Persisted in `localStorage` via `useCache` under `settings`; `tabOrdering.ts` orders a copy (and splits grouped rows) — never `tabs` itself |
 | `useNavState` (`useNavState.ts`) | Tab activation (serialized), per-script-tab runtime state (result panel, problems, history), the selection→tab watcher, closed-tab stack | Tab actions call `activateActiveTab()`; activation retries up to 5× and coalesces |
-| `useQuery` (`useQuery.ts`) | **Per tab**: rows, table metadata, selected table, grid SQL, custom query + its source SQL, editor text, result, running flag, the query bar's editor mode and its interactive draft. **Shared**: `isTableDataStale` | `useQueryForTab(hash)` creates/returns a tab's state; `useQuery()` is a proxy that resolves the active tab on every read/write. Never capture it at setup and assume it is one tab. `loadSelectedTable` re-runs the custom query when the restored cache says custom mode, so a reload/save/reactivation shows the custom rows, not the base table. `runInteractiveQuery(dialect)` builds the statement from the draft (`src/shared/utils/interactiveSelectQuery.ts`, which quotes and pages per dialect) and runs it through `runCustomQuery`, so the rows, the manual field's text and the grid's edit target are one statement; the draft is remembered per table with the text (in-memory deep watcher). The bar itself is `components/DbQueryBar.tsx`. **The bar and the grid toolbar state one page:** `setPageLimit`/`setPageOffset` are the only paging actions (the page-size menu, prev/next, Reload and the bar's LIMIT/OFFSET all use them), a load mirrors the loaded page and sort into the draft (`syncDraftWithLoadedPage`), and `syncInteractiveOrderBy` mirrors a header-menu sort that only repaints (it never refetches). |
+| `useQuery` (`useQuery.ts`) | **Per tab**: rows, table metadata, selected table, grid SQL, custom query + its source SQL, editor text, result, running flag, the query bar's editor mode and its interactive draft. **Shared**: `isTableDataStale` | `useQueryForTab(hash)` creates/returns a tab's state; `useQuery()` is a proxy that resolves the active tab on every read/write. Never capture it at setup and assume it is one tab. `loadSelectedTable` re-runs the custom query when the restored cache says custom mode, so a reload/save/reactivation shows the custom rows, not the base table. `runInteractiveQuery(dialect)` builds the statement from the draft (`src/shared/utils/interactiveSelectQuery.ts`, which quotes and pages per dialect) and runs it through `runCustomQuery`, so the rows, the manual field's text and the grid's edit target are one statement; the draft is remembered per table with the text (in-memory deep watcher). The bar itself is `components/DbQueryBar.tsx`. **The bar and the grid toolbar state one page:** `applyPage`/`setPageLimit`/`setPageOffset` are the only paging actions (the page-size menu, the page menu, first/prev/next/last, Reload and the bar's LIMIT/OFFSET all use them), a load mirrors the loaded page and sort into the draft (`syncDraftWithLoadedPage`), and `syncInteractiveOrderBy` mirrors a header-menu sort that only repaints (it never refetches). The toolbar's page menu lists a window around the current page (`lib/gridPagination.ts`) instead of one button per page. |
 | `useConnections` (`useConnections.ts`) | Per-connection table list, per-table details cache, selection actions | Loaders are keyed and guarded; `ensureTableDetailsBatch` is the batched sweep. `applyTableRowCount` is the **only** writer of a table's sidebar count (tree row *and* cached list): a table load, a save and a table metadata refresh report there, and an exact count is never traded for the catalog estimate that `~` marks. |
 | `useServers`, `useScriptsDb`, `useDbCaches` | Server schemas, script CRUD/selection, persisted tree collapse state | All by explicit id |
 | `useGridFormatters` | Custom formatter templates + the **current context** (connection+table) | Context loads are sequence-guarded; the grid loads the context of its own table |
@@ -181,6 +181,14 @@ guards it are the reference.
     drawing what it held before (and the transposed view kept a row the user had just emptied). *Rule:*
     a NULL is a value — read the change, not a non-null value. *Guards:* the staged-NULL case in
     `DataGrid.spec.ts`, `cell-set-value.spec.ts`.
+14. **Enter in a number field threw the typed number away.** The limit/offset inputs committed on the
+    native `change` event, and their Enter handler called `preventDefault()` to run a query: the browser
+    then never fired `change`, so the draft kept its old value and the next render patched the input back
+    — the field visibly reverted to what it held before (the spinner arrows, which fire `change` on
+    `input`, worked). *Rule:* a field that commits on `change` must not cancel the Enter that would fire
+    it; commit the draft from `input`, and make Enter **apply** what the field says. Committing both
+    numbers is one load (`applyPage`), never two racing ones. *Guards:* `useQuery.spec.ts`
+    (`applyPage`), `query-bar.spec.ts` (Enter in limit/offset).
 
 ## 7. Testing — the traps
 
@@ -226,13 +234,18 @@ specs really ran.
 - **`electron-builder`'s dmg stage fails in a restricted shell** (`hdiutil` → `plistlib.InvalidFileException`)
   while the `.app` in `build/mac-arm64` is already complete: verify it with `bunx electron-builder --dir` and
   `bunx playwright test --config playwright.packaged.config.ts` rather than the full release command.
+- **Node ≥ 26 ships an experimental `localStorage` global** that resolves to `undefined` unless the
+  process was started with `--localstorage-file`, and it shadows the one jsdom installs: every spec that
+  persists grid/panel state died on `localStorage` being undefined. `src/mainview/tests/setup.ts` installs
+  an in-memory `Storage` (and the class with it) when the global is not usable, so `bunx vitest run`
+  works on both the old and the new Node.
 - Unit specs: `vitest.config.js` counts **every** source file (including untested ones) and enforces
   aggregate and per-area floors; raise a floor when you close a gap.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1150 unit tests (92 files)**, **166 browser tests (46 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.5 % statements / 42.2 % branches** with
+Snapshot at the last verification: **1156 unit tests (93 files)**, **166 browser tests (46 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.4 % statements / 42.2 % branches** with
 the floors green. The full browser suite ran 166 passed + 0 failed, and that green run also assumes the
 local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and packaged

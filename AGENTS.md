@@ -311,6 +311,21 @@ Suggested from the 2026-10-23 "index changes are not detected" report:
 
 
 
+Suggested from the 2026-10-31 "the offset input resets when I press Enter" report:
+
+- **A field that commits on `change` must not cancel the Enter that fires it.** The interactive bar's
+  limit/offset inputs applied their number on the native `change` event and their Enter handler called
+  `preventDefault()` to run a query — so the browser never fired `change`, the draft kept its old value,
+  and the next render patched the field back to it: the typed number visibly vanished, while the
+  spinner arrows (which fire `change` on input) worked. Write the draft from `input` (no reload per
+  keystroke), let `change`/Enter commit it, and make Enter apply what the field says rather than
+  replace the paged grid with a custom query. Two numbers that belong together are one load
+  (`applyPage`), never two requests that race. Guarded by `useQuery.spec.ts` and `query-bar.spec.ts`.
+- **A menu of every page is a menu of every page.** The toolbar's page selector lists the first, the
+  last and the pages around the current one, with a gap between them (`buildPageMenuEntries`): a table
+  with a million pages would otherwise build a million buttons the moment it is opened. Guarded by
+  `gridPagination.spec.ts` and `grid-toolbar.spec.ts`.
+
 Suggested from the 2026-10-28 "Set Value > (null) doesn't update the cell" report:
 
 - **A NULL is a value; `??` cannot tell "no change" from "set to NULL".** The grid displayed
