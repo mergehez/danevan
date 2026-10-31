@@ -2,6 +2,7 @@ import { component, ensureAllTsxProps, renderSlot, type SingleChildSlot } from '
 import { computed, ref, watch } from 'vue';
 import type { TDataGridState } from '../../datagrid/useDataGrid';
 import { IconButton } from '../../shared/components/IconButton.tsx';
+import { buildPageMenuEntries } from '../lib/gridPagination';
 
 type Props = {
     gridState: TDataGridState;
@@ -12,10 +13,15 @@ type Props = {
     pageRangeEnd?: number;
     totalRowCount?: number;
     totalRowCountIsEstimate?: boolean;
+    currentPage?: number;
+    pageCount?: number;
     canGoToPreviousPage?: boolean;
     canGoToNextPage?: boolean;
     onGoToPreviousPage?: () => void;
     onGoToNextPage?: () => void;
+    onGoToFirstPage?: () => void;
+    onGoToLastPage?: () => void;
+    onSelectPage?: (page: number) => void;
     pageSizeMenuOptions?: { value: number; label: string; isDefault: boolean }[];
     selectedDataLimit?: number;
     onSelectPageSize?: (limit: number) => void;
@@ -35,6 +41,15 @@ export const DbGridToolbar = component(
         const pageSizeMenuElement = ref<HTMLElement>();
         const pageSizeButtonElement = ref<HTMLElement>();
         const isPageSizeMenuOpen = ref(false);
+        const pageMenuElement = ref<HTMLElement>();
+        const pageButtonElement = ref<HTMLElement>();
+        const isPageMenuOpen = ref(false);
+
+        const currentPage = computed(() => Math.max(1, props.currentPage ?? 1));
+        const pageCount = computed(() => Math.max(1, props.pageCount ?? 1));
+        const canGoToFirstPage = computed(() => currentPage.value > 1 && !props.isLoading);
+        const canGoToLastPage = computed(() => currentPage.value < pageCount.value && !props.isLoading);
+        const pageMenuEntries = computed(() => buildPageMenuEntries(currentPage.value, pageCount.value));
 
         const visibleColumnCount = computed(() => {
             const hidden = new Set(props.gridState.hiddenColumns as string[]);
@@ -59,6 +74,19 @@ export const DbGridToolbar = component(
             isPageSizeMenuOpen.value = false;
         }
 
+        function togglePageMenu() {
+            isPageMenuOpen.value = !isPageMenuOpen.value;
+        }
+
+        function closePageMenu() {
+            isPageMenuOpen.value = false;
+        }
+
+        function selectPage(page: number) {
+            closePageMenu();
+            props.onSelectPage?.(page);
+        }
+
         function handlePointerDown(event: PointerEvent) {
             const target = event.target as Node | null;
 
@@ -74,22 +102,20 @@ export const DbGridToolbar = component(
                 return;
             }
 
+            if (pageMenuElement.value?.contains(target) || pageButtonElement.value?.contains(target)) {
+                return;
+            }
+
             closeColumnMenu();
             closePageSizeMenu();
+            closePageMenu();
         }
 
-        watch(isColumnMenuOpen, () => {
+        // One listener for every menu of the toolbar: it exists while any of them is open.
+        watch([isColumnMenuOpen, isPageSizeMenuOpen, isPageMenuOpen], () => {
             window.removeEventListener('pointerdown', handlePointerDown);
 
-            if (isColumnMenuOpen.value || isPageSizeMenuOpen.value) {
-                window.addEventListener('pointerdown', handlePointerDown);
-            }
-        });
-
-        watch(isPageSizeMenuOpen, () => {
-            window.removeEventListener('pointerdown', handlePointerDown);
-
-            if (isColumnMenuOpen.value || isPageSizeMenuOpen.value) {
+            if (isColumnMenuOpen.value || isPageSizeMenuOpen.value || isPageMenuOpen.value) {
                 window.addEventListener('pointerdown', handlePointerDown);
             }
         });
@@ -126,12 +152,22 @@ export const DbGridToolbar = component(
                         {props.showPageNav ? (
                             <div class="relative flex items-center text-2xs text-white">
                                 <IconButton
+                                    data-testid="grid-first-page"
+                                    icon="icon-[mdi--page-first]"
+                                    v-tooltip={{ value: 'First page', xs: true, nowrap: true }}
+                                    severity="secondary"
+                                    disabled={!canGoToFirstPage.value}
+                                    onClick={() => props.onGoToFirstPage?.()}
+                                    class="rounded-r-none"
+                                />
+                                <IconButton
+                                    data-testid="grid-previous-page"
                                     icon="icon-[mdi--chevron-left]"
                                     v-tooltip={{ value: 'Previous page', xs: true, nowrap: true }}
                                     severity="secondary"
                                     disabled={!props.canGoToPreviousPage}
                                     onClick={() => props.onGoToPreviousPage?.()}
-                                    class="rounded-r-none"
+                                    class="rounded-none"
                                 />
                                 <div class="relative">
                                     <button
@@ -179,12 +215,65 @@ export const DbGridToolbar = component(
                                         </div>
                                     ) : null}
                                 </div>
+                                <div class="relative">
+                                    <button
+                                        ref={pageButtonElement}
+                                        type="button"
+                                        data-testid="grid-page-button"
+                                        disabled={props.isLoading}
+                                        onClick={togglePageMenu}
+                                        class="inline-flex h-7 items-center gap-1 border border-l-0 border-x4 bg-x2 px-2 text-2xs opacity-80 transition hover:bg-x3 hover:opacity-100"
+                                    >
+                                        <span class="opacity-60">Page</span>
+                                        <span data-testid="grid-page-label">
+                                            {currentPage.value}/{pageCount.value}
+                                        </span>
+                                        <span class="iconify icon-[mdi--chevron-down] h-3.5 w-3.5 opacity-70" />
+                                    </button>
+                                    {isPageMenuOpen.value ? (
+                                        <div
+                                            ref={pageMenuElement}
+                                            data-testid="grid-page-menu"
+                                            class="absolute left-0 top-full z-20 max-h-64 min-w-28 overflow-auto whitespace-nowrap border border-x4 bg-x1 py-1"
+                                        >
+                                            <div class="px-3 py-1 text-2xs opacity-60">Go to page</div>
+                                            {pageMenuEntries.value.map((entry, index) =>
+                                                entry.kind === 'gap' ? (
+                                                    <div class="px-3.5 py-1 text-center text-xs opacity-40" key={`gap-${index}`}>
+                                                        …
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        data-testid={`grid-page-option-${entry.page}`}
+                                                        onClick={() => selectPage(entry.page)}
+                                                        class="flex w-full items-center justify-between gap-3 px-3.5 py-1 text-left text-xs transition hover:bg-white/8"
+                                                        key={entry.page}
+                                                    >
+                                                        <span>{entry.page}</span>
+                                                        <span class="h-4 w-4 text-center text-xs opacity-80">{entry.page === currentPage.value ? '✓' : ''}</span>
+                                                    </button>
+                                                )
+                                            )}
+                                        </div>
+                                    ) : null}
+                                </div>
                                 <IconButton
+                                    data-testid="grid-next-page"
                                     icon="icon-[mdi--chevron-right]"
                                     v-tooltip={{ value: 'Next page', xs: true, nowrap: true }}
                                     disabled={!props.canGoToNextPage}
                                     severity="secondary"
                                     onClick={() => props.onGoToNextPage?.()}
+                                    class="rounded-none"
+                                />
+                                <IconButton
+                                    data-testid="grid-last-page"
+                                    icon="icon-[mdi--page-last]"
+                                    v-tooltip={{ value: 'Last page', xs: true, nowrap: true }}
+                                    disabled={!canGoToLastPage.value}
+                                    severity="secondary"
+                                    onClick={() => props.onGoToLastPage?.()}
                                     class="rounded-l-none"
                                 />
                             </div>
@@ -232,8 +321,13 @@ export const DbGridToolbar = component(
             'totalRowCountIsEstimate',
             'canGoToPreviousPage',
             'canGoToNextPage',
+            'currentPage',
+            'pageCount',
             'onGoToPreviousPage',
             'onGoToNextPage',
+            'onGoToFirstPage',
+            'onGoToLastPage',
+            'onSelectPage',
             'pageSizeMenuOptions',
             'selectedDataLimit',
             'onSelectPageSize',

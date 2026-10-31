@@ -44,6 +44,22 @@ export const DbData = component(
         const pageRangeEnd = computed(() => (currentPageRowCount.value > 0 ? currentPageOffset.value + currentPageRowCount.value : 0));
         const canGoToPreviousPage = computed(() => currentPageOffset.value > 0 && !isLoading.value);
         const canGoToNextPage = computed(() => !isLoading.value && !isUnlimitedDataLimit.value && pageRangeEnd.value < totalRowCount.value);
+        // An unlimited page has no pages to choose from; anything else is the offset divided by the
+        // page size, which is also what the toolbar's range reports.
+        const pageCount = computed(() => {
+            const limit = currentPageLimit.value;
+
+            return limit > 0 ? Math.max(1, Math.ceil(totalRowCount.value / limit)) : 1;
+        });
+        const currentPage = computed(() => {
+            const limit = currentPageLimit.value;
+
+            if (limit <= 0) {
+                return 1;
+            }
+
+            return Math.min(Math.floor(currentPageOffset.value / limit) + 1, pageCount.value);
+        });
         const pageSizeMenuOptions = computed(() => {
             // The bar's LIMIT can be any number; a page size the fixed list does not name must still
             // be listed, or the menu would show no selection while the grid pages by it.
@@ -96,6 +112,29 @@ export const DbData = component(
 
             const nextOffset = currentPageOffset.value + Math.max(currentPageLimit.value, 1);
             await query.setPageOffset(nextOffset, orderBy.value);
+        }
+
+        /** Jumps to a page the toolbar's page menu names, clamped to the table's real pages. */
+        async function goToPage(page: number) {
+            if (isLoading.value) {
+                return;
+            }
+
+            const targetPage = Math.min(Math.max(1, Math.round(page)), pageCount.value);
+
+            if (targetPage === currentPage.value) {
+                return;
+            }
+
+            await query.setPageOffset((targetPage - 1) * Math.max(currentPageLimit.value, 1), orderBy.value);
+        }
+
+        async function goToFirstPage() {
+            await goToPage(1);
+        }
+
+        async function goToLastPage() {
+            await goToPage(pageCount.value);
         }
 
         const hasResultColumns = computed(() => (query.tableData?.columns.length ?? 0) > 0);
@@ -431,10 +470,15 @@ export const DbData = component(
                                         pageRangeEnd={pageRangeEnd.value}
                                         totalRowCount={totalRowCount.value}
                                         totalRowCountIsEstimate={query.tableData?.rowCountIsEstimated === true}
+                                        currentPage={currentPage.value}
+                                        pageCount={pageCount.value}
                                         canGoToPreviousPage={canGoToPreviousPage.value}
                                         canGoToNextPage={canGoToNextPage.value}
                                         onGoToPreviousPage={goToPreviousPage}
                                         onGoToNextPage={goToNextPage}
+                                        onGoToFirstPage={goToFirstPage}
+                                        onGoToLastPage={goToLastPage}
+                                        onSelectPage={goToPage}
                                         pageSizeMenuOptions={pageSizeMenuOptions.value}
                                         selectedDataLimit={selectedDataLimit.value}
                                         onSelectPageSize={selectPageSize}

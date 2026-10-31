@@ -121,6 +121,44 @@ test.describe('Grid toolbar', () => {
             expect(previousRequest).toMatchObject({ limit: 10, offset: 0 });
             await expect(toolbar.getByRole('button', { name: /^1-10 of 30$/ })).toBeVisible();
 
+            // The page menu names this page size's pages and jumps to one of them.
+            const pageButton = page.getByTestId('grid-page-button');
+            const pageLabel = page.getByTestId('grid-page-label');
+            await expect(pageLabel).toHaveText('1/3');
+            await expect(page.getByTestId('grid-first-page')).toBeDisabled();
+
+            await pageButton.click();
+            await expect(page.getByTestId('grid-page-menu')).toBeVisible();
+
+            const pageJumpRequest = await captureTableRequest(page, async () => {
+                await page.getByTestId('grid-page-option-3').click();
+            });
+            expect(pageJumpRequest).toMatchObject({ limit: 10, offset: 20 });
+            await expect(page.getByTestId('grid-page-menu')).toHaveCount(0);
+            await expect(pageLabel).toHaveText('3/3');
+            await expect(toolbar.getByRole('button', { name: /^21-30 of 30$/ })).toBeVisible();
+            await expect(page.getByTestId('grid-last-page')).toBeDisabled();
+
+            // First and last page jump to the ends of the table.
+            const firstPageRequest = await captureTableRequest(page, async () => {
+                await page.getByTestId('grid-first-page').click();
+            });
+            expect(firstPageRequest).toMatchObject({ limit: 10, offset: 0 });
+            await expect(pageLabel).toHaveText('1/3');
+            await expect(toolbar.getByRole('button', { name: /^1-10 of 30$/ })).toBeVisible();
+
+            const lastPageRequest = await captureTableRequest(page, async () => {
+                await page.getByTestId('grid-last-page').click();
+            });
+            expect(lastPageRequest).toMatchObject({ limit: 10, offset: 20 });
+            await expect(pageLabel).toHaveText('3/3');
+            await expect(toolbar.getByRole('button', { name: /^21-30 of 30$/ })).toBeVisible();
+
+            await captureTableRequest(page, async () => {
+                await page.getByTestId('grid-first-page').click();
+            });
+            await expect(pageLabel).toHaveText('1/3');
+
             // Reload fetches rows that arrived after the grid was opened.
             await post(request, 'runQuery', {
                 connectionId: source.connectionId,
