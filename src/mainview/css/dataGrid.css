@@ -1,0 +1,190 @@
+/*
+ * The grid renders one element per visible row and cell. Everything that does not change between
+ * frames lives here, so a scroll only rewrites a transform (and, when the window moves, a few
+ * positions) instead of restating the layout of every cell. Colours come from the theme variables
+ * set on `.data-grid-root` (`getDataGridThemeCssVariables`) or from the render model.
+ */
+
+.dg-header-surface,
+.dg-body-surface {
+    position: relative;
+    overflow: hidden;
+    user-select: none;
+}
+
+.dg-header-surface {
+    cursor: default;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.dg-body-surface {
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.dg-header-rule {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--dg-border);
+}
+
+.dg-header-gutter {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    border-right: 1px solid var(--dg-border);
+}
+
+.dg-header-clip {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.dg-header-cell {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-right: 1px solid var(--dg-border);
+}
+
+.dg-header-text {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    white-space: pre;
+}
+
+.dg-rows-layer {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+}
+
+.dg-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+}
+
+.dg-gutter {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    border-right: 1px solid var(--dg-border);
+}
+
+.dg-row-number {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    text-align: right;
+    white-space: pre;
+}
+
+.dg-row-background {
+    position: absolute;
+    top: 0;
+    height: 100%;
+}
+
+.dg-cells-clip {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.dg-cells-layer {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+}
+
+.dg-cell {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-right: 1px solid var(--dg-border);
+}
+
+.dg-cell-ring {
+    position: absolute;
+    inset: 1px;
+}
+
+.dg-cell-text {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    white-space: pre;
+}
+
+.dg-search-highlight {
+    position: absolute;
+}
+
+.dg-row-rule {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--dg-border);
+}
+
+.dg-ghost-clip {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.dg-ghost {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    opacity: 0.9;
+}
+
+.dg-drag-preview {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    opacity: 0.92;
+}
+
+.dg-insert-line {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 2px;
+}
+
+.dg-resize-line {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 1px;
+}

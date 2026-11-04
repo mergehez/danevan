@@ -2,7 +2,7 @@ import { component, ensureAllTsxProps, prevented, preventedKeys } from '#shared/
 import { Button } from '../shared/components/Button.tsx';
 import { CenteredModal } from '../shared/components/CenteredModal.tsx';
 import { IconButton } from '../shared/components/IconButton.tsx';
-import { DATA_GRID_HEADER_HEIGHT } from './dataGrid';
+import { DataGridBodySurface, DataGridHeaderSurface } from './DataGridSurface.tsx';
 import type { TDataGridState } from './useDataGrid';
 import { useDataGridView } from './useDataGridView';
 
@@ -200,34 +200,30 @@ export const DataGrid = component(
                         class="relative min-h-0 flex-1 overflow-auto border border-x4 bg-x0 outline-none scrollbar-large"
                     >
                         <div class="sticky left-0 top-0 z-10 h-0 overflow-visible">
-                            <canvas
-                                ref={(element) => (vs.headerCanvasElement = element as HTMLCanvasElement)}
+                            <DataGridHeaderSurface
+                                model={vs.headerModel}
+                                fontFamily={vs.gridFontFamilyCss}
+                                cursor={vs.headerCursor}
+                                elementRef={(element) => (vs.headerElement = element)}
                                 onClick={vs.pointerHandlers.handleHeaderClick}
-                                onContextmenu={vs.pointerHandlers.handleHeaderContextMenu}
-                                onDblclick={vs.pointerHandlers.handleHeaderDoubleClick}
-                                onPointerdown={vs.pointerHandlers.handleHeaderPointerDown}
-                                onPointermove={vs.pointerHandlers.handleHeaderPointerMove}
-                                onPointerleave={vs.pointerHandlers.handleHeaderPointerLeave}
-                                class="block"
-                                style={{
-                                    width: `${vs.viewportWidth}px`,
-                                    height: `${DATA_GRID_HEADER_HEIGHT}px`,
-                                    cursor: vs.headerCursor,
-                                    backgroundColor: vs.canvasColors.headerBackground,
-                                }}
+                                onContextMenu={vs.pointerHandlers.handleHeaderContextMenu}
+                                onDoubleClick={vs.pointerHandlers.handleHeaderDoubleClick}
+                                onPointerDown={vs.pointerHandlers.handleHeaderPointerDown}
+                                onPointerMove={vs.pointerHandlers.handleHeaderPointerMove}
+                                onPointerLeave={vs.pointerHandlers.handleHeaderPointerLeave}
                             />
                             {vs.rowCount ? (
-                                <canvas
-                                    ref={(element) => (vs.bodyCanvasElement = element as HTMLCanvasElement)}
+                                <DataGridBodySurface
+                                    model={vs.bodyModel}
+                                    fontFamily={vs.gridFontFamilyCss}
+                                    elementRef={(element) => (vs.bodyElement = element)}
                                     onClick={vs.pointerHandlers.handleBodyClick}
-                                    onDblclick={vs.pointerHandlers.handleBodyDoubleClick}
-                                    onPointerdown={vs.pointerHandlers.handleBodyPointerDown}
-                                    onContextmenu={prevented(vs.pointerHandlers.handleBodyContextMenu)}
-                                    class="block"
-                                    style={{ width: `${vs.viewportWidth}px`, height: `${vs.bodyCanvasHeight}px`, backgroundColor: vs.canvasColors.bodyBackground }}
+                                    onDoubleClick={vs.pointerHandlers.handleBodyDoubleClick}
+                                    onPointerDown={vs.pointerHandlers.handleBodyPointerDown}
+                                    onContextMenu={prevented(vs.pointerHandlers.handleBodyContextMenu)}
                                 />
                             ) : (
-                                <div class="flex items-center justify-center text-sm opacity-60" style={{ width: `${vs.viewportWidth}px`, height: `${vs.bodyCanvasHeight}px` }}>
+                                <div class="flex items-center justify-center text-sm opacity-60" style={{ width: `${vs.viewportWidth}px`, height: `${vs.bodyHeight}px` }}>
                                     {props.state.emptyText || 'No rows'}
                                 </div>
                             )}

@@ -1,7 +1,7 @@
 import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from './dataGrid';
-import type { DataGridCanvasPointerHandlersArgs } from './useDataGridView';
+import type { DataGridPointerHandlersArgs } from './useDataGridView';
 
-export function useDataGridCanvasPointerHandlers(args: DataGridCanvasPointerHandlersArgs) {
+export function useDataGridPointerHandlers(args: DataGridPointerHandlersArgs) {
     const { internals, runtime, viewportHelpers, gridState: props, sharedState: shared } = args;
     const scheduleDraw = runtime.scheduleDraw;
 
@@ -19,7 +19,7 @@ export function useDataGridCanvasPointerHandlers(args: DataGridCanvasPointerHand
 
         if (cell.area === 'row-header') {
             if (args.withCheckboxes) {
-                const point = viewportHelpers.getBodyCanvasPoint(event);
+                const point = viewportHelpers.getBodyPoint(event);
 
                 if (
                     !point ||
@@ -142,7 +142,7 @@ export function useDataGridCanvasPointerHandlers(args: DataGridCanvasPointerHand
             internals.bodyPointerDownRowAnchorIndex = cell.rowIndex;
 
             if (args.withCheckboxes) {
-                const point = viewportHelpers.getBodyCanvasPoint(event);
+                const point = viewportHelpers.getBodyPoint(event);
 
                 if (
                     !point ||
@@ -316,13 +316,13 @@ export function useDataGridCanvasPointerHandlers(args: DataGridCanvasPointerHand
 
         if (viewportX != null && viewportX < shared.gutterColumnWidth) {
             if (args.withCheckboxes) {
-                const canvas = shared.headerCanvasElement;
+                const headerElement = shared.headerElement;
 
-                if (!canvas) {
+                if (!headerElement) {
                     return;
                 }
 
-                const rect = canvas.getBoundingClientRect();
+                const rect = headerElement.getBoundingClientRect();
                 const localX = event.clientX - rect.left;
                 const localY = event.clientY - rect.top;
 
@@ -344,13 +344,13 @@ export function useDataGridCanvasPointerHandlers(args: DataGridCanvasPointerHand
             return;
         }
 
-        const canvas = shared.headerCanvasElement;
+        const headerElement = shared.headerElement;
 
-        if (!canvas) {
+        if (!headerElement) {
             return;
         }
 
-        const rect = canvas.getBoundingClientRect();
+        const rect = headerElement.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const columnIndex = viewportHelpers.getColumnIndexAtViewportX(x);
         const columnName = columnIndex == null ? undefined : shared.columns[columnIndex];

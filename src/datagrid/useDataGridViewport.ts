@@ -1,8 +1,8 @@
 import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT } from './dataGrid';
-import type { DataGridCanvasViewportArgs } from './useDataGridView';
+import type { DataGridViewportArgs } from './useDataGridView';
 
-export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
-    const { runtime: canvasRuntime, sharedState: shared } = args;
+export function useDataGridViewport(args: DataGridViewportArgs) {
+    const { runtime, sharedState: shared } = args;
 
     function findColumnIndexAtContentX(contentX: number) {
         let low = 0;
@@ -59,12 +59,11 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
         shared.scrollLeft = shared.viewportElement?.scrollLeft ?? 0;
 
         if (options?.drawNow || sizeChanged) {
-            canvasRuntime.cancelDraw();
-            canvasRuntime.drawGrid();
+            runtime.drawGrid();
             return;
         }
 
-        canvasRuntime.scheduleDraw();
+        runtime.scheduleDraw();
     }
 
     function ensureActiveCellVisible() {
@@ -216,13 +215,13 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
     }
 
     function getHeaderViewportX(event: MouseEvent | PointerEvent) {
-        const canvas = shared.headerCanvasElement;
+        const headerElement = shared.headerElement;
 
-        if (!canvas) {
+        if (!headerElement) {
             return undefined;
         }
 
-        const rect = canvas.getBoundingClientRect();
+        const rect = headerElement.getBoundingClientRect();
         return event.clientX - rect.left;
     }
 
@@ -282,7 +281,7 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
         const element = shared.viewportElement;
 
         if (!element || !args.internals.isHeaderDragging) {
-            canvasRuntime.stopDragAutoScroll();
+            runtime.stopDragAutoScroll();
             return;
         }
 
@@ -300,7 +299,7 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
         args.internals.dragAutoScrollVelocity = nextVelocity;
 
         if (!args.internals.dragAutoScrollVelocity) {
-            canvasRuntime.stopDragAutoScroll();
+            runtime.stopDragAutoScroll();
             return;
         }
 
@@ -314,7 +313,7 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
             const currentElement = shared.viewportElement;
 
             if (!currentElement || !args.internals.isHeaderDragging || !args.internals.dragAutoScrollVelocity) {
-                canvasRuntime.stopDragAutoScroll();
+                runtime.stopDragAutoScroll();
                 return;
             }
 
@@ -322,14 +321,14 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
             const nextScrollLeft = Math.max(0, Math.min(currentElement.scrollLeft + args.internals.dragAutoScrollVelocity, maxScrollLeft));
 
             if (nextScrollLeft === currentElement.scrollLeft) {
-                canvasRuntime.stopDragAutoScroll();
+                runtime.stopDragAutoScroll();
                 return;
             }
 
             currentElement.scrollLeft = nextScrollLeft;
             updateViewportMetrics();
             syncHeaderDragPreview(args.internals.dragPointerClientX);
-            canvasRuntime.scheduleDraw();
+            runtime.scheduleDraw();
             args.internals.dragAutoScrollFrame = requestAnimationFrame(step);
         };
 
@@ -363,13 +362,13 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
     }
 
     function getHeaderColumnAtEvent(event: MouseEvent | PointerEvent) {
-        const canvas = shared.headerCanvasElement;
+        const headerElement = shared.headerElement;
 
-        if (!canvas) {
+        if (!headerElement) {
             return undefined;
         }
 
-        const rect = canvas.getBoundingClientRect();
+        const rect = headerElement.getBoundingClientRect();
         const x = event.clientX - rect.left;
 
         if (x < shared.gutterColumnWidth) {
@@ -388,13 +387,13 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
     }
 
     function getBodyCellAtEvent(event: MouseEvent | PointerEvent) {
-        const canvas = shared.bodyCanvasElement;
+        const bodyElement = shared.bodyElement;
 
-        if (!canvas) {
+        if (!bodyElement) {
             return undefined;
         }
 
-        const rect = canvas.getBoundingClientRect();
+        const rect = bodyElement.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         const visualRowIndex = Math.floor((y + shared.bodyScrollTop) / DATA_GRID_ROW_HEIGHT);
@@ -417,14 +416,14 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
         return { rowIndex, visualRowIndex, columnIndex, area: 'cell' as const };
     }
 
-    function getBodyCanvasPoint(event: MouseEvent | PointerEvent) {
-        const canvas = shared.bodyCanvasElement;
+    function getBodyPoint(event: MouseEvent | PointerEvent) {
+        const bodyElement = shared.bodyElement;
 
-        if (!canvas) {
+        if (!bodyElement) {
             return undefined;
         }
 
-        const rect = canvas.getBoundingClientRect();
+        const rect = bodyElement.getBoundingClientRect();
         return { x: event.clientX - rect.left, y: event.clientY - rect.top };
     }
 
@@ -437,7 +436,7 @@ export function useDataGridCanvasViewport(args: DataGridCanvasViewportArgs) {
         disconnectViewportObserver,
         ensureActiveCellVisible,
         focusViewport,
-        getBodyCanvasPoint,
+        getBodyPoint,
         getBodyCellAtEvent,
         getColumnIndexAtViewportX,
         getHeaderColumnAtEvent,

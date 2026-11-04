@@ -16,9 +16,10 @@ import {
 import { getDataGridCanvasFont, getDataGridFontFamilyCss, getDataGridThemeCssVariables } from './dataGridAppearance';
 import { dataGridModalPreferences } from './dataGridModalPreferences';
 import type { TDataGridState } from './useDataGrid';
-import { useDataGridCanvasPointerHandlers } from './useDataGridCanvasPointerHandlers';
-import { useDataGridCanvasRuntime } from './useDataGridCanvasRuntime';
-import { useDataGridCanvasViewport } from './useDataGridCanvasViewport';
+import { useDataGridPointerHandlers } from './useDataGridPointerHandlers';
+import { useDataGridRenderModel } from './useDataGridRenderModel';
+import { useDataGridRenderRuntime } from './useDataGridRenderRuntime';
+import { useDataGridViewport } from './useDataGridViewport';
 import type { DataGridNormalizedCellRange } from './useDataGridHelperTypes';
 import { useDataGridToolbarMenu } from './useDataGridToolbarMenu';
 
@@ -56,7 +57,7 @@ type DataGridEditingTextareaSize = {
     height: number | undefined;
 };
 
-export type DataGridCanvasPointerDownCell =
+export type DataGridPointerDownCell =
     | {
           area: 'cell';
           rowIndex: number;
@@ -69,16 +70,15 @@ export type DataGridCanvasPointerDownCell =
           visualRowIndex: number;
       };
 
-export type DataGridCanvasInternals = {
+export type DataGridInternals = {
     activeResizeColumnIndex: number | undefined;
-    bodyPointerDownCell: DataGridCanvasPointerDownCell | undefined;
+    bodyPointerDownCell: DataGridPointerDownCell | undefined;
     bodyPointerDownClientX: number;
     bodyPointerDownClientY: number;
     bodyPointerDownRowAnchorIndex: number | undefined;
     dragAutoScrollFrame: number;
     dragAutoScrollVelocity: number;
     dragPointerClientX: number;
-    drawFrame: number;
     editingTextareaResizeObserver: ResizeObserver | undefined;
     isBodySelecting: boolean;
     isHeaderDragging: boolean;
@@ -120,39 +120,37 @@ type DataGridBodyCell =
           area: 'row-header';
       };
 
-export interface DataGridRuntimeArgs {
+export interface DataGridRenderRuntimeArgs {
     sharedState: DataGridViewSharedState;
-    internals: DataGridCanvasInternals;
+    internals: DataGridInternals;
     gridState: ComputedRef<TDataGridState<DataGridPendingRowsState>>;
     withCheckboxes?: boolean;
     hasToolbar?: boolean;
 }
 
-export interface DataGridCanvasViewportArgs {
+export interface DataGridViewportArgs {
     sharedState: DataGridViewSharedState;
-    internals: DataGridCanvasInternals;
+    internals: DataGridInternals;
     gridState: ComputedRef<TDataGridState<DataGridPendingRowsState>>;
-    runtime: ReturnType<typeof useDataGridCanvasRuntime>;
+    runtime: ReturnType<typeof useDataGridRenderRuntime>;
     withCheckboxes?: boolean;
     hasToolbar?: boolean;
 }
 
-export interface DataGridCanvasRuntimeHelpers {
-    cancelDraw: () => void;
+export interface DataGridRenderRuntimeHelpers {
     drawGrid: () => void;
     getNormalizedSelectedCellRange: () => DataGridNormalizedCellRange | undefined;
-    getThemeColors: () => { headerBackground: string; bodyBackground: string } & Record<string, string>;
     isCheckboxHit: (localX: number, localY: number, options: { containerWidth: number; rowTop: number; rowHeight: number }) => boolean;
     scheduleDraw: () => void;
     stopDragAutoScroll: () => void;
 }
 
-export interface DataGridCanvasViewportHelpers {
+export interface DataGridViewportHelpers {
     disconnectEditingTextareaObserver: () => void;
     disconnectViewportObserver: () => void;
     ensureActiveCellVisible: () => void;
     focusViewport: () => void;
-    getBodyCanvasPoint: (event: MouseEvent | PointerEvent) => { x: number; y: number } | undefined;
+    getBodyPoint: (event: MouseEvent | PointerEvent) => { x: number; y: number } | undefined;
     getBodyCellAtEvent: (event: MouseEvent | PointerEvent) => DataGridBodyCell | undefined;
     getColumnIndexAtViewportX: (x: number) => number | undefined;
     getHeaderColumnAtEvent: (event: MouseEvent | PointerEvent) => DataGridHeaderCell | undefined;
@@ -169,16 +167,16 @@ export interface DataGridCanvasViewportHelpers {
     updateHeaderCursor: (event?: MouseEvent | PointerEvent) => void;
 }
 
-export interface DataGridCanvasPointerHandlersArgs {
+export interface DataGridPointerHandlersArgs {
     sharedState: DataGridViewSharedState;
-    internals: DataGridCanvasInternals;
+    internals: DataGridInternals;
     gridState: TDataGridState;
     withCheckboxes?: boolean;
     hasToolbar?: boolean;
-    runtime: DataGridCanvasRuntimeHelpers;
+    runtime: DataGridRenderRuntimeHelpers;
     stateWithCheckboxActions: ComputedRef<TDataGridState<DataGridCheckboxActions>>;
     stateWithPendingRows: ComputedRef<TDataGridState<DataGridPendingRowsState>>;
-    viewportHelpers: DataGridCanvasViewportHelpers;
+    viewportHelpers: DataGridViewportHelpers;
 }
 
 export type DataGridViewState = ReturnType<typeof useDataGridView>;
@@ -186,17 +184,40 @@ export type DataGridViewSharedState = ReturnType<typeof getSharedState>;
 
 let textMeasureCanvasContext: CanvasRenderingContext2D | undefined;
 
+/** Measuring the same short strings for every visible cell repeats; widths are cached per font. */
+const TEXT_WIDTH_CACHE_LIMIT = 20_000;
+const textWidthCache = new Map<string, number>();
+
 function getSharedState(state: TDataGridState, _hasToolbar: boolean, withCheckboxes: boolean) {
-    const measureGridText = (value: string, isHeader: boolean) => {
+    const measureGridTextExact = (value: string, isHeader: boolean) => {
         const context = getTextMeasureContext();
 
         if (!context) {
             return value.length * 8;
         }
 
-        context.font = getDataGridCanvasFont(isHeader, state.gridFontFamily);
-        return Math.ceil(context.measureText(value).width);
+        const font = getDataGridCanvasFont(isHeader, state.gridFontFamily);
+        const cacheKey = `${font}\u0000${value}`;
+        const cached = textWidthCache.get(cacheKey);
+
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        context.font = font;
+        const width = context.measureText(value).width;
+
+        if (textWidthCache.size >= TEXT_WIDTH_CACHE_LIMIT) {
+            textWidthCache.clear();
+        }
+
+        textWidthCache.set(cacheKey, width);
+
+        return width;
     };
+    // Column widths are whole pixels (as they always were); text truncation compares the exact
+    // width the font reports, which is what the canvas measured when it drew.
+    const measureGridText = (value: string, isHeader: boolean) => Math.ceil(measureGridTextExact(value, isHeader));
 
     const clampMeasuredColumnWidth = (width: number) => Math.max(DATA_GRID_COLUMN_MIN_WIDTH, Math.min(width, DATA_GRID_COLUMN_MAX_WIDTH));
     // A width the user chose is not the auto-measured one: it may exceed the measuring cap.
@@ -245,8 +266,8 @@ function getSharedState(state: TDataGridState, _hasToolbar: boolean, withCheckbo
     const _state = reactive({
         viewportElement: undefined as undefined | HTMLElement,
         containerElement: undefined as undefined | HTMLElement,
-        bodyCanvasElement: undefined as undefined | HTMLCanvasElement,
-        headerCanvasElement: undefined as undefined | HTMLCanvasElement,
+        bodyElement: undefined as undefined | HTMLElement,
+        headerElement: undefined as undefined | HTMLElement,
         editingTextareaElement: undefined as undefined | HTMLTextAreaElement,
         viewportHeight: 0,
         viewportWidth: 0,
@@ -260,20 +281,19 @@ function getSharedState(state: TDataGridState, _hasToolbar: boolean, withCheckbo
         columns: computed(() => state.orderedColumns),
         sortedRowIndexes: computed(() => state.sortedRowIndexes),
         rowCount: computed(() => state.sortedRowIndexes.length),
-        bodyCanvasHeight: computed((): number => Math.max(_state.viewportHeight - DATA_GRID_HEADER_HEIGHT, 0)),
+        bodyHeight: computed((): number => Math.max(_state.viewportHeight - DATA_GRID_HEADER_HEIGHT, 0)),
         totalBodyHeight: computed((): number => _state.rowCount * DATA_GRID_ROW_HEIGHT),
         totalScrollHeight: computed((): number => DATA_GRID_HEADER_HEIGHT + _state.totalBodyHeight),
         bodyScrollTop: computed((): number => _state.scrollTop),
         normalizedSearchQuery: computed(() => state.searchQuery.trim().toLocaleLowerCase()),
         gridFontFamilyCss: computed(() => getDataGridFontFamilyCss(state.gridFontFamily)),
-        headerCanvasFont: computed(() => getDataGridCanvasFont(true, state.gridFontFamily)),
-        bodyCanvasFont: computed(() => getDataGridCanvasFont(false, state.gridFontFamily)),
         rowNumberColumnWidth: computed((): number => Math.max(DATA_GRID_ROW_NUMBER_MIN_WIDTH, measureGridText(String(Math.max(_state.rowCount, 1)), false) + 18)),
         gutterColumnWidth: computed((): number => (withCheckboxes ? 36 : state.showRowNumbers === false ? DATA_GRID_ROW_HEADER_COMPACT_WIDTH : _state.rowNumberColumnWidth)),
 
         measuredColumnWidths: measuredColumnWidths,
         resolvedColumnWidths: resolvedColumnWidths,
         measureGridText,
+        measureGridTextPrecise: measureGridTextExact,
 
         totalMeasuredWidth: totalMeasuredWidth,
         editingCellKey: computed(() =>
@@ -293,7 +313,7 @@ function getSharedState(state: TDataGridState, _hasToolbar: boolean, withCheckbo
 export function useDataGridView(state: TDataGridState, hasToolbar: boolean, withCheckboxes: boolean) {
     const _state = getSharedState(state, hasToolbar, withCheckboxes);
 
-    const internals: DataGridCanvasInternals = {
+    const internals: DataGridInternals = {
         activeResizeColumnIndex: undefined,
         bodyPointerDownCell: undefined,
         bodyPointerDownClientX: 0,
@@ -302,7 +322,6 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         dragAutoScrollFrame: 0,
         dragAutoScrollVelocity: 0,
         dragPointerClientX: 0,
-        drawFrame: 0,
         editingTextareaResizeObserver: undefined,
         isBodySelecting: false,
         isHeaderDragging: false,
@@ -326,7 +345,7 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
     const canDeleteCheckboxSelection = computed(() => !!stateWithCheckboxActions.value.deleteSelectedRows && stateWithCheckboxActions.value.canDeleteSelectedRows !== false);
     const toolbarMenuItems = useDataGridToolbarMenu(state);
 
-    const runtime = useDataGridCanvasRuntime({
+    const runtime = useDataGridRenderRuntime({
         sharedState: _state,
         internals: internals,
         gridState: stateWithPendingRows,
@@ -334,12 +353,15 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         hasToolbar: hasToolbar,
     });
     const themeCssVars = computed<CSSProperties>(() => getDataGridThemeCssVariables(state.theme));
-    const canvasColors = computed(() => ({
-        headerBackground: runtime.getThemeColors().headerBackground,
-        bodyBackground: runtime.getThemeColors().bodyBackground,
-    }));
+    const renderModel = useDataGridRenderModel({
+        sharedState: _state,
+        internals: internals,
+        gridState: stateWithPendingRows,
+        paintTick: runtime.paintTick,
+        withCheckboxes: withCheckboxes,
+    });
 
-    const viewportHelpers = useDataGridCanvasViewport({
+    const viewportHelpers = useDataGridViewport({
         sharedState: _state,
         internals: internals,
         gridState: stateWithPendingRows,
@@ -348,7 +370,7 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         hasToolbar: hasToolbar,
     });
 
-    const pointerHandlers = useDataGridCanvasPointerHandlers({
+    const pointerHandlers = useDataGridPointerHandlers({
         sharedState: _state,
         internals: internals,
         gridState: state,
@@ -389,7 +411,7 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         const minHeight = DATA_GRID_ROW_HEIGHT;
         const maxHeight = Math.max(
             minHeight,
-            Math.min(DATA_GRID_ROW_HEIGHT * DATA_GRID_EDITING_TEXTAREA_ROWS, Math.floor(_state.bodyCanvasHeight * DATA_GRID_EDITING_TEXTAREA_MAX_GRID_HEIGHT_RATIO))
+            Math.min(DATA_GRID_ROW_HEIGHT * DATA_GRID_EDITING_TEXTAREA_ROWS, Math.floor(_state.bodyHeight * DATA_GRID_EDITING_TEXTAREA_MAX_GRID_HEIGHT_RATIO))
         );
         const fittedHeight = Math.max(minHeight, Math.min(Math.max(fittedLineCount, fallbackRows) * DATA_GRID_ROW_HEIGHT, maxHeight));
         const initialRows = Math.max(1, Math.min(Math.round(fittedHeight / DATA_GRID_ROW_HEIGHT), DATA_GRID_EDITING_TEXTAREA_ROWS));
@@ -684,7 +706,6 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
     );
 
     onBeforeUnmount(() => {
-        runtime.cancelDraw();
         runtime.stopDragAutoScroll();
         viewportHelpers.disconnectViewportObserver();
         viewportHelpers.disconnectEditingTextareaObserver();
@@ -695,9 +716,9 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
     });
 
     return reactive({
-        bodyCanvasElement: toRef(_state, 'bodyCanvasElement'),
-        bodyCanvasHeight: computed(() => _state.bodyCanvasHeight),
-        canvasColors,
+        bodyElement: toRef(_state, 'bodyElement'),
+        bodyHeight: computed(() => _state.bodyHeight),
+        bodyModel: renderModel.body,
         canAddCheckboxRow,
         canDeleteCheckboxSelection,
         containerElement: toRef(_state, 'containerElement'),
@@ -712,7 +733,8 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         gutterColumnWidth: computed(() => _state.gutterColumnWidth),
         handleEditingInputWheel,
         handleEditingKeydown,
-        headerCanvasElement: toRef(_state, 'headerCanvasElement'),
+        headerElement: toRef(_state, 'headerElement'),
+        headerModel: renderModel.header,
         headerCursor: computed(() => _state.headerCursor),
         compactModalEditValue,
         isModalEditJson: computed(() => stateWithModalEditing.value.modalEditingCell.isJsonObject ?? false),

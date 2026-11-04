@@ -31,6 +31,6 @@ export const DATA_GRID_LAYOUT_SAVE_DEBOUNCE_MS = 200;
 export const DATA_GRID_NEWLINE_SYMBOL = '⏎';
 export const DATA_GRID_NEWLINE_TOKEN = ` ${DATA_GRID_NEWLINE_SYMBOL} `;
 
-/** Maximum length of a cell's displayed text before truncation. Prevents
- *  performance degradation from canvas measureText() on multi-MB strings. */
+/** Maximum length of a cell's displayed text before truncation: measuring and laying
+ *  out a multi-MB value (with a search over it) would block the grid. */
 export const DATA_GRID_MAX_DISPLAY_TEXT_LENGTH = 10_000;
