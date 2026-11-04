@@ -1,5 +1,5 @@
-// The grid draws to a canvas, so a column's width is only observable through the scrollable content
-// it lays out (the spacer the viewport scrolls) and through what the canvas draws.
+// A column's width is observable through the scrollable content the grid lays out (the spacer the
+// viewport scrolls) and through the header cells it renders.
 import { expect, test, type Page } from '@playwright/test';
 import { createFileSource, openFileTable } from './helpers';
 
