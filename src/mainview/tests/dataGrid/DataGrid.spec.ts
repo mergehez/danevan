@@ -2,7 +2,7 @@
 import DataGrid from '#datagrid/DataGrid.tsx';
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { computed, defineComponent, nextTick, ref, type PropType } from 'vue';
+import { computed, defineComponent, h, nextTick, ref, type PropType } from 'vue';
 import {
     DATA_GRID_COLUMN_MAX_WIDTH,
     DATA_GRID_COLUMN_MIN_WIDTH,
@@ -17,6 +17,7 @@ import {
     type DataGridRow,
     type TDataGridState,
 } from '../../../datagrid';
+import { DataGridBodySurface, DataGridHeaderSurface } from '../../../datagrid/DataGridSurface.tsx';
 import type { DbType } from '../../../shared/types';
 import { DATA_GRID_MODAL_PREFERENCES_KEY } from '#datagrid/dataGridModalPreferences.ts';
 import { resetCacheState } from '#shared/utils/useCache.ts';
@@ -47,9 +48,11 @@ type GridStateOptions = {
 };
 
 type MockCanvasContext = CanvasRenderingContext2D & {
-    fillTextCalls: Array<{ text: string; x: number; y: number }>;
     measureTextCalls: string[];
 };
+
+/** Every `measureText` of every mocked context: text widths are cached, so a warm render adds none. */
+const measuredTexts: string[] = [];
 
 type GridViewHarnessVm = {
     state: TDataGridState;
@@ -63,7 +66,6 @@ const PointerEventCtor = window.PointerEvent ?? MouseEvent;
 
 function createMockCanvasContext(): MockCanvasContext {
     const context = {
-        fillTextCalls: [] as Array<{ text: string; x: number; y: number }>,
         measureTextCalls: [] as string[],
         beginPath: () => {},
         clearRect: () => {},
@@ -73,6 +75,7 @@ function createMockCanvasContext(): MockCanvasContext {
         lineTo: () => {},
         measureText(text: string) {
             context.measureTextCalls.push(String(text));
+            measuredTexts.push(String(text));
             return { width: String(text).length * 7 };
         },
         moveTo: () => {},
@@ -82,9 +85,6 @@ function createMockCanvasContext(): MockCanvasContext {
         setTransform: () => {},
         stroke: () => {},
         strokeRect: () => {},
-        fillText(text: string, x: number, y: number) {
-            context.fillTextCalls.push({ text: String(text), x, y });
-        },
         canvas: undefined,
         globalAlpha: 1,
         lineWidth: 1,
@@ -211,20 +211,22 @@ const GridViewHarness = defineComponent({
             vs,
         });
 
-        return {
-            // oxlint-disable-next-line vue/no-dupe-keys
-            state: props.state,
-            vs,
-        };
+        return () =>
+            h('div', { ref: (element: unknown) => (vs.containerElement = element as HTMLElement) }, [
+                h('div', { ref: (element: unknown) => (vs.viewportElement = element as HTMLElement), tabindex: '0' }, [
+                    h(DataGridHeaderSurface, {
+                        model: vs.headerModel,
+                        fontFamily: vs.gridFontFamilyCss,
+                        elementRef: (element: HTMLElement | undefined) => (vs.headerElement = element),
+                    }),
+                    h(DataGridBodySurface, {
+                        model: vs.bodyModel,
+                        fontFamily: vs.gridFontFamilyCss,
+                        elementRef: (element: HTMLElement | undefined) => (vs.bodyElement = element),
+                    }),
+                ]),
+            ]);
     },
-    template: `
-        <div :ref="(element) => (vs.containerElement = element)">
-            <div :ref="(element) => (vs.viewportElement = element)" tabindex="0">
-                <canvas :ref="(element) => (vs.headerCanvasElement = element)"></canvas>
-                <canvas :ref="(element) => (vs.bodyCanvasElement = element)"></canvas>
-            </div>
-        </div>
-    `,
 });
 
 function mountDataGrid(state: TDataGridState) {
@@ -258,19 +260,20 @@ async function mountGridViewHarness(state: TDataGridState) {
     });
 
     const vm = wrapper.vm as unknown as GridViewHarnessVm;
-    const [headerCanvas, bodyCanvas] = wrapper.findAll('canvas').map((entry) => entry.element as HTMLCanvasElement);
+    const headerElement = wrapper.find('[data-grid-header]').element as HTMLElement;
+    const bodyElement = wrapper.find('[data-grid-body]').element as HTMLElement;
     const viewportElement = wrapper.find('[tabindex="0"]').element as HTMLElement;
     const containerElement = wrapper.element as HTMLElement;
 
     setElementMetrics(containerElement, { width: 480, height: 320 });
     setElementMetrics(viewportElement, { width: 480, height: 320, scrollWidth: 640, scrollHeight: 640 });
-    setElementMetrics(headerCanvas, { width: 480, height: 33, top: 0 });
-    setElementMetrics(bodyCanvas, { width: 480, height: 287, top: 33 });
+    setElementMetrics(headerElement, { width: 480, height: 33, top: 0 });
+    setElementMetrics(bodyElement, { width: 480, height: 287, top: 33 });
 
     (vm.vs.viewportHelpers.updateViewportMetrics as (...args: unknown[]) => void)({ drawNow: true });
     await nextTick();
 
-    return { wrapper, vm, headerCanvas, bodyCanvas };
+    return { wrapper, vm, headerElement, bodyElement };
 }
 
 beforeAll(() => {
@@ -714,13 +717,7 @@ describe('DataGrid', () => {
             offset: 200,
             limit: 100,
         });
-        const { wrapper, vm, bodyCanvas } = await mountGridViewHarness(state);
-        const bodyContext = canvasContexts.get(bodyCanvas);
-
-        if (!bodyContext) {
-            throw new Error('Expected body canvas context to be available.');
-        }
-
+        const { wrapper, vm } = await mountGridViewHarness(state);
         const gutterWidth = Number(vm.vs.gutterColumnWidth);
 
         vm.vs.pointerHandlers.handleHeaderClick(
@@ -756,9 +753,9 @@ describe('DataGrid', () => {
 
         (vm.vs.viewportHelpers.updateViewportMetrics as (...args: unknown[]) => void)({ drawNow: true });
 
-        const paintedRowNumbers = bodyContext.fillTextCalls
-            .map((entry) => entry.text)
-            .filter((text) => /^\d+$/.test(text))
+        const paintedRowNumbers = wrapper
+            .findAll('[data-grid-row] [data-grid-row-number]')
+            .map((entry) => entry.text())
             .slice(0, 3);
 
         expect(paintedRowNumbers).toEqual(['201', '202', '203']);
@@ -802,8 +799,9 @@ describe('DataGrid', () => {
                 global: { directives: { menu: {}, tooltip: {} } },
             });
 
-            // Header canvas only: no rows, so no body canvas to paint.
-            expect(wrapper.findAll('canvas')).toHaveLength(1);
+            // Header only: no rows, so there is no body surface to draw.
+            expect(wrapper.find('[data-grid-header]').exists()).toBe(true);
+            expect(wrapper.find('[data-grid-body]').exists()).toBe(false);
             expect(wrapper.text()).toContain('No rows');
 
             state.setSearchQuery('zzz');
@@ -827,7 +825,7 @@ describe('DataGrid', () => {
             global: { directives: { menu: {}, tooltip: {} } },
         });
 
-        expect(wrapper.findAll('canvas')).toHaveLength(0);
+        expect(wrapper.find('[data-grid-header]').exists()).toBe(false);
         expect(wrapper.text()).toContain('Select a table to preview rows.');
 
         wrapper.unmount();
@@ -962,19 +960,14 @@ describe('DataGrid', () => {
         // The row still holds the old value; only the pending change says otherwise.
         expect(rows.value[0]?.nickname).toBe('lovelace');
 
-        const { wrapper, vm, bodyCanvas } = await mountGridViewHarness(state);
-        const bodyContext = canvasContexts.get(bodyCanvas);
-
-        if (!bodyContext) {
-            throw new Error('Expected body canvas context to be available.');
-        }
+        const { wrapper, vm } = await mountGridViewHarness(state);
 
         (vm.vs.viewportHelpers.updateViewportMetrics as (...args: unknown[]) => void)({ drawNow: true });
         await nextTick();
 
-        const paintedTexts = bodyContext.fillTextCalls.map((entry) => entry.text);
-        expect(paintedTexts).toContain('NULL');
-        expect(paintedTexts).not.toContain('lovelace');
+        const paintedText = wrapper.find('[data-grid-row="0"]').text();
+        expect(paintedText).toContain('NULL');
+        expect(paintedText).not.toContain('lovelace');
 
         // A row the user emptied is not a column of the transposed view either: the `id` cell goes
         // too, so no value is left to name the transposed row after.
@@ -1181,27 +1174,23 @@ describe('DataGrid', () => {
         expect(state.areAllRowsSelected()).toBe(false);
     });
 
-    it('does not re-measure the same text on every frame', async () => {
+    it('does not re-measure the same text on a repaint', async () => {
         const suffix = `unique-${Date.now()}`;
         const { state } = createGridState({
             columns: ['id', 'name', 'city'],
             rows: Array.from({ length: 12 }, (_, index) => ({ id: index + 1, name: `${suffix}-${index}`, city: `${suffix}-city-${index}` })),
         });
-        const { vm, bodyCanvas, wrapper } = await mountGridViewHarness(state);
-        const context = canvasContexts.get(bodyCanvas)!;
+        const { vm, wrapper } = await mountGridViewHarness(state);
 
-        // Column widths are measured once; the body text is what repeats per frame.
-        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
-        context.measureTextCalls.length = 0;
-        vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
-        const warmFrameMeasurements = context.measureTextCalls.length;
+        // The first render measured these values (the suffix makes them unique to this spec).
+        expect(measuredTexts).toContain(`${suffix}-0`);
 
-        context.measureTextCalls.length = 0;
+        // A repaint of the same rows is served from the width cache: nothing is measured again.
+        measuredTexts.length = 0;
         vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
-        const secondWarmFrameMeasurements = context.measureTextCalls.length;
+        await nextTick();
 
-        expect(warmFrameMeasurements).toBe(0);
-        expect(secondWarmFrameMeasurements).toBe(0);
+        expect(measuredTexts).toEqual([]);
 
         wrapper.unmount();
     });
@@ -1222,8 +1211,10 @@ describe('DataGrid', () => {
         const { vm, wrapper } = await mountGridViewHarness(state);
 
         vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+        await nextTick();
         formatCell.mockClear();
         vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+        await nextTick();
 
         expect(formatCell).not.toHaveBeenCalled();
 
@@ -1236,6 +1227,7 @@ describe('DataGrid', () => {
         }
 
         vm.vs.viewportHelpers.updateViewportMetrics({ drawNow: true });
+        await nextTick();
 
         expect(formatCell).toHaveBeenCalledWith(0, 'name');
 
