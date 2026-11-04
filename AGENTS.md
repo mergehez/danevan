@@ -187,6 +187,25 @@ Suggested from the 2026-10-12 "the app quits immediately" report:
   though the build was signed. `installMacApp.ts` does the copy and `releaseHelpers.ts` re-checks the
   installed signature, so a broken install fails the release instead of the user's next launch.
 
+Suggested from the 2026-10-31 canvas → DOM grid migration:
+
+- **A list renders a window, never the list.** The grid holds up to a whole table's rows in state and
+  mounts only the rows and columns in view (`useDataGridRenderModel`), positioned in two translated
+  layers (vertical, horizontal) so a wheel step moves a transform instead of every row's coordinates.
+  `native-grid.spec.ts` scrolls a 2000-row page to the end and asserts the mounted row count stays
+  bounded; anything that renders one element per result row (a summary, a preview, a new panel)
+  reintroduces exactly the cost the windowing removes — read the window, do not map the rows.
+- **The grid is derived from state, so paint-only state must be observable.** A column resize and a
+  column drag are kept in the pointer layer's non-reactive internals; the render model reads them
+  through `paintTick`, which `scheduleDraw()` bumps (the name every interaction already used). A new
+  paint-affecting field belongs in the model's dependencies, or the grid silently does nothing until
+  the next unrelated interaction.
+- **Text is laid out by the shared helpers, not by the browser's own truncation.** `dataGridText.ts`
+  owns the newline markers, the 10 000-character cap, the `...` ellipsis and the search-match layout,
+  so a truncation and its highlights end at the same character they always did (CSS `text-overflow`
+  uses a different ellipsis and would drift the highlight positions). Guarded by
+  `query-bar.spec.ts`, `grid-search.spec.ts` and `cell-set-value.spec.ts`.
+
 Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs losing state, dead display switch):
 
 - **A reload shows what the panel was showing.** A table load that restores an active custom query
@@ -203,8 +222,8 @@ Suggested from the 2026-10-13 grid-state reports (custom query refused, tabs los
   Pixel scroll is parked too (the cell alone cannot restore a wheel scroll), and a same-table
   reload remaps the kept index to its row's primary key. Guarded by `tab-grid-state.spec.ts` and
   `src/mainview/tests/composables/useDbDataGrid.spec.ts`.
-- **Painted text state joins the render version.** The canvas caches formatted text per render
-  version and redraws off it, so a layout change that alters no row (a display-type switch) must be
+- **Painted text state joins the render version.** The grid caches a cell's formatted text per render
+  version and renders off it, so a layout change that alters no row (a display-type switch) must be
   part of the version — otherwise the stored value updates, the search index rebuilds, and the
   screen still shows the old text with no feedback. Guarded by
   `src/mainview/tests/e2e/display-type-timestamp.spec.ts` (viewport pixels plus search).

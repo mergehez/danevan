@@ -48,7 +48,7 @@ browser dev API, Vite + Electron, Bun as runtime/package manager.
 | --- | --- |
 | `src/backend/` | `app.ts` (~47 async handlers, the whole API), `db-tools.ts` (driver dispatch + metadata caches), `useMySqlDriver.ts` / `usePostgresDriver.ts` / `useSqliteDriver.ts` / `useSqlServerDriver.ts` / `useMsAccessDriver.ts`, `useRemoteDriverTools.ts` (shared remote query/exec), `remoteDataSourcePool.ts` (one pooled DataSource per server/connection), `db-app.ts` (the app's own SQLite store), `auth.ts` (keychain secrets), `sqlScriptRunner.ts`, `devServer.ts` (Express mount for browser mode) |
 | `src/mainview/` | `App.tsx` (shell), `components/` (`DbSidebar`, `DbTabs`, `DbData`, `DbScripts`, `MonacoEditor`, modals…), `composables/` (all renderer state, see §5), `lib/` (Monaco setup, menus, formatting), `tests/` (unit, components, e2e, electron). **Modify Table** is a folder each: `composables/modifyTable/` (types, drafts, column DDL, create/alter previews per dialect, validation, apply, history, navigation) with `useModifyTable.ts` as the store, and `components/modifyTable/` (sidebar with its item menu, form helpers, one form per entity) with `ModifyTableModal.tsx` as the shell |
-| `src/datagrid/` | The canvas data grid (`DataGrid.tsx`, `useDataGrid.ts`, navigation, clipboard, layout persistence). Editors are DOM overlays on the canvas. |
+| `src/datagrid/` | The data grid: real DOM rows and cells (`DataGrid.tsx` + `DataGridSurface.tsx`, styled by `css/dataGrid.css`), a render model that mounts only the rows and columns in view (`useDataGridRenderModel.ts`), the state (`useDataGrid.ts`), navigation, clipboard, layout persistence. The in-cell editor is a textarea overlay; an offscreen canvas measures text widths only. |
 | `src/shared/` | Types (`types.ts` — `AppBootstrapApi`, `QueryExecutionResult`, …), components (`Button`, `CenteredModal`, `Splitter`, `ListBox`, the colour picker in `components/colorPicker/`…), utils (`sqlStatements`, `sqlSourceTable`, `sqlIdentifiers`, `valueFormatting`, `dbColor`, `tsxHelpers`, `useCache`…) |
 | `src/electron/` | `main.ts` (window + native handlers), `preload.ts` (IPC bridge), `bridge.ts` |
 | `src/electronUtils/` | **Project-agnostic: byte-identical to `gitvan/src/electronUtils`** (see AGENTS.md). `vite-plugin.ts` (mounts `devServer` in browser mode, auto-generates `apiMethods.ts`, dev ports), `mainviewHelpers.ts` (`createAppClientPpc`), `browserOnlyHelpers.ts` (browser dev server; app specifics come in as options), `helpers.ts`/`appDataDir.ts`, `useDatabase.ts`, `executeCommand.ts`/`requestContext.ts`, `signMacApp.ts`/`installMacApp.ts` and `releaseHelpers.ts`/`electronConfig.ts` (release chain, loaded by Node's ESM loader — keep `.ts` extensions there) |
@@ -141,10 +141,11 @@ guards it are the reference.
    `src/mainview/tests/backend/signMacApp.spec.ts`, `src/mainview/tests/backend/installMacApp.spec.ts`, `packaged.spec.ts`
    (the artifact must carry a signature macOS accepts), plus the post-install signature check in
    `releaseHelpers.ts`.
-8. **A paint-affecting change that touches no row never repainted.** The canvas caches formatted text
-   per render version and redraws off it; a display-type switch updated the stored layout (and the
-   search index rebuilt) but the version never included display types, so the screen kept the old
-   text with no feedback. *Rule:* painted-text state joins the render version. *Guard:*
+8. **A paint-affecting change that touches no row never repainted.** The grid caches a cell's
+   formatted text per render version and renders off it (it was drawn to a canvas then, it is
+   rendered from a model now); a display-type switch updated the stored layout and rebuilt the search
+   index, but the version never included display types, so the screen kept the old text with no
+   feedback. *Rule:* painted-text state joins the render version. *Guard:*
    `display-type-timestamp.spec.ts` (viewport pixels plus search).
 9. **The client-side sort contradicted the server on NULLs.** The grid re-sorts the loaded page for
    its sort indicator by flipping the value comparison on DESC, which puts NULLs first on dialects
@@ -206,12 +207,16 @@ specs really ran.
   reset is skipped — state and dead `file:` sources accumulate and the sidebar starts logging
   `unable to open database file`. **Never `rm -rf .e2e-data`**: it holds the provisioned SQLFluff and
   MS Access runtimes, which are downloads.
-- **The grid is a canvas.** Row/cell values are only readable through the in-cell editor
-  (`textarea[data-editor-key="<row>:<col>"]`, opened with `Enter`). `data-grid-viewport` can match
-  several grids (FK peek) — use `.first()`. `Meta+ArrowLeft` / `Meta+ArrowUp` jump to the row's first
-  cell / the column's first row, which is how a test reaches a known cell after an earlier edit.
-  The editor shows the *raw* value by design (`formatEditingValue`), so formatted text is proven
-  through the grid search counter or viewport pixels, never the editor.
+- **The grid is real DOM text**, one element per visible row (`[data-grid-row="<visual row>"]`,
+  `[data-grid-cell="<column index>"]`, `[data-grid-row-number]`; headers are
+  `[data-grid-header-cell="<column>"]`). A drawn value is asserted directly (`toHaveText`), and only a
+  window of rows is mounted: `native-grid.spec.ts` scrolls a 2000-row page to the end and asserts the
+  first row is gone and the mounted count stays bounded. The in-cell editor
+  (`textarea[data-editor-key="<row>:<col>"]`) still shows the *raw* value by design
+  (`formatEditingValue`), so formatting is asserted on the cell text, not the editor.
+  `data-grid-viewport` can match several grids (FK peek) — use `.first()`; `Meta+ArrowLeft` /
+  `Meta+ArrowUp` jump to the row's first cell / the column's first row, which is how a test reaches a
+  known cell after an earlier edit.
 - **A fresh script tab opens on the Problems panel.** Click the `Result` tab before asserting a result.
 - **`openSidebarTable` returns before the rows land.** When a test edits right after opening a table,
   wait for the `/api/getTableData` response and/or the `Loading table data...` overlay to clear.
@@ -244,12 +249,17 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1156 unit tests (93 files)**, **166 browser tests (46 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.4 % statements / 42.2 % branches** with
-the floors green. The full browser suite ran 166 passed + 0 failed, and that green run also assumes the
+Snapshot at the last verification: **1156 unit tests (93 files)**, **168 browser tests (47 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.6 % statements / 42.2 % branches** with
+the floors green. The full browser suite ran 168 passed + 0 failed, and that green run also assumes the
 local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and packaged
 suites were not re-run after this renderer-only change.
+
+The grid is DOM (see §3/§7). Measured on a 2000-row × 40-column page, 200 scroll steps: the canvas
+version spent **275 ms** scripting (11 ms layout/style) and the DOM version **7 ms** scripting +
+41 ms layout/style, with **24 rows** and ~180 viewport nodes mounted regardless of page size. Both
+keep the 16.7 ms frame at the median; the DOM version's cost is in the browser's paint, not in JS.
 
 Open tasks live in `todos.md` (`## Open`): **T15** (release gate misses the Electron suites), **T19**
 (browser suite contributes no coverage; no `src/mainview` floor), **T25** (MySQL specs depend on local
