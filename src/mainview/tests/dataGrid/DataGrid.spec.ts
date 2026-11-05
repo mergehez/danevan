@@ -42,7 +42,7 @@ type GridStateOptions = {
     canDeleteSelectedRows?: boolean;
     getPendingRowState?: (rowIndex: number) => 'inserted' | 'deleted' | undefined;
     parseEditingValue?: (draftValue: string, originalValue: DataGridCellValue) => DataGridCellValue;
-    createPendingChange?: (change: DataGridPendingChangeContext) => DataGridPendingChange;
+    createPendingChange?: (change: DataGridPendingChangeContext) => DataGridPendingChange | undefined;
     getFormattedCellValue?: (rowIndex: number, columnName: string) => string;
     sortNullOrdering?: 'nulls-low' | 'nulls-high';
 };
@@ -1232,6 +1232,92 @@ describe('DataGrid', () => {
         expect(formatCell).toHaveBeenCalledWith(0, 'name');
 
         wrapper.unmount();
+    });
+
+    it('fills a selected range with the typed value as one undoable step', () => {
+        const { state } = createGridState({
+            columns: ['id', 'active', 'name'],
+            rows: [
+                { id: 1, active: 1, name: 'Ada' },
+                { id: 2, active: 1, name: 'Grace' },
+                { id: 3, active: 1, name: 'Alan' },
+            ],
+            createPendingChange: ({ rowIndex, columnName, nextValue, rawValue }) => ({ rowIndex, columnName, previousValue: rawValue, nextValue, rawValue }),
+        });
+
+        // Rows 0..1 of the `active` column are selected, and the user types `0`.
+        state.selectCellRange(0, 1, 1, 1);
+        state.startEditingCell(0, 1, { initialText: '0' });
+
+        expect(state.editingCell.draftValue).toBe('0');
+        state.commitEditingCell();
+
+        expect(state.getDisplayedCellValue(0, 'active')).toBe('0');
+        expect(state.getDisplayedCellValue(1, 'active')).toBe('0');
+        // The row outside the selection keeps its value.
+        expect(state.getDisplayedCellValue(2, 'active')).toBe(1);
+        expect(state.dirtyChanges).toHaveLength(2);
+
+        // ...and it is one undo step, not one per cell.
+        expect(state.canUndo).toBe(true);
+        state.undoChanges();
+        expect(state.getDisplayedCellValue(0, 'active')).toBe(1);
+        expect(state.getDisplayedCellValue(1, 'active')).toBe(1);
+        expect(state.canRedo).toBe(true);
+
+        state.redoChanges();
+        expect(state.getDisplayedCellValue(0, 'active')).toBe('0');
+        expect(state.getDisplayedCellValue(1, 'active')).toBe('0');
+    });
+
+    it('pastes a block from the anchor cell and a single value over the selection', () => {
+        const { state } = createGridState({
+            columns: ['id', 'name', 'city'],
+            rows: [
+                { id: 1, name: 'Ada', city: 'London' },
+                { id: 2, name: 'Grace', city: 'New York' },
+                { id: 3, name: 'Alan', city: 'London' },
+            ],
+            createPendingChange: ({ rowIndex, columnName, nextValue, rawValue }) => ({ rowIndex, columnName, previousValue: rawValue, nextValue, rawValue }),
+        });
+
+        // A block pastes from the active cell, expanding right and down.
+        state.setActiveCell(1, 1);
+        expect(state.pasteText('Grace\tParis\nAlan\tCairo')).toBe(true);
+
+        expect(state.getDisplayedCellValue(1, 'name')).toBe('Grace');
+        expect(state.getDisplayedCellValue(1, 'city')).toBe('Paris');
+        expect(state.getDisplayedCellValue(2, 'name')).toBe('Alan');
+        expect(state.getDisplayedCellValue(2, 'city')).toBe('Cairo');
+        // The two cells that already held these values are not staged.
+        expect(state.dirtyChanges).toHaveLength(2);
+
+        state.clearPendingChanges();
+        state.clearHistory();
+
+        // One value fills the whole selection.
+        state.selectCellRange(0, 1, 0, 2);
+        expect(state.pasteText('same')).toBe(true);
+        expect(state.getDisplayedCellValue(0, 'name')).toBe('same');
+        expect(state.getDisplayedCellValue(0, 'city')).toBe('same');
+        expect(state.dirtyChanges).toHaveLength(2);
+    });
+
+    it('refuses the whole paste when the change builder refuses it', () => {
+        const { state } = createGridState({
+            columns: ['id', 'name'],
+            rows: [
+                { id: 1, name: 'Ada' },
+                { id: 2, name: 'Grace' },
+            ],
+            // A table without a primary key refuses every change.
+            createPendingChange: () => undefined,
+        });
+
+        state.setActiveCell(0, 1);
+        expect(state.pasteText('a\tb\nc\td')).toBe(false);
+        expect(state.dirtyChanges).toHaveLength(0);
+        expect(state.canUndo).toBe(false);
     });
 
     it('restores parked pending changes verbatim', () => {
