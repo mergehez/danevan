@@ -31,9 +31,15 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
         nav.commitEditingCell();
     }
 
-    function shouldPreserveNativeTextUndoRedo(event: KeyboardEvent) {
+    /** A keystroke aimed at a text field belongs to that field, not to the grid. */
+    function isTextInputTarget(event: KeyboardEvent) {
         const target = event.target;
         return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable);
+    }
+
+    /** A printable key starts an edit with that character, the way a spreadsheet does. */
+    function isTypingSeedKey(event: KeyboardEvent) {
+        return event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey && !event.isComposing;
     }
 
     function toggleSort(columnName: string) {
@@ -74,7 +80,7 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
         const commandContext = {
             commitEditingCell: nav.commitEditingCell,
             copySelection: (fallbackRowIndex?: number, fallbackColumnIndex?: number) => clipboard.copySelection(fallbackRowIndex, fallbackColumnIndex),
-            isTextInputTarget: shouldPreserveNativeTextUndoRedo(event),
+            isTextInputTarget: isTextInputTarget(event),
         };
 
         if (options.handleGridCommandKeydown?.(event, commandContext)) {
@@ -130,6 +136,14 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
         if (event.key === 'Enter') {
             event.preventDefault();
             nav.startEditingCell();
+            return;
+        }
+
+        // Typing replaces the cell's value (and, on commit, fills a multi-cell selection). The
+        // editor that is already open owns its own keystrokes — they bubble here from its textarea.
+        if (internalState.editingCell.rowIndex < 0 && !isTextInputTarget(event) && isTypingSeedKey(event)) {
+            event.preventDefault();
+            nav.startEditingCell(undefined, undefined, { initialText: event.key });
         }
     }
 
@@ -529,9 +543,7 @@ export function createDataGridMenus(args: DataGridMenusArgs) {
     function isSavedRow(rowIndex: number) {
         const sourceColumnName = trState.getSourceColumnNameForRow(rowIndex);
 
-        return sourceColumnName
-            ? internalState.savedCellKeys.some((cellKey: string) => cellKey.endsWith(`:${sourceColumnName}`))
-            : getSavedIndex().rows.has(rowIndex);
+        return sourceColumnName ? internalState.savedCellKeys.some((cellKey: string) => cellKey.endsWith(`:${sourceColumnName}`)) : getSavedIndex().rows.has(rowIndex);
     }
 
     return {

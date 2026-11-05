@@ -197,6 +197,7 @@ export const DataGrid = component(
                         data-testid="data-grid-viewport"
                         onScroll={vs.viewportHelpers.handleViewportScroll}
                         onKeydown={vs.pointerHandlers.handleViewportKeydown}
+                        onPaste={vs.pointerHandlers.handleViewportPaste}
                         class="relative min-h-0 flex-1 overflow-auto border border-x4 bg-x0 outline-none scrollbar-large"
                     >
                         <div class="sticky left-0 top-0 z-10 h-0 overflow-visible">

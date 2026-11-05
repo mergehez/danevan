@@ -1,17 +1,18 @@
 import { nextTick, watch, type ComputedRef } from 'vue';
 import { useKeyboardNavigation, type KeyboardNavigationPosition } from '../shared/utils/useKeyboardNavigation';
 import { DATA_GRID_COLUMN_MIN_WIDTH, DATA_GRID_COLUMN_RESIZE_MAX_WIDTH, DATA_GRID_HEADER_HEIGHT, DATA_GRID_ROW_HEIGHT, DATA_GRID_SEARCH_DEBOUNCE_MS } from './dataGrid';
+import { parseDataGridClipboardText } from './clipboardText';
 import type { DataGridInternalState, DataGridTransposedState } from './useDataGrid';
 import { isJsonObjectText } from './useDataGridCoreUtils';
 import type { DataGridHistoryOptions, DataGridNormalizedCellRange, DataGridSearchMatch, DataGridUpdateLayoutState } from './useDataGridHelperTypes';
-import type { DataGridCellChange, DataGridCellFocusOptions, DataGridRowSelectionOptions, GridCellRange, UseDataGridFinalOptions } from './useDataGridTypes';
+import type { DataGridCellChange, DataGridCellFocusOptions, DataGridCellValue, DataGridRowSelectionOptions, GridCellRange, UseDataGridFinalOptions } from './useDataGridTypes';
 
 export interface DataGridNavigationArgs {
     options: UseDataGridFinalOptions;
     internalState: DataGridInternalState;
     transposedState: DataGridTransposedState;
     activeSearchMatchIndex: ComputedRef<number>;
-    applyCellChange: (change: DataGridCellChange, historyOptions?: DataGridHistoryOptions) => void;
+    applyCellChanges: (changes: DataGridCellChange[], historyOptions?: DataGridHistoryOptions) => boolean;
     clearHistory: () => void;
     clearPendingChanges: () => void;
     clearSavedChanges: () => void;
@@ -279,6 +280,95 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         };
     }
 
+    /** One editable source cell of the current selection. */
+    type DataGridSelectionCell = {
+        rowIndex: number;
+        columnName: string;
+        value: DataGridCellValue;
+    };
+
+    function resolveVisualCell(visualRowIndex: number, columnIndex: number): DataGridSelectionCell | undefined {
+        const rowIndex = getSourceRowIndexForVisualRowIndex(visualRowIndex);
+        const columnName = trState.getColumnName(columnIndex);
+
+        if (rowIndex == null || !columnName) {
+            return undefined;
+        }
+
+        const resolvedCell = trState.resolveCell(rowIndex, columnName);
+
+        if (!resolvedCell.editable || !resolvedCell.sourceColumnName) {
+            return undefined;
+        }
+
+        // A row staged for deletion takes no value: it is going away, not changing.
+        if (options.getPendingRowState?.(resolvedCell.sourceRowIndex) === 'deleted') {
+            return undefined;
+        }
+
+        return { rowIndex: resolvedCell.sourceRowIndex, columnName: resolvedCell.sourceColumnName, value: resolvedCell.value };
+    }
+
+    /**
+     * The editable cells a selected *cell range* covers, in visual order: what a typed value fills
+     * and what one pasted value fills. A whole-row or whole-column selection is not a fill target —
+     * typing still edits its active cell — so it is never listed here.
+     */
+    function getSelectionCells(): DataGridSelectionCell[] {
+        const range = normalizeSelectedCellRange(internalState.selectedCellRange);
+
+        if (!range) {
+            return [];
+        }
+
+        const cells: DataGridSelectionCell[] = [];
+
+        for (let visualRowIndex = range.topRowIndex; visualRowIndex <= range.bottomRowIndex; visualRowIndex += 1) {
+            for (let columnIndex = range.leftColumnIndex; columnIndex <= range.rightColumnIndex; columnIndex += 1) {
+                const cell = resolveVisualCell(visualRowIndex, columnIndex);
+
+                if (cell) {
+                    cells.push(cell);
+                }
+            }
+        }
+
+        return cells;
+    }
+
+    /** Where a pasted block starts: the top-left of the selection, or the active cell. */
+    function getSelectionAnchor() {
+        const range = normalizeSelectedCellRange(internalState.selectedCellRange);
+
+        if (range) {
+            return { visualRowIndex: range.topRowIndex, columnIndex: range.leftColumnIndex };
+        }
+
+        const firstSelectedRow = internalState.selectedRowIndexes
+            .map((rowIndex: number) => getVisualRowIndexForSourceRowIndex(rowIndex))
+            .sort((left: number, right: number) => left - right)[0];
+
+        if (firstSelectedRow != null) {
+            return { visualRowIndex: firstSelectedRow, columnIndex: internalState.activeCell.columnIndex };
+        }
+
+        if (internalState.selectedColumnName) {
+            const columnIndex = trState.getColumnIndex(internalState.selectedColumnName);
+
+            if (columnIndex >= 0) {
+                return { visualRowIndex: getVisualRowIndexForSourceRowIndex(internalState.activeCell.rowIndex), columnIndex };
+            }
+        }
+
+        return { visualRowIndex: getVisualRowIndexForSourceRowIndex(internalState.activeCell.rowIndex), columnIndex: internalState.activeCell.columnIndex };
+    }
+
+    function hasMultiCellSelection() {
+        const range = normalizeSelectedCellRange(internalState.selectedCellRange);
+
+        return !!range && (range.bottomRowIndex > range.topRowIndex || range.rightColumnIndex > range.leftColumnIndex);
+    }
+
     function isSelectedRow(rowIndex: number) {
         return getSelectedRowSet().has(rowIndex);
     }
@@ -332,7 +422,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         return internalState.editingCell.rowIndex === rowIndex && internalState.editingCell.columnIndex === columnIndex;
     }
 
-    function startEditingCell(rowIndex = internalState.activeCell.rowIndex, columnIndex = internalState.activeCell.columnIndex) {
+    function startEditingCell(rowIndex = internalState.activeCell.rowIndex, columnIndex = internalState.activeCell.columnIndex, startOptions?: { initialText?: string }) {
         const columnName = trState.getColumnName(columnIndex);
 
         if (!columnName) {
@@ -341,23 +431,29 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
 
         const resolvedCell = trState.resolveCell(rowIndex, columnName);
 
-        if (!resolvedCell.editable) {
+        if (!resolvedCell.editable || options.getPendingRowState?.(resolvedCell.sourceRowIndex) === 'deleted') {
             return;
         }
 
         setActiveCell(rowIndex, columnIndex);
         ensureActiveCellRowVisible(rowIndex);
+        // Typing opens the editor with that character as its whole value; the caret then sits
+        // after it, so the next keystroke appends (`10` must not become `0`).
+        const seededText = startOptions?.initialText;
         internalState.editingCell.rowIndex = rowIndex;
         internalState.editingCell.columnIndex = columnIndex;
-        internalState.editingCell.draftValue = options.formatEditingValue(resolvedCell.value);
-        internalState.editingCell.initialDraftValue = internalState.editingCell.draftValue;
+        internalState.editingCell.draftValue = seededText ?? options.formatEditingValue(resolvedCell.value);
+        // A seeded draft is never "the value it opened with": committing it must stage the change.
+        internalState.editingCell.initialDraftValue = seededText === undefined ? internalState.editingCell.draftValue : undefined;
 
         void nextTick(() => {
             const input = internalState.gridElement?.querySelector(`[data-editor-key="${rowIndex}:${columnIndex}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
             input?.focus();
 
             if (input) {
-                if (input.dataset.selectAllOnFocus !== 'false') {
+                if (seededText !== undefined) {
+                    input.setSelectionRange(input.value.length, input.value.length);
+                } else if (input.dataset.selectAllOnFocus !== 'false') {
                     input.select();
                 } else if (input instanceof HTMLTextAreaElement) {
                     input.setSelectionRange(0, 0);
@@ -442,13 +538,15 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         }
 
         const nextValue = options.parseEditingValue(internalState.modalEditingCell.draftValue, resolvedCell.value);
-        args.applyCellChange(
-            {
-                rowIndex: resolvedCell.sourceRowIndex,
-                columnName: resolvedCell.sourceColumnName,
-                previousValue: resolvedCell.value,
-                nextValue,
-            },
+        args.applyCellChanges(
+            [
+                {
+                    rowIndex: resolvedCell.sourceRowIndex,
+                    columnName: resolvedCell.sourceColumnName,
+                    previousValue: resolvedCell.value,
+                    nextValue,
+                },
+            ],
             { trackHistory: true }
         );
 
@@ -476,18 +574,113 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
             return;
         }
 
+        // A value typed (or picked from the menu) over a multi-cell selection goes into every cell
+        // of it: a single pending update and a single undo step, not one per cell.
+        if (hasMultiCellSelection()) {
+            const draftValue = internalState.editingCell.draftValue;
+
+            args.applyCellChanges(
+                getSelectionCells().map((cell) => ({
+                    rowIndex: cell.rowIndex,
+                    columnName: cell.columnName,
+                    previousValue: cell.value,
+                    nextValue: options.parseEditingValue(draftValue, cell.value),
+                })),
+                { trackHistory: true }
+            );
+            cancelEditingCell();
+            return;
+        }
+
         const nextValue = options.parseEditingValue(internalState.editingCell.draftValue, resolvedCell.value);
-        args.applyCellChange(
-            {
-                rowIndex: resolvedCell.sourceRowIndex,
-                columnName: resolvedCell.sourceColumnName,
-                previousValue: resolvedCell.value,
-                nextValue,
-            },
+        args.applyCellChanges(
+            [
+                {
+                    rowIndex: resolvedCell.sourceRowIndex,
+                    columnName: resolvedCell.sourceColumnName,
+                    previousValue: resolvedCell.value,
+                    nextValue,
+                },
+            ],
             { trackHistory: true }
         );
 
         cancelEditingCell();
+    }
+
+    /**
+     * Pastes clipboard text into the grid the way a spreadsheet does: one value fills the whole
+     * selection, anything larger lands as a block starting at the selection's top-left cell. Values
+     * are parsed per target cell, so pasting into another table converts them for that column.
+     */
+    function pasteText(text: string): boolean {
+        const rows = parseDataGridClipboardText(text);
+
+        if (!rows.length) {
+            return false;
+        }
+
+        const firstValue = rows[0]?.[0] ?? '';
+
+        if (rows.length === 1 && rows[0]?.length === 1 && hasMultiCellSelection()) {
+            const cells = getSelectionCells();
+
+            if (!cells.length) {
+                return false;
+            }
+
+            return args.applyCellChanges(
+                cells.map((cell) => ({
+                    rowIndex: cell.rowIndex,
+                    columnName: cell.columnName,
+                    previousValue: cell.value,
+                    nextValue: options.parseEditingValue(firstValue, cell.value),
+                })),
+                { trackHistory: true }
+            );
+        }
+
+        const anchor = getSelectionAnchor();
+        const changes: DataGridCellChange[] = [];
+        let lastVisualRowIndex = anchor.visualRowIndex;
+        let lastColumnIndex = anchor.columnIndex;
+
+        rows.forEach((row, rowOffset) => {
+            row.forEach((cellText, columnOffset) => {
+                const visualRowIndex = anchor.visualRowIndex + rowOffset;
+                const columnIndex = anchor.columnIndex + columnOffset;
+                const cell = resolveVisualCell(visualRowIndex, columnIndex);
+
+                if (!cell) {
+                    return;
+                }
+
+                changes.push({
+                    rowIndex: cell.rowIndex,
+                    columnName: cell.columnName,
+                    previousValue: cell.value,
+                    nextValue: options.parseEditingValue(cellText, cell.value),
+                });
+                lastVisualRowIndex = Math.max(lastVisualRowIndex, visualRowIndex);
+                lastColumnIndex = Math.max(lastColumnIndex, columnIndex);
+            });
+        });
+
+        if (!changes.length || !args.applyCellChanges(changes, { trackHistory: true })) {
+            return false;
+        }
+
+        // What landed is the selection, so the staged block is visible (and Undo reverts all of it);
+        // the block's top-left stays the active cell, where the next paste or arrow key expects it.
+        selectCellRange(anchor.visualRowIndex, anchor.columnIndex, lastVisualRowIndex, lastColumnIndex, { focus: true });
+
+        const anchorRowIndex = getSourceRowIndexForVisualRowIndex(anchor.visualRowIndex);
+
+        if (anchorRowIndex != null) {
+            setActiveCell(anchorRowIndex, anchor.columnIndex);
+        }
+
+        return true;
     }
 
     function commitEditingCellAndContinue(step: number) {
@@ -838,6 +1031,7 @@ export function createDataGridNavigation(args: DataGridNavigationArgs) {
         isActiveCell,
         isEditingCell,
         startEditingCell,
+        pasteText,
         cancelEditingCell,
         setModalEditingValue,
         closeModalEditingCell,

@@ -227,6 +227,22 @@ export function useDataGridPointerHandlers(args: DataGridPointerHandlersArgs) {
         viewportHelpers.focusViewport();
     }
 
+    /**
+     * A paste over the grid writes into the selection (or from the active cell). The in-cell editor
+     * is a real textarea, and a paste into it must stay native.
+     */
+    function handleViewportPaste(event: ClipboardEvent) {
+        if (isEditableEventTarget(event.target)) {
+            return;
+        }
+
+        const text = event.clipboardData?.getData('text/plain') ?? '';
+
+        if (text && props.pasteText(text)) {
+            event.preventDefault();
+        }
+    }
+
     function isKeyboardDeleteTarget(event: KeyboardEvent) {
         return event.key === 'Delete' || event.key === 'Backspace';
     }
@@ -551,6 +567,7 @@ export function useDataGridPointerHandlers(args: DataGridPointerHandlersArgs) {
         handleHeaderPointerLeave,
         handleHeaderPointerMove,
         handleViewportKeydown,
+        handleViewportPaste,
         handleWindowPointerMove,
         handleWindowPointerUp,
         isDeletedRow,
