@@ -8,6 +8,7 @@ import { createDataGridClipboard } from './useDataGridClipboard';
 import { compareGridValues, formatDefaultValue, gridValuesEqual } from './useDataGridCoreUtils';
 import { createDataGridMenus } from './useDataGridMenus';
 import { createDataGridNavigation } from './useDataGridNavigation';
+import type { DataGridHistoryOptions } from './useDataGridHelperTypes';
 import {
     fillMissionOptions,
     gridLayoutsEqual,
@@ -27,6 +28,8 @@ import { useDataGridView } from './useDataGridView';
 
 export { normalizeGridLayoutState } from './useDataGridTypes';
 export type { DataGridCellContext, DataGridCellValue, DataGridRow, GridDisplayType, GridLayoutState, MaybeReactiveValue, TableData } from './useDataGridTypes';
+
+type DataGridCellChangeBatch = DataGridCellChange[];
 
 type DataGridSearchMatch = {
     rowIndex: number;
@@ -183,8 +186,8 @@ function createInternalState(options: UseDataGridFinalOptions) {
         selectedCellRange: unref(options.selectedCellRange),
         selectedColumnName: unref(options.selectedColumnName),
         isColumnListOpen: unref(options.isColumnListOpen) ?? false,
-        undoStack: [] as DataGridCellChange[],
-        redoStack: [] as DataGridCellChange[],
+        undoStack: [] as DataGridCellChangeBatch[],
+        redoStack: [] as DataGridCellChangeBatch[],
         pendingChanges: {} as Record<string, DataGridPendingChange>,
         savedCellKeys: [] as string[],
         savedRowIndexes: [] as number[],
@@ -638,88 +641,110 @@ export function useDataGrid(_options: UseDataGridOptions) {
         baseState.savedRowIndexes = [...new Set(changes.map((change) => change.rowIndex))];
     }
 
-    function applyCellChange(change: DataGridCellChange, historyOptions?: { trackHistory?: boolean; clearRedo?: boolean }) {
-        if (gridValuesEqual(change.previousValue, change.nextValue)) {
-            return;
+    /**
+     * Applies a set of cell changes as one unit: one pending-changes update, one displayed update
+     * and one undo step. A typed value over a selection or a pasted block is therefore reverted by a
+     * single Undo, the way it was made.
+     *
+     * Every change is resolved before anything is written: a change the builder refuses (no table,
+     * no primary key) refuses the whole set, so a paste never lands half of its cells.
+     */
+    function applyCellChanges(changes: DataGridCellChange[], historyOptions?: DataGridHistoryOptions): boolean {
+        const accepted: DataGridCellChange[] = [];
+        // One copy of the pending map for the whole set: a fill of a thousand cells must not
+        // re-spread a thousand-entry object a thousand times.
+        const pendingChanges = { ...baseState.pendingChanges };
+
+        for (const change of changes) {
+            if (gridValuesEqual(change.previousValue, change.nextValue)) {
+                continue;
+            }
+
+            if (options.createPendingChange) {
+                const rawValue = getRawCellValue(change.rowIndex, change.columnName);
+                const changeKey = getCellKey(change.rowIndex, change.columnName);
+
+                if (gridValuesEqual(change.nextValue, rawValue)) {
+                    delete pendingChanges[changeKey];
+                } else {
+                    const pendingChange = options.createPendingChange({
+                        ...change,
+                        previousValue: rawValue,
+                        rawValue,
+                    });
+
+                    if (!pendingChange) {
+                        return false;
+                    }
+
+                    pendingChanges[changeKey] = pendingChange;
+                }
+            }
+
+            accepted.push(change);
+        }
+
+        if (!accepted.length) {
+            return false;
         }
 
         if (options.createPendingChange) {
-            const rawValue = getRawCellValue(change.rowIndex, change.columnName);
-            const changeKey = getCellKey(change.rowIndex, change.columnName);
-
             clearSavedChanges();
-
-            if (gridValuesEqual(change.nextValue, rawValue)) {
-                const { [changeKey]: _, ...rest } = baseState.pendingChanges;
-                baseState.pendingChanges = rest;
-            } else {
-                const pendingChange = options.createPendingChange({
-                    ...change,
-                    previousValue: rawValue,
-                    rawValue,
-                });
-
-                // A refused change must not reach the displayed row or the undo stack either: the
-                // builder that refuses it (a table without a primary key) says why.
-                if (!pendingChange) {
-                    return;
-                }
-
-                baseState.pendingChanges = {
-                    ...baseState.pendingChanges,
-                    [changeKey]: pendingChange,
-                };
-            }
+            baseState.pendingChanges = pendingChanges;
         }
 
-        if (options.setSourceCellValue) {
-            options.setSourceCellValue(change.rowIndex, change.columnName, change.nextValue, change.previousValue);
-        } else if (!options.createPendingChange) {
-            const sourceRow = baseState.tableData.rows[change.rowIndex];
+        for (const change of accepted) {
+            if (options.setSourceCellValue) {
+                options.setSourceCellValue(change.rowIndex, change.columnName, change.nextValue, change.previousValue);
+            } else if (!options.createPendingChange) {
+                const sourceRow = baseState.tableData.rows[change.rowIndex];
 
-            if (sourceRow) {
-                sourceRow[change.columnName] = change.nextValue;
+                if (sourceRow) {
+                    sourceRow[change.columnName] = change.nextValue;
+                }
             }
         }
 
         if (historyOptions?.trackHistory) {
-            baseState.undoStack = [...baseState.undoStack, change];
+            baseState.undoStack = [...baseState.undoStack, accepted];
         }
 
         if (historyOptions?.clearRedo ?? historyOptions?.trackHistory) {
             baseState.redoStack = [];
         }
+
+        return true;
     }
 
     function undoChanges() {
-        const change = baseState.undoStack.at(-1);
+        const batch = baseState.undoStack.at(-1);
 
-        if (!change) {
+        if (!batch?.length) {
             return;
         }
 
         baseState.undoStack = baseState.undoStack.slice(0, -1);
-        baseState.redoStack = [...baseState.redoStack, change];
-        applyCellChange(
-            {
+        baseState.redoStack = [...baseState.redoStack, batch];
+        applyCellChanges(
+            batch.map((change) => ({
                 ...change,
                 previousValue: change.nextValue,
                 nextValue: change.previousValue,
-            },
+            })),
             { trackHistory: false, clearRedo: false }
         );
     }
 
     function redoChanges() {
-        const change = baseState.redoStack.at(-1);
+        const batch = baseState.redoStack.at(-1);
 
-        if (!change) {
+        if (!batch?.length) {
             return;
         }
 
         baseState.redoStack = baseState.redoStack.slice(0, -1);
-        baseState.undoStack = [...baseState.undoStack, change];
-        applyCellChange(change, { trackHistory: false, clearRedo: false });
+        baseState.undoStack = [...baseState.undoStack, batch];
+        applyCellChanges(batch, { trackHistory: false, clearRedo: false });
     }
 
     function updateLayoutState(toUpdate: Partial<GridLayoutState>, updateOptions?: { deferSave?: boolean }) {
@@ -738,7 +763,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         options: options,
         internalState: baseState,
         transposedState: transposedState,
-        applyCellChange: applyCellChange,
+        applyCellChanges: applyCellChanges,
         clearHistory: clearHistory,
         clearPendingChanges: clearPendingChanges,
         clearSavedChanges: clearSavedChanges,
@@ -819,6 +844,10 @@ export function useDataGrid(_options: UseDataGridOptions) {
         ),
         canUndo: computed(() => baseState.undoStack.length > 0),
         canRedo: computed(() => baseState.redoStack.length > 0),
+        // The stacks themselves, so a host that owns other undoable things (pending rows) can
+        // combine them without reading `canUndo`, which it may override with its own answer.
+        undoCount: computed(() => baseState.undoStack.length),
+        redoCount: computed(() => baseState.redoStack.length),
         pendingChanges: computed(() => baseState.pendingChanges),
         dirtyChanges: computed(() => baseState.dirtyChanges),
         hasPendingChanges: computed(() => baseState.dirtyChanges),
@@ -870,6 +899,7 @@ export function useDataGrid(_options: UseDataGridOptions) {
         closeModalEditingCell: navigation.closeModalEditingCell,
         openModalEditingCell: navigation.openModalEditingCell,
         startEditingCell: navigation.startEditingCell,
+        pasteText: navigation.pasteText,
         setEditingValue: navigation.setEditingValue,
         setModalEditingValue: navigation.setModalEditingValue,
         setGridElement: menus.setGridElement,

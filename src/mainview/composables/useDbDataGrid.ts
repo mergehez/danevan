@@ -1182,6 +1182,11 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             }
 
             gridState.clearPendingChanges();
+            // The changes are in the database now: their undo entries describe edits that are no
+            // longer pending, so Undo must not offer them back (nor keep the save bar on screen).
+            gridState.clearHistory();
+            pendingRowUndoStack.value = [];
+            pendingRowRedoStack.value = [];
             pendingInsertedRows.value = [];
             pendingDeletedBaseRowIndexes.value = [];
             isPreviewOpen.value = false;
@@ -1289,8 +1294,11 @@ export function useDbDataGrid(options: UseDbDataGridOptions) {
             isEditRowDialogOpen.value = false;
             editRowDialogRowIndex.value = -1;
         },
-        canUndo: computed(() => gridState.dirtyChanges.length > 0 || pendingRowUndoStack.value.length > 0),
-        canRedo: computed(() => pendingRowRedoStack.value.length > 0),
+        // A cell edit and a pending row change are both undoable; the grid keeps one entry per
+        // action (a value typed over a selection is one entry), the row stacks one per row action.
+        // Read the counts, not `gridState.canUndo`: this object overrides that name.
+        canUndo: computed(() => gridState.undoCount > 0 || pendingRowUndoStack.value.length > 0),
+        canRedo: computed(() => gridState.redoCount > 0 || pendingRowRedoStack.value.length > 0),
         undoChanges: () => {
             saveErrorMessage.value = undefined;
 
