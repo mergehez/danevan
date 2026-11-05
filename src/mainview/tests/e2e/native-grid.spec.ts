@@ -100,6 +100,18 @@ test.describe('Native grid', () => {
             expect(Math.abs(headerBox.x - cellBox.x)).toBeLessThanOrEqual(1);
             expect(headerBox.width).toBeCloseTo(cellBox.width, 0);
 
+            // The inline editor is positioned by arithmetic, not by the cell's box: opening it on a
+            // scrolled-to column must land on that cell.
+            await lastCell.dblclick();
+            const editor = page.locator('[data-editor-key="0:30"]');
+            await expect(editor).toBeVisible();
+            await expect(editor).toHaveValue(`value ${COLUMN_COUNT - 1}`);
+            const editorBox = (await editor.boundingBox())!;
+            expect(Math.abs(editorBox.x - cellBox.x)).toBeLessThanOrEqual(2);
+            expect(Math.abs(editorBox.y - cellBox.y)).toBeLessThanOrEqual(2);
+            await editor.press('Escape');
+            await expect(editor).toHaveCount(0);
+
             // Back at the start the first columns are the ones drawn again.
             await viewport.evaluate((element) => {
                 element.scrollLeft = 0;
