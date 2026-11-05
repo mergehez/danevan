@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createFileSource, expectClipboardText, menuItem, openFileTable } from './helpers';
+import { createFileSource, expectClipboardText, menuItem, openFileTable, post } from './helpers';
 
 /**
  * A value typed over a selection (or a block pasted into it) is a bulk edit: every selected cell
@@ -74,6 +74,15 @@ test.describe('Grid bulk edit', () => {
             for (const rowIndex of [0, 1, 2, 3]) {
                 await expect(cell(page, rowIndex, 2)).toHaveText('0');
             }
+
+            // Saving writes every cell of the fill; the database is the judge of that.
+            await page.getByTestId('save-bar-save').click();
+            await expect(page.getByText(/pending change/)).toHaveCount(0);
+
+            const afterSave = await post(request, 'getTableData', { connectionId: source.connectionId, tableName: 'people', limit: 50, offset: 0 });
+            const activeValues = (afterSave.rows as Array<{ id: string; active: string }>).sort((left, right) => Number(left.id) - Number(right.id)).map((row) => row.active);
+
+            expect(activeValues).toEqual(['0', '0', '0', '0', '1']);
         } finally {
             await source.cleanup();
         }
