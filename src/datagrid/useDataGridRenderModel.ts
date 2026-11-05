@@ -173,14 +173,12 @@ export function useDataGridRenderModel(args: DataGridRenderModelArgs) {
         const sortColumnName = state.sortState?.columnName;
         const sortIndicator = sortColumnName ? (state.sortState?.direction === 'asc' ? SORT_ASC_INDICATOR : SORT_DESC_INDICATOR) : '';
 
+        // The columns are positioned inside a clipped, translated layer, so being off-screen needs
+        // no culling here: the window above already names the ones that touch the viewport.
         for (let columnIndex = visibleColumns.start; columnIndex < visibleColumns.end; columnIndex += 1) {
             const columnName = shared.columns[columnIndex] ?? '';
             const left = shared.columnOffsets[columnIndex] ?? 0;
             const width = shared.resolvedColumnWidths[columnIndex] ?? 0;
-
-            if (left + width < 0 || left > shared.viewportWidth) {
-                continue;
-            }
 
             const isSorted = columnName !== '' && columnName === sortColumnName;
             const indicator = isSorted ? sortIndicator : '';
@@ -350,11 +348,6 @@ export function useDataGridRenderModel(args: DataGridRenderModelArgs) {
 
                 const cellLeft = shared.columnOffsets[columnIndex] ?? 0;
                 const cellWidth = shared.resolvedColumnWidths[columnIndex] ?? 0;
-
-                if (cellLeft + cellWidth < 0 || cellLeft > shared.viewportWidth) {
-                    continue;
-                }
-
                 const isSelectedColumn = state.isSelectedColumn(columnName);
                 const isSelectedCell = state.isSelectedCell(sourceRowIndex, columnIndex);
                 const isDirtyCell = state.isDirtyCell(sourceRowIndex, columnName);
