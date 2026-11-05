@@ -191,6 +191,15 @@ guards it are the reference.
     numbers is one load (`applyPage`), never two racing ones. *Guards:* `useQuery.spec.ts`
     (`applyPage`), `query-bar.spec.ts` (Enter in limit/offset).
 
+15. **A window named in one coordinate space was culled in another.** The DOM grid selects the
+    visible columns from `scrollLeft` (content offsets) and positions them inside a translated layer,
+    but it still culled each one with "is this beyond the viewport width?" — comparing a content
+    offset with a viewport size. Every column past ~1000 px was dropped, so the grid looked perfect at
+    offset 0 and went blank as soon as it was scrolled sideways. *Rule:* the window decides what is
+    mounted, and any extra cull uses the same coordinates (the canvas culled in screen space; that
+    check had no place in a translated layer). *Guard:* the horizontal case in `native-grid.spec.ts`
+    (the last column's header and cell on the same pixel, at the far right).
+
 ## 7. Testing — the traps
 
 **Preconditions fail rather than skip.** A spec that needs MySQL, `mysqldump` or the SQLFluff runtime
@@ -211,7 +220,9 @@ specs really ran.
   `[data-grid-cell="<column index>"]`, `[data-grid-row-number]`; headers are
   `[data-grid-header-cell="<column>"]`). A drawn value is asserted directly (`toHaveText`), and only a
   window of rows is mounted: `native-grid.spec.ts` scrolls a 2000-row page to the end and asserts the
-  first row is gone and the mounted count stays bounded. The in-cell editor
+  first row is gone and the mounted count stays bounded, and scrolls a 30-column table to its last
+  column, asserting that column's header and body cell are drawn on the same pixel (the window follows
+  the viewport in both directions). The in-cell editor
   (`textarea[data-editor-key="<row>:<col>"]`) still shows the *raw* value by design
   (`formatEditingValue`), so formatting is asserted on the cell text, not the editor.
   `data-grid-viewport` can match several grids (FK peek) — use `.first()`; `Meta+ArrowLeft` /
@@ -249,9 +260,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1156 unit tests (93 files)**, **168 browser tests (47 files)**,
+Snapshot at the last verification: **1156 unit tests (93 files)**, **169 browser tests (47 files)**,
 **14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.6 % statements / 42.2 % branches** with
-the floors green. The full browser suite ran 168 passed + 0 failed, and that green run also assumes the
+the floors green. The full browser suite ran 169 passed + 0 failed, and that green run also assumes the
 local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and packaged
 suites were not re-run after this renderer-only change.

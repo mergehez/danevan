@@ -195,6 +195,14 @@ Suggested from the 2026-10-31 canvas → DOM grid migration:
   `native-grid.spec.ts` scrolls a 2000-row page to the end and asserts the mounted row count stays
   bounded; anything that renders one element per result row (a summary, a preview, a new panel)
   reintroduces exactly the cost the windowing removes — read the window, do not map the rows.
+- **A window is chosen in one coordinate space; culling must use the same one.** The render model
+  selects the visible columns from the scroll offset (content-space `columnOffsets`) and positions them
+  inside a translated layer, so a column's `left` is not a viewport coordinate. A cull carried over from
+  the canvas ("skip what is off-screen") compared that offset with the viewport *width* and dropped
+  every column past ~1000 px: the grid looked right at offset 0 and went blank once it was scrolled
+  sideways. The window already names what touches the viewport — do not add a second, differently
+  scaled check. Guarded by the horizontal case in `native-grid.spec.ts` (the last column's header and
+  cell on the same pixel, at the far right).
 - **The grid is derived from state, so paint-only state must be observable.** A column resize and a
   column drag are kept in the pointer layer's non-reactive internals; the render model reads them
   through `paintTick`, which `scheduleDraw()` bumps (the name every interaction already used). A new
