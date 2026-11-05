@@ -48,7 +48,7 @@ browser dev API, Vite + Electron, Bun as runtime/package manager.
 | --- | --- |
 | `src/backend/` | `app.ts` (~47 async handlers, the whole API), `db-tools.ts` (driver dispatch + metadata caches), `useMySqlDriver.ts` / `usePostgresDriver.ts` / `useSqliteDriver.ts` / `useSqlServerDriver.ts` / `useMsAccessDriver.ts`, `useRemoteDriverTools.ts` (shared remote query/exec), `remoteDataSourcePool.ts` (one pooled DataSource per server/connection), `db-app.ts` (the app's own SQLite store), `auth.ts` (keychain secrets), `sqlScriptRunner.ts`, `devServer.ts` (Express mount for browser mode) |
 | `src/mainview/` | `App.tsx` (shell), `components/` (`DbSidebar`, `DbTabs`, `DbData`, `DbScripts`, `MonacoEditor`, modals…), `composables/` (all renderer state, see §5), `lib/` (Monaco setup, menus, formatting), `tests/` (unit, components, e2e, electron). **Modify Table** is a folder each: `composables/modifyTable/` (types, drafts, column DDL, create/alter previews per dialect, validation, apply, history, navigation) with `useModifyTable.ts` as the store, and `components/modifyTable/` (sidebar with its item menu, form helpers, one form per entity) with `ModifyTableModal.tsx` as the shell |
-| `src/datagrid/` | The data grid: real DOM rows and cells (`DataGrid.tsx` + `DataGridSurface.tsx`, styled by `css/dataGrid.css`), a render model that mounts only the rows and columns in view (`useDataGridRenderModel.ts`), the state (`useDataGrid.ts`), navigation, clipboard, layout persistence. The in-cell editor is a textarea overlay; an offscreen canvas measures text widths only. |
+| `src/datagrid/` | The data grid: real DOM rows and cells (`DataGrid.tsx` + `DataGridSurface.tsx`, styled by `css/dataGrid.css`), a render model that mounts only the rows and columns in view (`useDataGridRenderModel.ts`), the state (`useDataGrid.ts`), navigation, clipboard, layout persistence. The in-cell editor is a textarea overlay; an offscreen canvas measures text widths only. **Bulk edits:** a printable key over a selection opens the editor with that character and fills every selected cell on commit; a `paste` event pastes a tab/newline block (`clipboardText.ts`) from the selection's top-left, and a one-cell paste fills a selected range. Both go through `applyCellChanges`, which stages the set in one pending update and one undo entry. |
 | `src/shared/` | Types (`types.ts` — `AppBootstrapApi`, `QueryExecutionResult`, …), components (`Button`, `CenteredModal`, `Splitter`, `ListBox`, the colour picker in `components/colorPicker/`…), utils (`sqlStatements`, `sqlSourceTable`, `sqlIdentifiers`, `valueFormatting`, `dbColor`, `tsxHelpers`, `useCache`…) |
 | `src/electron/` | `main.ts` (window + native handlers), `preload.ts` (IPC bridge), `bridge.ts` |
 | `src/electronUtils/` | **Project-agnostic: byte-identical to `gitvan/src/electronUtils`** (see AGENTS.md). `vite-plugin.ts` (mounts `devServer` in browser mode, auto-generates `apiMethods.ts`, dev ports), `mainviewHelpers.ts` (`createAppClientPpc`), `browserOnlyHelpers.ts` (browser dev server; app specifics come in as options), `helpers.ts`/`appDataDir.ts`, `useDatabase.ts`, `executeCommand.ts`/`requestContext.ts`, `signMacApp.ts`/`installMacApp.ts` and `releaseHelpers.ts`/`electronConfig.ts` (release chain, loaded by Node's ESM loader — keep `.ts` extensions there) |
@@ -260,9 +260,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1156 unit tests (93 files)**, **169 browser tests (47 files)**,
-**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **49.6 % statements / 42.2 % branches** with
-the floors green. The full browser suite ran 169 passed + 0 failed, and that green run also assumes the
+Snapshot at the last verification: **1167 unit tests (94 files)**, **174 browser tests (48 files)**,
+**14 Electron shell tests** (dev ×12 + packaged ×2), coverage **50.0 % statements / 42.5 % branches** with
+the floors green. The full browser suite ran 174 passed + 0 failed, and that green run also assumes the
 local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and packaged
 suites were not re-run after this renderer-only change.

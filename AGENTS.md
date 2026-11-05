@@ -187,6 +187,26 @@ Suggested from the 2026-10-12 "the app quits immediately" report:
   though the build was signed. `installMacApp.ts` does the copy and `releaseHelpers.ts` re-checks the
   installed signature, so a broken install fails the release instead of the user's next launch.
 
+Suggested from the 2026-11-05 bulk-edit request (type over a selection, paste a block):
+
+- **A bulk edit is one action, in the model and in the history.** A value typed over a selection, a
+  pasted block and a `Set Value` pick over several cells all become one `applyCellChanges` call: one
+  pending-changes update (mutate one copy of the map — never re-spread a thousand-entry object per
+  cell), one displayed update and **one** undo entry; the history holds batches. The save bar's
+  Undo/Redo read the grid's stack counts (`undoCount`/`redoCount`), never `dirtyChanges`: that only
+  says what is still pending, so deriving `canRedo` from it made a redo unreachable as soon as the
+  last change was undone. Overriding `canUndo` in a host object (as `useDbDataGrid` does) must read a
+  property the host does not override, or the computed reads itself and yields `undefined`; a
+  successful save clears both stacks because those entries describe edits that are no longer pending.
+  Guarded by `grid-bulk-edit.spec.ts` and the bulk cases in `DataGrid.spec.ts`.
+- **A pasted block is parsed, not assumed.** `clipboardText.ts` reads tabs and newlines the way
+  spreadsheets write them — including a quoted cell (`"a\tb"`, `""` for a quote) and a trailing
+  newline that terminates the last row rather than adding an empty one. One pasted value fills a
+  selected cell *range*; anything larger lands from the selection's top-left, expanding right and
+  down; every value is parsed per target cell, so a block pasted into another table converts for that
+  column. A whole-row or whole-column selection is never a fill target: overwriting every column,
+  the primary key included, from one value is not what the user pointed at.
+
 Suggested from the 2026-10-31 canvas → DOM grid migration:
 
 - **A list renders a window, never the list.** The grid holds up to a whole table's rows in state and
