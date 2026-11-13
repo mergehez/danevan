@@ -583,6 +583,13 @@ export function useDataGridView(state: TDataGridState, hasToolbar: boolean, with
         }
 
         if (event.key === 'Enter') {
+            // Shift+Enter is a line break inside the value; only a plain Enter commits. The grid
+            // must not see the key either, or its own Enter handler would reopen the editor.
+            if (event.shiftKey) {
+                event.stopPropagation();
+                return;
+            }
+
             event.preventDefault();
             event.stopPropagation();
             state.commitEditingCellAndMoveDown?.();

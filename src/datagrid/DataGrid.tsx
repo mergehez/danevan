@@ -1,4 +1,4 @@
-import { component, ensureAllTsxProps, prevented, preventedKeys } from '#shared/utils/tsxHelpers.tsx';
+import { component, ensureAllTsxProps, prevented } from '#shared/utils/tsxHelpers.tsx';
 import { Button } from '../shared/components/Button.tsx';
 import { CenteredModal } from '../shared/components/CenteredModal.tsx';
 import { IconButton } from '../shared/components/IconButton.tsx';
@@ -109,7 +109,17 @@ export const DataGrid = component(
                             spellcheck="false"
                             data-testid="modal-edit-value"
                             onInput={(e) => props.state.setModalEditingValue?.((e.target as HTMLTextAreaElement).value)}
-                            onKeydown={preventedKeys(() => props.state.commitModalEditingCell?.(), ['enter'])}
+                            onKeydown={(event: KeyboardEvent) => {
+                                // A plain Enter saves and closes; Shift+Enter is a line break in the
+                                // value, which is the whole point of a dialog that edits long ones.
+                                if (event.key !== 'Enter' || event.shiftKey) {
+                                    return;
+                                }
+
+                                event.preventDefault();
+                                event.stopPropagation();
+                                props.state.commitModalEditingCell?.();
+                            }}
                             class={[
                                 'min-h-0 flex-1 resize-none border border-x4 bg-x1 px-3 py-2 text-sm outline-none',
                                 vs.isModalEditTextWrap ? 'whitespace-pre-wrap wrap-break-word' : 'whitespace-pre overflow-auto',
