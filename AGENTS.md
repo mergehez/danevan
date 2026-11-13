@@ -187,6 +187,16 @@ Suggested from the 2026-10-12 "the app quits immediately" report:
   though the build was signed. `installMacApp.ts` does the copy and `releaseHelpers.ts` re-checks the
   installed signature, so a broken install fails the release instead of the user's next launch.
 
+Suggested from the 2026-11-14 "Shift+Enter doesn't add a new line" report:
+
+- **A multi-line editor owns its line breaks.** Enter commits an edit, so Shift+Enter must not: both
+  the in-cell textarea and the edit-value dialog committed on any Enter and cancelled the default, which
+  also blocked the browser's own line break. The handler returns early for `shiftKey` *without*
+  `preventDefault`, and still calls `stopPropagation` — the in-cell editor's keydown bubbles to the
+  grid, whose Enter handler would otherwise reopen the editor and reset the draft. Guarded by the
+  Shift+Enter cases in `cell-editor.spec.ts` and `cell-editor-modal.spec.ts` (the raw value, read back
+  from the reopened editor, still contains a newline).
+
 Suggested from the 2026-11-05 bulk-edit request (type over a selection, paste a block):
 
 - **A bulk edit is one action, in the model and in the history.** A value typed over a selection, a
