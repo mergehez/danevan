@@ -111,6 +111,39 @@ test.describe('Edit cell value dialog', () => {
         }
     });
 
+    test('keeps a Shift+Enter line break in the value instead of saving', async ({ page, request }) => {
+        const source = await createDocsSource(request);
+
+        try {
+            await page.goto('/');
+            await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+            await openDocsTable(page, source.connectionId, source.serverId);
+            // Row 1 holds plain text (`hello`).
+            await openModalEditor(page, 1);
+
+            const value = page.getByTestId('modal-edit-value');
+            await expect(value).toHaveValue('hello');
+
+            await value.fill('line one');
+            await value.press('Shift+Enter');
+            await page.keyboard.type('line two');
+
+            // Shift+Enter adds a line to the draft; the dialog stays open.
+            await expect(value).toBeVisible();
+            await expect(value).toHaveValue('line one\nline two');
+
+            // A plain Enter saves the value, line break included.
+            await value.press('Enter');
+            await expect(page.getByTestId('modal-edit-value')).toHaveCount(0);
+            await expect(page.getByText('1 pending change')).toBeVisible();
+            await expect(page.locator('[data-grid-row="1"] [data-grid-cell="0"]')).toHaveText('line one ⏎ line two');
+        } finally {
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
+            rmSync(source.dbPath, { force: true });
+        }
+    });
+
     test('prettifies and compacts JSON objects only', async ({ page, request }) => {
         const source = await createDocsSource(request);
 

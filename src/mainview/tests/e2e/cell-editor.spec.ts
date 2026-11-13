@@ -118,6 +118,45 @@ test.describe('In-cell editor keyboard', () => {
         }
     });
 
+    test('adds a line on Shift+Enter and commits the multi-line value on Enter', async ({ page, request }) => {
+        const source = await createNotesSource(request);
+
+        try {
+            await page.goto('/');
+            await page.waitForSelector('#app', { state: 'attached', timeout: 15_000 });
+
+            await openNotesTable(page, source.connectionId, source.serverId);
+
+            const editor = await openCellEditor(page, 1);
+            await editor.fill('line one');
+            await editor.press('Shift+Enter');
+            await page.keyboard.type('line two');
+
+            // Shift+Enter is a line break, not a commit: the editor is still open with both lines.
+            await expect(editor).toBeVisible();
+            await expect(editor).toHaveValue('line one\nline two');
+
+            await editor.press('Enter');
+            await expect(editor).toHaveCount(0);
+
+            // The committed value kept its line break (the grid draws it as a marker)…
+            await expect(page.locator('[data-grid-row="0"] [data-grid-cell="1"]')).toContainText('line one ⏎');
+            await expect(page.getByText('1 pending change')).toBeVisible();
+
+            // …and the value itself still holds a real newline: the editor shows it raw.
+            await page.keyboard.press('ArrowUp');
+            await page.keyboard.press('Enter');
+
+            const reopened = page.locator('textarea[data-editor-key="0:1"]');
+            await expect(reopened).toHaveValue('line one\nline two');
+            await reopened.press('Escape');
+            await expect(reopened).toHaveCount(0);
+        } finally {
+            await request.post(`${API}/deleteServer`, { data: { serverId: source.serverId } }).catch(() => {});
+            rmSync(source.dbPath, { force: true });
+        }
+    });
+
     test('closing the editor without typing does not stage a change', async ({ page, request }) => {
         const source = await createNotesSource(request);
 
