@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { createFileSource, openSidebarTable, reloadSidebarRow } from './helpers';
+import { createFileSource, createScript, openScriptTab, openSidebarTable, reloadSidebarRow } from './helpers';
 
 /**
  * Short column names and short values keep every column at the 72px minimum
@@ -172,6 +172,78 @@ test.describe('Foreign-key peek', () => {
             // Two matched rows, transposed: row 2 is `pet`, column 1 is the first owner's row.
             const editor = await openPeekEditor(page, 2, 1);
             await expect(editor).toHaveValue('Rex');
+        } finally {
+            await source.cleanup();
+        }
+    });
+
+    test('peeks a relation and a key usage from a script result', async ({ page, request }) => {
+        const source = await createFileSource(request, { label: 'fk-peek-script', schema: FK_SCHEMA });
+        const scriptId = await createScript(request, source.connectionId, 'people select', 'select * from people;');
+
+        async function runScript(text: string) {
+            await page.locator('.monaco-editor .view-lines').click();
+            await page.keyboard.press('ControlOrMeta+a');
+            await page.keyboard.type(text);
+            await page.getByRole('button', { name: 'Run', exact: true }).click();
+        }
+
+        /**
+         * A script result learns the table its rows came from — and that table's foreign keys — in a
+         * backend call that lands just after the rows. The cell menu is built once, when it opens, so
+         * an attempt inside that window has no peek entry: repeat it, which is what a user does by
+         * re-opening the menu, and fail if the entry never appears.
+         */
+        async function cellMenuItemOnceKnown(columnIndex: number, rowIndex: number, item: string) {
+            await expect
+                .poll(
+                    async () => {
+                        const box = (await mainGrid(page).boundingBox())!;
+                        await page.mouse.click(box.x + GUTTER_WIDTH + COLUMN_WIDTH * columnIndex + COLUMN_WIDTH / 2, box.y + FIRST_ROW_Y + rowIndex * ROW_HEIGHT, {
+                            button: 'right',
+                        });
+
+                        const menuItem = page.getByRole('menuitem', { name: item });
+
+                        if (await menuItem.count()) {
+                            return true;
+                        }
+
+                        await page.keyboard.press('Escape');
+                        return false;
+                    },
+                    { message: `the cell menu should offer "${item}"` }
+                )
+                .toBe(true);
+
+            await page.getByRole('menuitem', { name: item }).click();
+        }
+
+        try {
+            await page.goto('/');
+            await openScriptTab(page, source.connectionId, scriptId);
+
+            // The key side: Ada's id is referenced twice by pets.owner.
+            await runScript('select * from people;');
+            await expect(page.getByText('Ada').first()).toBeVisible();
+
+            await cellMenuItemOnceKnown(0, 0, 'Peek Usages');
+
+            const usages = topPeek(page);
+            await expect(usages).toContainText('people.id = 1');
+            await expect(usages).toContainText('pets-owner');
+            await expect(usages).toContainText('2 rows');
+
+            // The relation side: pets.owner -> people.id, opened on Rex.
+            await runScript('select * from pets;');
+            await expect(page.getByText('Rex').first()).toBeVisible();
+
+            await cellMenuItemOnceKnown(1, 0, 'Peek Relation');
+            await expect(topPeek(page)).toContainText('Matched by id');
+
+            const editor = await openPeekEditor(page, 1, 1);
+            await expect(editor).toHaveValue('Ada');
+            await editor.press('Escape');
         } finally {
             await source.cleanup();
         }
