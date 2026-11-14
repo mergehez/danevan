@@ -9,6 +9,7 @@ import { quoteSqlIdentifier } from '../../shared/utils/sqlIdentifiers';
 import { findSingleSourceTable } from '../../shared/utils/sqlSourceTable';
 import { useConnections } from '../composables/useConnections';
 import { useDbDataGrid } from '../composables/useDbDataGrid';
+import { useForeignKeyPeekViews } from '../composables/useForeignKeyPeek';
 import { useDbSettings } from '../composables/useDbSettings';
 import { useNavState } from '../composables/useNavState';
 import { useQuery, useQueryForTab } from '../composables/useQuery';
@@ -18,6 +19,7 @@ import { useServers } from '../composables/useServers';
 import { tasks } from '../composables/useTasks';
 import type { SqlHistoryEntry } from '../composables/useSqlHistory';
 import { DbGridToolbar } from './DbGridToolbar.tsx';
+import { DbPeekViews } from './DbPeekViews.tsx';
 import { DbSaveBar } from './DbSaveBar.tsx';
 import { SqlEditor } from './SqlEditor.tsx';
 
@@ -151,6 +153,14 @@ export const DbScripts = component(
             resultColumns: () => (query.queryResult?.kind === 'rows' ? query.queryResult.columns : undefined),
         });
 
+        const fkPeekViews = useForeignKeyPeekViews({
+            selectedConnectionId: computed(() => resultConnectionId.value),
+            selectedTableName: computed(() => resultSourceTable.tableName.value),
+            ensureTableDetails: (connectionId, tableName) => connections.ensureTableDetails(connectionId, tableName),
+            getTableInfo: (connectionId, tableName) => connections.getTableDetailsState(connectionId, tableName).info,
+            getSqlDialect: (connectionId) => connections.getConnectionDialect(connectionId),
+        });
+
         const resultDbGridState = useDbDataGrid({
             connectionId: () => resultConnectionId.value!,
             // Parked per script tab, like the data grid parks per table tab.
@@ -159,6 +169,23 @@ export const DbScripts = component(
             tableInfo: () => resultSourceTable.tableInfo.value,
             tableName: () => resultSourceTable.tableName.value,
             emptyText: () => 'Query returned no rows.',
+            onPeekRelation: async (params) => {
+                await fkPeekViews.openPeekView({
+                    connectionId: params.connectionId,
+                    relation: params.relation,
+                    value: params.value,
+                    event: params.event,
+                });
+            },
+            onPeekUsages: async (params) => {
+                await fkPeekViews.openUsagePeekView({
+                    connectionId: params.connectionId,
+                    tableName: params.tableName,
+                    columnName: params.columnName,
+                    rowValues: params.rowValues,
+                    event: params.event,
+                });
+            },
             onSaved: () => refreshScriptResultAfterSave(),
         });
 
@@ -611,6 +638,7 @@ export const DbScripts = component(
                         </Button>
                     </div>
                 </CenteredModal>
+                <DbPeekViews peekViews={fkPeekViews} />
             </>
         );
 
