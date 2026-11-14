@@ -229,6 +229,12 @@ specs really ran.
   `Meta+ArrowUp` jump to the row's first cell / the column's first row, which is how a test reaches a
   known cell after an earlier edit.
 - **A fresh script tab opens on the Problems panel.** Click the `Result` tab before asserting a result.
+- **A script result learns its table after the rows.** `useResultSourceTable` resolves the table from the
+  statement and then loads its metadata (one call, `getTableInfo` or the batched `getTableInfos`, or none
+  when the schema cache is warm), so the cell menu built in that window has no peek/edit entries — the
+  menu is built once, when it opens. A test that needs `Peek Relation`/`Peek Usages`/an edit there waits
+  for the entry (re-opening the menu, as a user does) rather than for a specific request; see
+  `fk-peek.spec.ts`.
 - **`openSidebarTable` returns before the rows land.** When a test edits right after opening a table,
   wait for the `/api/getTableData` response and/or the `Loading table data...` overlay to clear.
 - **Wait for the run, not the grid.** `page.waitForResponse(r => r.url().endsWith('/api/runQuery'))`
@@ -260,9 +266,9 @@ specs really ran.
 
 ## 8. Current health and open work
 
-Snapshot at the last verification: **1167 unit tests (94 files)**, **176 browser tests (48 files)**,
+Snapshot at the last verification: **1167 unit tests (94 files)**, **177 browser tests (48 files)**,
 **14 Electron shell tests** (dev ×12 + packaged ×2), coverage **50.0 % statements / 42.5 % branches** with
-the floors green. The full browser suite ran 176 passed + 0 failed, and that green run also assumes the
+the floors green. The full browser suite ran 177 passed + 0 failed, and that green run also assumes the
 local MySQL fixtures and the provisioned SQLFluff runtime (T25), so on a fresh machine the precondition
 guards will fail loudly instead — read the message, it names what is missing. The dev-shell and packaged
 suites were not re-run after this renderer-only change.

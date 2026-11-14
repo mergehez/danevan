@@ -187,6 +187,23 @@ Suggested from the 2026-10-12 "the app quits immediately" report:
   though the build was signed. `installMacApp.ts` does the copy and `releaseHelpers.ts` re-checks the
   installed signature, so a broken install fails the release instead of the user's next launch.
 
+Suggested from the 2026-11-14 "peek relation doesn't work in a script result" report:
+
+- **A menu action needs a view that renders its state, in every panel that shows the grid.** "Peek
+  Relation" in a script result wrote the old `useForeignKeyPeek` popover state, which no component
+  renders any more: the table panel had moved to `useForeignKeyPeekViews`, so the same menu item was
+  silently dead in the script panel — and "Peek Usages" was missing there altogether, because the grid
+  was built without the handlers. The peek stack is now one component (`DbPeekViews`) rendered by both
+  panels, with both handlers wired. A handler that fills state nothing reads is a dead control: check
+  who renders it before calling the item done. Guarded by `fk-peek.spec.ts` (relation *and* usages from
+  a script result).
+- **A surface that names its own target must load that target's metadata before it offers actions on
+  it.** A script result resolves its table from the executed statement, then loads that table's
+  columns and foreign keys in a backend call; the cell menu is built once, when it opens, so an item
+  opened inside that window has no relation to peek at. Wait for the entry (re-open the menu) rather
+  than for a specific request — it may be `getTableInfo`, the batched `getTableInfos`, or none at all
+  when the cache is warm.
+
 Suggested from the 2026-11-14 "Shift+Enter doesn't add a new line" report:
 
 - **A multi-line editor owns its line breaks.** Enter commits an edit, so Shift+Enter must not: both
